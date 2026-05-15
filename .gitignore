@@ -1,0 +1,9 @@
+# compiled binary
+/plexwatchparty
+
+# local env / secrets
+.env
+
+# os cruft
+.DS_Store
+*.log

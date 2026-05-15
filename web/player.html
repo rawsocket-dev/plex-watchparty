@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Watch Party</title>
+<style>
+  html,body { margin:0; height:100%; background:#000; color:#eee;
+              font-family:system-ui,sans-serif; }
+  #wrap { height:100%; display:flex; flex-direction:column; }
+  video { flex:1; width:100%; background:#000; min-height:0; }
+  #bar { display:flex; gap:.6rem; align-items:center;
+         padding:.6rem .9rem; background:#0d0d10; }
+  button { background:#17171c; color:#eee; border:1px solid #2a2a32;
+           border-radius:8px; padding:.5rem .9rem; cursor:pointer; }
+  a { color:#5b6cff; text-decoration:none; margin-left:auto; }
+  #title { font-size:.9rem; color:#bbb; }
+  #sync { font-size:.75rem; color:#666; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <video id="v" playsinline controls></video>
+  <div id="bar">
+    <button id="play">Play</button>
+    <button id="pause">Pause</button>
+    <span id="title"></span>
+    <span id="sync"></span>
+    <a href="/">← change movie</a>
+  </div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1"></script>
+<script>
+const v = document.getElementById('v');
+let loadedKey = null;     // ratingKey currently attached to the <video>
+let applying = false;     // suppress echo while we apply server state
+const DRIFT = 0.75;       // seconds of tolerable drift before a hard seek
+
+function attach() {
+  const src = '/hls/index.m3u8?ts=' + Date.now();
+  if (v.canPlayType('application/vnd.apple.mpegurl')) {
+    v.src = src;                       // Safari: native HLS (incl. HEVC)
+  } else if (window.Hls && Hls.isSupported()) {
+    const hls = new Hls();
+    hls.loadSource(src);
+    hls.attachMedia(v);
+  } else {
+    v.src = src;
+  }
+}
+
+function post(action, extra) {
+  fetch('/control', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(Object.assign({action}, extra||{}))
+  });
+}
+
+// --- apply authoritative server state ---------------------------------------
+const es = new EventSource('/events');
+es.onmessage = (e) => {
+  const s = JSON.parse(e.data);
+  if (!s.ratingKey) { document.getElementById('title').textContent =
+      'Waiting for host to pick a movie…'; return; }
+  document.getElementById('title').textContent = s.title;
+
+  if (s.ratingKey !== loadedKey) { loadedKey = s.ratingKey; attach(); }
+
+  // Where should we be right now?
+  let target = s.positionSec;
+  if (s.playing) target += (Date.now() - s.updatedAtMs) / 1000;
+
+  applying = true;
+  if (Math.abs(v.currentTime - target) > DRIFT && isFinite(target)) {
+    v.currentTime = target;
+  }
+  if (s.playing && v.paused) v.play().catch(()=>{});
+  if (!s.playing && !v.paused) v.pause();
+  setTimeout(() => { applying = false; }, 250);
+
+  document.getElementById('sync').textContent =
+    'drift ' + (v.currentTime - target).toFixed(2) + 's';
+};
+
+// --- local controls broadcast to everyone -----------------------------------
+document.getElementById('play').onclick  = () => post('play');
+document.getElementById('pause').onclick = () => post('pause');
+v.addEventListener('seeked', () => {
+  if (!applying) post('seek', {positionSec: v.currentTime});
+});
+v.addEventListener('play',  () => { if (!applying) post('play');  });
+v.addEventListener('pause', () => { if (!applying) post('pause'); });
+</script>
+</body>
+</html>

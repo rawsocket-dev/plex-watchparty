@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pick a movie</title>
+<style>
+  body { margin:0; background:#0d0d10; color:#eee;
+         font-family:system-ui,sans-serif; }
+  header { padding:1rem 1.5rem; font-size:1.2rem; border-bottom:1px solid #222; }
+  ul { list-style:none; margin:0; padding:1rem; display:grid;
+       grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:.6rem; }
+  li button { width:100%; text-align:left; padding:.9rem 1rem; cursor:pointer;
+       background:#17171c; color:#eee; border:1px solid #2a2a32;
+       border-radius:10px; font-size:.95rem; }
+  li button:hover { border-color:#5b6cff; }
+  .year { color:#888; font-size:.8rem; }
+  #status { padding:1rem 1.5rem; color:#888; }
+</style>
+</head>
+<body>
+  <header>Choose what we watch together</header>
+  <div id="status">Loading library…</div>
+  <ul id="list"></ul>
+<script>
+async function load() {
+  const r = await fetch('/api/movies');
+  if (!r.ok) { status.textContent = 'Failed to load library'; return; }
+  const movies = await r.json();
+  status.textContent = movies.length + ' movies';
+  list.innerHTML = '';
+  for (const m of movies) {
+    const li = document.createElement('li');
+    const b = document.createElement('button');
+    b.innerHTML = m.title +
+      (m.year ? ' <span class="year">' + m.year + '</span>' : '');
+    b.onclick = async () => {
+      b.disabled = true; b.textContent = 'Starting…';
+      await fetch('/control', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({action:'load', ratingKey:m.ratingKey})
+      });
+      location.href = '/watch';
+    };
+    li.appendChild(b); list.appendChild(li);
+  }
+}
+load();
+</script>
+</body>
+</html>

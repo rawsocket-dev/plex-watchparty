@@ -1,0 +1,12 @@
+services:
+  watchparty:
+    build: .
+    image: plex-watchparty
+    ports:
+      - "8080:8080"
+    environment:
+      # Your Plex server (token stays server-side, never sent to clients).
+      PLEX_BASE_URL: "http://host.docker.internal:32400"
+      PLEX_TOKEN: "${PLEX_TOKEN:?set PLEX_TOKEN}"
+      WATCH_PASSWORD: "${WATCH_PASSWORD:?set WATCH_PASSWORD}"
+    restart: unless-stopped

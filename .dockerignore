@@ -1,0 +1,5 @@
+.git
+.gitignore
+*.md
+plexwatchparty
+docker-compose.yml

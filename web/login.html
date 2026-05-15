@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Watch Party</title>
+<style>
+  body { margin:0; height:100vh; display:grid; place-items:center;
+         background:#0d0d10; color:#eee; font-family:system-ui,sans-serif; }
+  form { background:#17171c; padding:2rem; border-radius:12px; width:280px;
+         box-shadow:0 8px 30px rgba(0,0,0,.5); }
+  h1 { font-size:1.1rem; margin:0 0 1rem; }
+  input,button { width:100%; box-sizing:border-box; padding:.7rem;
+         border-radius:8px; border:1px solid #333; font-size:1rem; }
+  input { background:#0d0d10; color:#eee; margin-bottom:.8rem; }
+  button { background:#5b6cff; color:#fff; border:0; cursor:pointer; }
+</style>
+</head>
+<body>
+  <form method="post" action="/login">
+    <h1>Enter party password</h1>
+    <input type="password" name="password" placeholder="Password" autofocus>
+    <button type="submit">Join</button>
+  </form>
+</body>
+</html>
