@@ -68,10 +68,17 @@ func (rx *Remuxer) Start(ratingKey string, si *StreamInfo) error {
 
 	playlist := filepath.Join(dir, "index.m3u8")
 	args := []string{
-		"-nostdin", "-loglevel", "warning",
+		"-nostdin",
+		// `error` rather than `warning`: Blu-ray remuxes with many PGS
+		// subtitle tracks emit 20+ benign probe warnings at startup; this
+		// keeps the compose log readable so real errors stand out.
+		"-loglevel", "error",
 		// Bigger probe window: Blu-ray remuxes with many subtitle / audio
 		// tracks blow past the defaults and stall startup.
 		"-analyzeduration", "100M", "-probesize", "100M",
+		// Regenerate / forgive timestamps — Dolby Vision sources sometimes
+		// emit DTS=0 frames at the start that otherwise stall the muxer.
+		"-fflags", "+genpts+igndts",
 		"-i", si.URL,
 		"-map", "0:v:0", "-map", "0:a:0",
 		"-c:v", "copy",
