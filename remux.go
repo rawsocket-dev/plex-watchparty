@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -200,4 +201,65 @@ func (rx *Remuxer) Stop() {
 	}
 	rx.current = ""
 	rx.dir = ""
+}
+
+// PruneOlderThan deletes session-* subdirectories of WORK_DIR whose
+// mtime is older than `age`. Each removal is logged with the dir's
+// name, age, and size so it's visible in the compose log. Run this
+// at startup so a long-uptime deploy doesn't accumulate junk.
+func (rx *Remuxer) PruneOlderThan(age time.Duration) {
+	entries, err := os.ReadDir(rx.workDir)
+	if err != nil {
+		log.Printf("prune: cannot read %s: %v", rx.workDir, err)
+		return
+	}
+	cutoff := time.Now().Add(-age)
+	var removed int
+	var freedBytes int64
+	for _, e := range entries {
+		if !e.IsDir() || !strings.HasPrefix(e.Name(), "session-") {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil || !info.ModTime().Before(cutoff) {
+			continue
+		}
+		full := filepath.Join(rx.workDir, e.Name())
+		var dirBytes int64
+		_ = filepath.Walk(full, func(_ string, fi os.FileInfo, _ error) error {
+			if fi != nil && !fi.IsDir() {
+				dirBytes += fi.Size()
+			}
+			return nil
+		})
+		if err := os.RemoveAll(full); err != nil {
+			log.Printf("prune: failed to remove %s: %v", e.Name(), err)
+			continue
+		}
+		log.Printf("prune: removed %s (age %s, %s)",
+			e.Name(),
+			time.Since(info.ModTime()).Round(time.Minute),
+			humanBytes(dirBytes))
+		removed++
+		freedBytes += dirBytes
+	}
+	if removed == 0 {
+		log.Printf("prune: nothing older than %s in %s", age, rx.workDir)
+	} else {
+		log.Printf("prune: removed %d session(s), freed %s", removed, humanBytes(freedBytes))
+	}
+}
+
+// humanBytes formats b as a binary-prefixed size (KiB / MiB / GiB).
+func humanBytes(b int64) string {
+	const unit = 1024
+	if b < unit {
+		return fmt.Sprintf("%d B", b)
+	}
+	div, exp := int64(unit), 0
+	for n := b / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.2f %ciB", float64(b)/float64(div), "KMGTPE"[exp])
 }

@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 func env(key, def string) string {
@@ -31,6 +32,7 @@ func main() {
 
 	plex := NewPlex(plexURL, plexTok)
 	rx := NewRemuxer(workDir)
+	rx.PruneOlderThan(7 * 24 * time.Hour)
 	hub := NewHub(plex, rx)
 	auth := NewAuth(password)
 	bw := newBwTracker()
