@@ -1,6 +1,7 @@
 package main
 
 import (
+	"io"
 	"net"
 	"net/http"
 	"strings"
@@ -97,8 +98,16 @@ func clientIP(r *http.Request) string {
 }
 
 // countingResponseWriter wraps http.ResponseWriter so we can record the
-// number of body bytes sent to the client. ServeFile streams via Write,
-// so this captures every byte without needing to know Content-Length.
+// number of body bytes sent to the client. We implement BOTH Write and
+// io.ReaderFrom so the underlying sendfile() zero-copy path is preserved
+// for big segment payloads — Go's net/http detects ReaderFrom on the
+// writer and uses it; the inner ResponseWriter typically forwards
+// ReadFrom to the TCP socket's ReadFrom, which uses sendfile on Linux.
+//
+// Without the ReaderFrom implementation, io.Copy falls back to a
+// userspace 32KB-buffer Read+Write loop — correct, but each byte makes
+// a round trip through userspace. Negligible at watch-party scale, but
+// free to fix.
 type countingResponseWriter struct {
 	http.ResponseWriter
 	n int64
@@ -109,3 +118,24 @@ func (c *countingResponseWriter) Write(p []byte) (int, error) {
 	c.n += int64(n)
 	return n, err
 }
+
+// ReadFrom satisfies io.ReaderFrom. If the wrapped writer also
+// implements ReaderFrom (the standard library's *response does), we
+// forward to it — which on Linux uses sendfile() under the hood.
+// Otherwise we fall back to io.Copy through our Write method, so the
+// byte counter still works on platforms without zero-copy support.
+func (c *countingResponseWriter) ReadFrom(r io.Reader) (int64, error) {
+	if rf, ok := c.ResponseWriter.(io.ReaderFrom); ok {
+		n, err := rf.ReadFrom(r)
+		c.n += n
+		return n, err
+	}
+	// Fallback path: forces traffic through Write so it's counted.
+	n, err := io.Copy(writerFunc(c.Write), r)
+	return n, err
+}
+
+// writerFunc adapts a Write function back to an io.Writer for io.Copy.
+type writerFunc func(p []byte) (int, error)
+
+func (f writerFunc) Write(p []byte) (int, error) { return f(p) }

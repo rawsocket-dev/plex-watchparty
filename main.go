@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"io"
 	"log"
 	"net/http"
 	"os"
@@ -140,14 +139,12 @@ func main() {
 	// HLS playlist + segments come from the active remux session dir.
 	// Clients only ever touch this — never Plex, never the token.
 	//
-	// We deliberately do NOT use http.ServeFile: on Linux it triggers
-	// the sendfile() syscall which copies disk → socket inside the
-	// kernel, completely bypassing our countingResponseWriter.Write.
-	// Bandwidth would only see the tiny .m3u8 playlists (text files
-	// that don't always sendfile-optimize) and miss every .m4s
-	// segment, capping the displayed kbps at the playlist-poll rate
-	// (~4 kbps). Use os.Open + io.Copy so every byte flows through
-	// the wrapper.
+	// countingResponseWriter now implements io.ReaderFrom too, so
+	// http.ServeFile's internal io.CopyN finds the fast-path and routes
+	// the bytes through the underlying response's ReadFrom (which uses
+	// sendfile() on Linux). We get kernel zero-copy AND accurate byte
+	// counting — both Write() and ReadFrom() on the wrapper accumulate
+	// into cw.n.
 	protected.HandleFunc("/hls/", func(w http.ResponseWriter, r *http.Request) {
 		dir := rx.SessionDir()
 		if dir == "" {
@@ -159,18 +156,6 @@ func main() {
 			http.NotFound(w, r)
 			return
 		}
-		full := filepath.Join(dir, filepath.Base(name))
-		f, err := os.Open(full)
-		if err != nil {
-			http.NotFound(w, r)
-			return
-		}
-		defer f.Close()
-		st, err := f.Stat()
-		if err != nil {
-			http.Error(w, "stat: "+err.Error(), http.StatusInternalServerError)
-			return
-		}
 		switch filepath.Ext(name) {
 		case ".m3u8":
 			w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
@@ -180,15 +165,8 @@ func main() {
 			w.Header().Set("Content-Type", "video/mp4")
 		}
 		w.Header().Set("Cache-Control", "no-cache")
-		w.Header().Set("Content-Length", strconv.FormatInt(st.Size(), 10))
 		cw := &countingResponseWriter{ResponseWriter: w}
-		// io.Copy without a fast-path: countingResponseWriter intentionally
-		// does NOT implement io.ReaderFrom, so io.Copy falls back to the
-		// Read+Write loop and every byte goes through cw.Write.
-		if _, err := io.Copy(cw, f); err != nil {
-			// Client likely disconnected mid-segment; nothing to do but
-			// record what we did manage to send.
-		}
+		http.ServeFile(cw, r, filepath.Join(dir, filepath.Base(name)))
 		bw.record(clientIP(r), cw.n)
 	})
 
