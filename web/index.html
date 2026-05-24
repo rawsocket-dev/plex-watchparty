@@ -328,6 +328,15 @@
 <footer>· intermission · grab a drink ·</footer>
 
 <script>
+// When the user navigates back from /watch via the browser's back
+// button, Chrome / Safari restore this page from the bfcache with the
+// previously-clicked movie button still stuck in its disabled
+// "cueing the projector…" state. Forcing a reload on a persisted
+// pageshow rebuilds the DOM from a clean fetch so buttons reset.
+window.addEventListener('pageshow', (e) => {
+  if (e.persisted) location.reload();
+});
+
 const statusEl = document.getElementById('status');
 const groupsEl = document.getElementById('groups');
 const searchEl = document.getElementById('search');

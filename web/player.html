@@ -332,23 +332,26 @@
     width: 32px; height: 32px; margin-left: 4px;
     transition: filter .25s ease;
   }
-  #join.ready:hover .icon {
-    background: rgba(212, 165, 116, .18);
-    transform: scale(1.08);
-    border-color: var(--ember);
-    color: var(--ember);
-    /* Layered glow: tight bright core + wider soft bloom — reads as a
-       warm halo rather than a single flat shadow. */
-    box-shadow: 0 0 0 2px rgba(212, 165, 116, .35),
-                0 0 28px rgba(212, 165, 116, .55),
-                0 0 64px rgba(212, 165, 116, .35);
+  /* Gate the hover glow on devices that actually have hover — without
+     this, tapping on a touch screen latches the :hover state on and
+     the button looks permanently lit. */
+  @media (hover: hover) and (pointer: fine) {
+    #join.ready:hover .icon {
+      background: rgba(212, 165, 116, .18);
+      transform: scale(1.08);
+      border-color: var(--ember);
+      color: var(--ember);
+      /* Layered glow: tight bright core + wider soft bloom — reads as
+         a warm halo rather than a single flat shadow. */
+      box-shadow: 0 0 0 2px rgba(212, 165, 116, .35),
+                  0 0 28px rgba(212, 165, 116, .55),
+                  0 0 64px rgba(212, 165, 116, .35);
+    }
+    #join.ready:hover .icon svg {
+      filter: drop-shadow(0 0 8px rgba(212, 165, 116, .8));
+    }
+    #join.ready:hover .icon::before { opacity: .85; }
   }
-  #join.ready:hover .icon svg {
-    /* Glow the play arrow itself so the center of the button feels lit
-       from within rather than just rimmed. */
-    filter: drop-shadow(0 0 8px rgba(212, 165, 116, .8));
-  }
-  #join.ready:hover .icon::before { opacity: .85; }
   #join .label {
     font-family: var(--serif);
     font-style: italic;
@@ -366,7 +369,6 @@
     color: var(--paper-mute);
     font-variant-numeric: tabular-nums;
   }
-  #join.ready .hint { color: var(--ember); }
 
 </style>
 </head>
