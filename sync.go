@@ -31,10 +31,65 @@ type Hub struct {
 	mu      sync.Mutex
 	state   State
 	clients map[chan State]struct{}
+
+	// Idle shutdown: when the last SSE viewer disconnects, start a
+	// grace timer; if no one rejoins by the time it fires, stop ffmpeg
+	// so we don't keep transcoding for nobody.
+	idleTimer *time.Timer
 }
+
+// idleGrace is how long we keep ffmpeg alive after the last viewer
+// leaves. Long enough to forgive a tab refresh or short reconnect,
+// short enough that a forgotten session doesn't burn CPU all night.
+const idleGrace = 60 * time.Second
 
 func NewHub(plex *Plex, rx *Remuxer) *Hub {
 	return &Hub{plex: plex, rx: rx, clients: make(map[chan State]struct{})}
+}
+
+// onClientCountChange must be called with h.mu held whenever a client
+// is added to or removed from h.clients. Manages the idle shutdown timer.
+func (h *Hub) onClientCountChange() {
+	if len(h.clients) > 0 {
+		// Someone is watching — cancel any pending shutdown.
+		if h.idleTimer != nil {
+			h.idleTimer.Stop()
+			h.idleTimer = nil
+		}
+		return
+	}
+	// No viewers. If there's an active session, schedule shutdown.
+	if h.state.RatingKey == "" {
+		return
+	}
+	if h.idleTimer != nil {
+		return // already scheduled
+	}
+	rk := h.state.RatingKey
+	h.idleTimer = time.AfterFunc(idleGrace, func() { h.idleShutdown(rk) })
+	log.Printf("idle: no viewers, will stop ffmpeg in %s if nobody returns", idleGrace)
+}
+
+// idleShutdown fires when the grace timer expires. Guards against the
+// race where a viewer rejoins during the grace window.
+func (h *Hub) idleShutdown(forRatingKey string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.idleTimer = nil
+	if len(h.clients) > 0 {
+		return // someone rejoined
+	}
+	if h.state.RatingKey != forRatingKey {
+		return // session changed during the grace window
+	}
+	if h.state.RatingKey == "" {
+		return // already cleared
+	}
+	log.Printf("idle: stopping ffmpeg session %q after %s with no viewers",
+		h.state.Title, idleGrace)
+	h.rx.Stop()
+	h.state = State{UpdatedAtMs: nowMs()}
+	h.broadcast()
 }
 
 func nowMs() int64 { return time.Now().UnixMilli() }
@@ -108,11 +163,13 @@ func (h *Hub) HandleEvents(w http.ResponseWriter, r *http.Request) {
 	ch := make(chan State, 8)
 	h.mu.Lock()
 	h.clients[ch] = struct{}{}
+	h.onClientCountChange()
 	init := h.snapshot()
 	h.mu.Unlock()
 	defer func() {
 		h.mu.Lock()
 		delete(h.clients, ch)
+		h.onClientCountChange()
 		h.mu.Unlock()
 	}()
 
