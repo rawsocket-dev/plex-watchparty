@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/hex"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -140,6 +141,8 @@ func (a *Auth) RequireHost(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
+		log.Printf("auth: 403 host-only %s %s ip=%s role=%s",
+			r.Method, r.URL.Path, clientIP(r), a.EffectiveRole(r))
 		http.Error(w, "host only", http.StatusForbidden)
 	})
 }
@@ -151,17 +154,20 @@ func (a *Auth) HandleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	pw := []byte(r.FormValue("password"))
+	ip := clientIP(r)
 	var role Role
 	if a.host != "" && subtle.ConstantTimeCompare(pw, []byte(a.host)) == 1 {
 		role = RoleHost
 	} else if a.watch != "" && subtle.ConstantTimeCompare(pw, []byte(a.watch)) == 1 {
 		role = RoleViewer
 	} else {
+		log.Printf("login: FAIL ip=%s ua=%q", ip, r.UserAgent())
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.WriteHeader(http.StatusUnauthorized)
 		w.Write(loginHTML)
 		return
 	}
+	log.Printf("login: OK ip=%s role=%s ua=%q", ip, role, r.UserAgent())
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookie,
 		Value:    a.token(role),

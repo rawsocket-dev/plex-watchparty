@@ -161,16 +161,23 @@ func (h *Hub) HandleEvents(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Connection", "keep-alive")
 
 	ch := make(chan State, 8)
+	ip := clientIP(r)
+	connectedAt := time.Now()
 	h.mu.Lock()
 	h.clients[ch] = struct{}{}
+	n := len(h.clients)
 	h.onClientCountChange()
 	init := h.snapshot()
 	h.mu.Unlock()
+	log.Printf("sse: connect ip=%s viewers=%d", ip, n)
 	defer func() {
 		h.mu.Lock()
 		delete(h.clients, ch)
+		left := len(h.clients)
 		h.onClientCountChange()
 		h.mu.Unlock()
+		log.Printf("sse: disconnect ip=%s viewers=%d after=%s",
+			ip, left, time.Since(connectedAt).Round(time.Second))
 	}()
 
 	write := func(s State) {
@@ -207,9 +214,12 @@ type controlReq struct {
 func (h *Hub) HandleControl(w http.ResponseWriter, r *http.Request) {
 	var req controlReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		log.Printf("control: bad request ip=%s err=%v", clientIP(r), err)
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
+	log.Printf("control: %s ip=%s action=%s ratingKey=%s pos=%.2f",
+		"received", clientIP(r), req.Action, req.RatingKey, req.PositionSec)
 
 	if req.Action == "load" {
 		t0 := time.Now()
@@ -278,6 +288,7 @@ func (h *Hub) HandleControl(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if req.Action != "play" && req.Action != "pause" && req.Action != "seek" {
+		log.Printf("control: unknown action ip=%s action=%q", clientIP(r), req.Action)
 		http.Error(w, "unknown action", http.StatusBadRequest)
 		return
 	}
@@ -287,9 +298,13 @@ func (h *Hub) HandleControl(w http.ResponseWriter, r *http.Request) {
 	switch req.Action {
 	case "play":
 		cur.Playing = true
+		log.Printf("state: play  ip=%s title=%q at=%.2f", clientIP(r), cur.Title, cur.PositionSec)
 	case "pause":
 		cur.Playing = false
+		log.Printf("state: pause ip=%s title=%q at=%.2f", clientIP(r), cur.Title, cur.PositionSec)
 	case "seek":
+		log.Printf("state: seek  ip=%s title=%q from=%.2f to=%.2f",
+			clientIP(r), cur.Title, cur.PositionSec, req.PositionSec)
 		cur.PositionSec = req.PositionSec
 	}
 	cur.UpdatedAtMs = nowMs()

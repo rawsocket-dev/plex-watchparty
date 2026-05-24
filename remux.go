@@ -168,8 +168,15 @@ func (rx *Remuxer) Start(ratingKey string, si *StreamInfo) error {
 	}
 	spawnMs := time.Since(startedAt).Milliseconds()
 	go func() {
-		if err := cmd.Wait(); err != nil && ctx.Err() == nil {
-			log.Printf("ffmpeg exited: %v", err)
+		err := cmd.Wait()
+		runtime := time.Since(startedAt).Round(time.Second)
+		switch {
+		case ctx.Err() != nil:
+			log.Printf("ffmpeg %s: cancelled after %s", ratingKey, runtime)
+		case err != nil:
+			log.Printf("ffmpeg %s: exited with error after %s: %v", ratingKey, runtime, err)
+		default:
+			log.Printf("ffmpeg %s: finished naturally after %s (reached end of source)", ratingKey, runtime)
 		}
 	}()
 
