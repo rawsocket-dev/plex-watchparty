@@ -22,11 +22,22 @@ type State struct {
 	// is Infinity with an event-type HLS playlist).
 	DurationSec float64 `json:"durationSec"`
 	UpdatedAtMs int64   `json:"updatedAtMs"`
+	// SessionToken bumps every time the Plex transcode session restarts
+	// (load action, or forward-seek-past-edge). Clients compare against
+	// the last token they've seen — if changed, they destroy their
+	// hls.js instance and attach a fresh one with the new playlist URL.
+	SessionToken int64 `json:"sessionToken"`
+	// CachedRanges is the union of all currently-cached segment time
+	// ranges for the active movie, in seconds. The scrub bar renders
+	// these as the "lighter band" so users can see which scrub targets
+	// are instant vs which will trigger a Plex restart.
+	CachedRanges [][2]float64 `json:"cachedRanges,omitempty"`
 }
 
 type Hub struct {
-	plex *Plex
-	rx   *Remuxer
+	plex    *Plex
+	session *PlexSession
+	cache   *SegmentCache
 
 	mu sync.Mutex
 	state   State
@@ -57,8 +68,8 @@ const idleGrace = 60 * time.Second
 // just "host clicks play again," not "ffmpeg session killed."
 const hostExitGrace = 10 * time.Second
 
-func NewHub(plex *Plex, rx *Remuxer) *Hub {
-	h := &Hub{plex: plex, rx: rx, clients: make(map[chan State]bool)}
+func NewHub(plex *Plex, session *PlexSession, cache *SegmentCache) *Hub {
+	h := &Hub{plex: plex, session: session, cache: cache, clients: make(map[chan State]bool)}
 	// Periodic state re-broadcast. Two goals: (1) Safari's EventSource
 	// closes the SSE if it goes ~10–20 s without an actual data event
 	// (comment-only heartbeats don't count), and (2) every viewer

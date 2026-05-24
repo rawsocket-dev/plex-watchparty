@@ -92,7 +92,7 @@ func main() {
 	}
 	rx := NewRemuxer(workDir)
 	rx.PruneOlderThan(7 * 24 * time.Hour)
-	hub := NewHub(plex, rx)
+	hub := NewHub(plex, plexSession, segCache)
 	auth := NewAuth(password, hostPassword)
 	bw := newBwTracker()
 	if auth.HostEnabled() {
