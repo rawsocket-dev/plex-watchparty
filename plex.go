@@ -83,6 +83,33 @@ type StreamInfo struct {
 	Size         int64  // bytes
 }
 
+// ServerIdentity is the subset of Plex's root response we care about
+// for a startup health check.
+type ServerIdentity struct {
+	FriendlyName      string `json:"friendlyName"`
+	MachineIdentifier string `json:"machineIdentifier"`
+	Version           string `json:"version"`
+	Platform          string `json:"platform"`
+	PlatformVersion   string `json:"platformVersion"`
+}
+
+// Ping hits the Plex root endpoint with the configured token. Verifies
+// (a) the server is reachable, (b) the token is valid, and (c) returns
+// enough identity to log a "talking to <server>, version <X>" line at
+// startup. A non-nil error means one of those checks failed.
+func (p *Plex) Ping() (*ServerIdentity, error) {
+	var resp struct {
+		MediaContainer ServerIdentity `json:"MediaContainer"`
+	}
+	if err := p.get("/", &resp); err != nil {
+		return nil, err
+	}
+	if resp.MediaContainer.MachineIdentifier == "" {
+		return nil, fmt.Errorf("plex returned an empty identity (token may be invalid)")
+	}
+	return &resp.MediaContainer, nil
+}
+
 func (p *Plex) get(path string, v any) error {
 	u := p.BaseURL + path
 	if strings.Contains(path, "?") {

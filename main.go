@@ -53,6 +53,18 @@ func main() {
 		log.Printf("plex: direct-stream mode (no transcode); set PLEX_TRANSCODE_BITRATE_KBPS to enable")
 	}
 	plex := NewPlex(plexURL, plexTok, libraryCache, transcodeKbps)
+	// Health check: confirm we can reach the configured Plex server and
+	// that the token is valid before binding the HTTP port. Non-fatal so
+	// a transient Plex outage at boot doesn't take down the watch party
+	// — the user will see a clear warning and library calls will retry
+	// when Plex comes back.
+	if id, err := plex.Ping(); err != nil {
+		log.Printf("plex: WARNING — health check failed: %v", err)
+		log.Printf("plex: check PLEX_BASE_URL / PLEX_TOKEN; library calls will keep retrying")
+	} else {
+		log.Printf("plex: connected to %q (version %s, %s %s, machine %s)",
+			id.FriendlyName, id.Version, id.Platform, id.PlatformVersion, id.MachineIdentifier)
+	}
 	rx := NewRemuxer(workDir)
 	rx.PruneOlderThan(7 * 24 * time.Hour)
 	hub := NewHub(plex, rx)
