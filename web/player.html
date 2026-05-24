@@ -686,26 +686,27 @@ function attach() {
       }
     }
     const hls = new Hls({
-      // Tight buffer sizes — high-bitrate HEVC (Blu-ray remuxes
-      // routinely hit 25-50 Mbps) blows past Chrome's MSE source-
-      // buffer byte cap at surprisingly little wall time. 30 s of a
-      // 30 Mbps stream is already 112 MB. Set explicit byte limit too
-      // so we don't depend on hls.js's defaults catching up to source
-      // bitrate. Trust hls.js to re-fetch on backwards seek from the
-      // VOD-typed playlist — segments are on disk; refetch is cheap.
+      // Buffer sized for 4K HEVC at 80 Mbps (= 10 MB/s of payload):
+      // - maxBufferLength 30: target 30s ahead of playhead during steady-
+      //   state playback. At 80 Mbps that's ~300 MB of MSE data.
+      // - maxMaxBufferLength 60: hard cap. Bigger than maxBufferLength
+      //   so hls.js can keep some breathing room without growing
+      //   unbounded.
+      // - maxBufferSize 500 MB: explicit byte budget. Generous enough
+      //   for 30-50s of 4K HEVC; if Chrome's MSE quota is tighter than
+      //   this on a given platform, it evicts oldest data on its own.
+      // - backBufferLength 30: keep 30s behind the playhead for cheap
+      //   scrub-back. Older data is re-fetched from the (VOD) playlist
+      //   when needed; segments are still on disk.
       backBufferLength: 30,
-      maxBufferLength: 15,
-      maxMaxBufferLength: 30,
-      // 200 MB is high but our source can be 70+ Mbps HEVC (a 6 s
-      // segment alone is 54 MB at that rate). 30 MB rejected even a
-      // single fragment. Modern desktop Chrome's MSE quota is in the
-      // 200-300 MB range so this is within the platform's headroom.
-      maxBufferSize: 200 * 1024 * 1024,
-      // Be more patient before declaring a starvation/stall — the
-      // playlist polls every ~6s so a 12 s tolerance lets the next
-      // refresh recover us before we cry stall.
-      maxStarvationDelay: 12,
-      maxLoadingDelay: 12,
+      maxBufferLength: 30,
+      maxMaxBufferLength: 60,
+      maxBufferSize: 500 * 1024 * 1024,
+      // High-bitrate decode can stall briefly under load. 20 s of
+      // patience before declaring starvation; plenty of time for the
+      // next 2s segment to arrive.
+      maxStarvationDelay: 20,
+      maxLoadingDelay: 20,
       pLoader: VodPLoader,
     });
     const seekableStr = () => {
