@@ -53,7 +53,31 @@ func main() {
 		log.Printf("plex: direct-stream mode (no transcode); set PLEX_TRANSCODE_BITRATE_KBPS to enable")
 	}
 	plex := NewPlex(plexURL, plexTok, libraryCache)
+
+	// Disk cache for HLS segments. Sized by CACHE_MAX_GB (default 20 GB).
+	// Survives container restarts so previously-watched ranges of a
+	// movie are instant-seekable even after a reboot.
+	cacheGB := 20
+	if v := os.Getenv("CACHE_MAX_GB"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n <= 0 {
+			log.Fatalf("CACHE_MAX_GB must be a positive integer, got %q", v)
+		}
+		cacheGB = n
+	}
+	cacheDir := filepath.Join(filepath.Dir(workDir), "cache")
+	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
+		log.Fatalf("create cache dir: %v", err)
+	}
+	segCache := NewSegmentCache(cacheDir, int64(cacheGB)*1024*1024*1024)
+	if err := segCache.LoadFromDisk(); err != nil {
+		log.Printf("cache: LoadFromDisk warning: %v", err)
+	}
+	log.Printf("cache: %d entries loaded, %d MB on disk, cap %d GB",
+		len(segCache.entries), segCache.totalBytes/1024/1024, cacheGB)
+
 	plexSession := NewPlexSession(plex, transcodeKbps)
+	_ = segCache    // wired in later tasks
 	_ = plexSession // wired in later tasks
 	// Health check: confirm we can reach the configured Plex server and
 	// that the token is valid before binding the HTTP port. Non-fatal so
