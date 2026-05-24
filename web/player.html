@@ -755,6 +755,20 @@ v.addEventListener('error', () => {
 
 v.addEventListener('seeking', () => console.log('video seeking → currentTime=', v.currentTime.toFixed(2)));
 v.addEventListener('seeked',  () => console.log('video seeked  → currentTime=', v.currentTime.toFixed(2)));
+// Whole-truth playback event logging — playback stops "by itself" can
+// be any of: explicit pause(), `waiting` (buffer ran dry), `stalled`
+// (no data appearing), `ended`, `ratechange` to 0, or a decoder
+// hitting capacity. Each event tells a different story.
+v.addEventListener('play',       () => console.log('video EVENT: play       currentTime=', v.currentTime.toFixed(2)));
+v.addEventListener('pause',      () => console.log('video EVENT: pause      currentTime=', v.currentTime.toFixed(2)));
+v.addEventListener('waiting',    () => console.log('video EVENT: waiting    currentTime=', v.currentTime.toFixed(2),
+                                                   ' readyState=', v.readyState,
+                                                   ' bufferedEnd=', v.buffered.length ? v.buffered.end(v.buffered.length-1).toFixed(2) : 'none'));
+v.addEventListener('stalled',    () => console.log('video EVENT: stalled    currentTime=', v.currentTime.toFixed(2)));
+v.addEventListener('canplay',    () => console.log('video EVENT: canplay    currentTime=', v.currentTime.toFixed(2)));
+v.addEventListener('canplaythrough', () => console.log('video EVENT: canplaythrough'));
+v.addEventListener('ended',      () => console.log('video EVENT: ended      currentTime=', v.currentTime.toFixed(2)));
+v.addEventListener('ratechange', () => console.log('video EVENT: ratechange playbackRate=', v.playbackRate));
 
 // Pre-roll buffer gate. Without this, the first SSE-driven play() can
 // fire when hls.js has only loaded a single 6 s segment (because
