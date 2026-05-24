@@ -359,8 +359,15 @@ let scrubDragging = false;
 let scrubPendingPct = null;
 function pctFromEvent(e) {
   const rect = scrubHit.getBoundingClientRect();
-  const x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
+  const cx = (e.touches ? e.touches[0].clientX : e.clientX);
+  const x = cx - rect.left;
   return Math.max(0, Math.min(1, x / rect.width));
+}
+function rawPctFromEvent(e) {
+  // Unclamped, for diagnostic logging only.
+  const rect = scrubHit.getBoundingClientRect();
+  const cx = (e.touches ? e.touches[0].clientX : e.clientX);
+  return ((cx - rect.left) / rect.width);
 }
 function paintAt(pct) {
   scrubFill.style.width  = (pct * 100) + '%';
@@ -411,6 +418,12 @@ scrubHit.addEventListener('mousedown', (e) => {
   scrubDragging = true;
   scrubHit.classList.add('dragging');
   const pct = pctFromEvent(e);
+  const raw = rawPctFromEvent(e);
+  console.log('scrub mousedown: pct=', pct.toFixed(3),
+              ' raw=', raw.toFixed(3),
+              ' clientX=', e.clientX,
+              ' rect=', scrubHit.getBoundingClientRect().left.toFixed(0) + '..' +
+                        (scrubHit.getBoundingClientRect().left + scrubHit.getBoundingClientRect().width).toFixed(0));
   paintAt(pct);
   scrubPendingPct = pct;
 });
@@ -459,19 +472,25 @@ let lastLocalActionMs = 0;
 function commitScrubSeek() {
   const dur = knownDuration();
   if (scrubPendingPct == null || dur <= 0) {
+    console.log('scrub commit skipped: pct=', scrubPendingPct, ' dur=', dur);
     scrubPendingPct = null;
     return;
   }
   const target = scrubPendingPct * dur;
   scrubPendingPct = null;
-  console.log('scrub seek →', target.toFixed(2), 's (dur=' + dur.toFixed(0) + ')');
+  const seekableRanges = [];
+  for (let i = 0; i < v.seekable.length; i++) {
+    seekableRanges.push(v.seekable.start(i).toFixed(1) + '..' + v.seekable.end(i).toFixed(1));
+  }
+  console.log('scrub commit:',
+              ' target=', target.toFixed(2), 's',
+              ' dur=', dur.toFixed(0),
+              ' v.currentTime(before)=', v.currentTime.toFixed(2),
+              ' v.duration=', v.duration,
+              ' v.seekable=[', seekableRanges.join(', '), ']');
   lastLocalActionMs = Date.now();
-  // Set v.currentTime so the local player actually moves. The browser
-  // will fire a `seeked` event when the move completes, which our
-  // existing handler may post — but it can also be swallowed by the
-  // `applying` echo-suppression window. Post directly here too so the
-  // server always learns about the new position. Idempotent server-side.
   v.currentTime = target;
+  console.log('   v.currentTime(after assign)=', v.currentTime.toFixed(2));
   post('seek', { positionSec: target });
 }
 
@@ -568,6 +587,9 @@ v.addEventListener('error', () => {
   console.error('video element error', err);
   if (err) setStatus('video error: ' + err.code + ' ' + (err.message || ''));
 });
+
+v.addEventListener('seeking', () => console.log('video seeking → currentTime=', v.currentTime.toFixed(2)));
+v.addEventListener('seeked',  () => console.log('video seeked  → currentTime=', v.currentTime.toFixed(2)));
 
 function post(action, extra) {
   fetch('/control', {
