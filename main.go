@@ -91,7 +91,9 @@ func main() {
 		json.NewEncoder(w).Encode(movies)
 	})
 
-	protected.HandleFunc("/events", hub.HandleEvents)
+	protected.HandleFunc("/events", func(w http.ResponseWriter, r *http.Request) {
+		hub.HandleEvents(w, r, auth.EffectiveRole(r) == RoleHost)
+	})
 	// /control is host-gated. RequireHost is a no-op when HOST_PASSWORD
 	// isn't configured (preserves "any-friend-can-drive" default).
 	protected.Handle("/control", auth.RequireHost(http.HandlerFunc(hub.HandleControl)))

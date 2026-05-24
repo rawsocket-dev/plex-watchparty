@@ -28,14 +28,23 @@ type Hub struct {
 	plex *Plex
 	rx   *Remuxer
 
-	mu      sync.Mutex
+	mu sync.Mutex
 	state   State
-	clients map[chan State]struct{}
+	// clients map[chan]→isHost. Tracking role per-connection so we can
+	// pause the room when the last host leaves (viewers should never
+	// see the movie keep playing without the host present).
+	clients map[chan State]bool
 
 	// Idle shutdown: when the last SSE viewer disconnects, start a
 	// grace timer; if no one rejoins by the time it fires, stop ffmpeg
 	// so we don't keep transcoding for nobody.
 	idleTimer *time.Timer
+
+	// Host-exit pause: when the last host disconnects mid-playback,
+	// start a short grace timer. If no host returns by then, broadcast
+	// pause so viewers stop where the host did. Reconnects during the
+	// grace window (page refresh, network blip) cancel the pause.
+	hostExitTimer *time.Timer
 }
 
 // idleGrace is how long we keep ffmpeg alive after the last viewer
@@ -43,8 +52,13 @@ type Hub struct {
 // short enough that a forgotten session doesn't burn CPU all night.
 const idleGrace = 60 * time.Second
 
+// hostExitGrace forgives a quick host reconnect (refresh, brief network
+// blip). Shorter than idleGrace because the cost of a wrong pause is
+// just "host clicks play again," not "ffmpeg session killed."
+const hostExitGrace = 10 * time.Second
+
 func NewHub(plex *Plex, rx *Remuxer) *Hub {
-	h := &Hub{plex: plex, rx: rx, clients: make(map[chan State]struct{})}
+	h := &Hub{plex: plex, rx: rx, clients: make(map[chan State]bool)}
 	// Periodic state re-broadcast. Two goals: (1) Safari's EventSource
 	// closes the SSE if it goes ~10–20 s without an actual data event
 	// (comment-only heartbeats don't count), and (2) every viewer
@@ -67,27 +81,77 @@ func (h *Hub) broadcastLoop() {
 	}
 }
 
+// hostCount returns the number of currently-connected hosts. Must be
+// called with h.mu held.
+func (h *Hub) hostCount() int {
+	n := 0
+	for _, isHost := range h.clients {
+		if isHost {
+			n++
+		}
+	}
+	return n
+}
+
 // onClientCountChange must be called with h.mu held whenever a client
-// is added to or removed from h.clients. Manages the idle shutdown timer.
+// is added to or removed from h.clients. Manages two timers:
+//   - idle shutdown: ffmpeg stops when ALL viewers leave
+//   - host-exit pause: room pauses when the last HOST leaves mid-playback
 func (h *Hub) onClientCountChange() {
+	// --- idle shutdown (any-viewer) ---
 	if len(h.clients) > 0 {
-		// Someone is watching — cancel any pending shutdown.
 		if h.idleTimer != nil {
 			h.idleTimer.Stop()
 			h.idleTimer = nil
 		}
+	} else if h.state.RatingKey != "" && h.idleTimer == nil {
+		rk := h.state.RatingKey
+		h.idleTimer = time.AfterFunc(idleGrace, func() { h.idleShutdown(rk) })
+		log.Printf("idle: no viewers, will stop ffmpeg in %s if nobody returns", idleGrace)
+	}
+
+	// --- host-exit pause ---
+	if h.hostCount() > 0 {
+		// At least one host present — cancel any pending pause.
+		if h.hostExitTimer != nil {
+			h.hostExitTimer.Stop()
+			h.hostExitTimer = nil
+		}
 		return
 	}
-	// No viewers. If there's an active session, schedule shutdown.
-	if h.state.RatingKey == "" {
+	// No hosts. Only schedule a pause if a movie is actively playing
+	// (no point pausing a paused session) and a pause isn't already
+	// scheduled.
+	if !h.state.Playing || h.state.RatingKey == "" {
 		return
 	}
-	if h.idleTimer != nil {
-		return // already scheduled
+	if h.hostExitTimer != nil {
+		return
 	}
 	rk := h.state.RatingKey
-	h.idleTimer = time.AfterFunc(idleGrace, func() { h.idleShutdown(rk) })
-	log.Printf("idle: no viewers, will stop ffmpeg in %s if nobody returns", idleGrace)
+	h.hostExitTimer = time.AfterFunc(hostExitGrace, func() { h.hostExitPause(rk) })
+	log.Printf("host-exit: no host present, will pause in %s if none returns", hostExitGrace)
+}
+
+// hostExitPause fires when the host-exit grace timer expires. Pauses
+// the room so viewers don't keep watching without the host.
+func (h *Hub) hostExitPause(forRatingKey string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.hostExitTimer = nil
+	if h.hostCount() > 0 {
+		return // a host came back
+	}
+	if h.state.RatingKey != forRatingKey || !h.state.Playing {
+		return // session changed or already paused
+	}
+	cur := h.snapshot() // capture extrapolated position before pausing
+	cur.Playing = false
+	cur.UpdatedAtMs = nowMs()
+	h.state = cur
+	log.Printf("host-exit: pausing %q at %.2fs (no host returned in %s)",
+		h.state.Title, h.state.PositionSec, hostExitGrace)
+	h.broadcast()
 }
 
 // idleShutdown fires when the grace timer expires. Guards against the
@@ -170,7 +234,9 @@ func (h *Hub) broadcast() {
 
 // HandleEvents is the SSE stream: initial state on connect, then every change,
 // plus a heartbeat so proxies don't kill idle connections.
-func (h *Hub) HandleEvents(w http.ResponseWriter, r *http.Request) {
+// isHost is the connection's effective role — needed so the hub can pause
+// the room when the last host leaves.
+func (h *Hub) HandleEvents(w http.ResponseWriter, r *http.Request, isHost bool) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
@@ -184,20 +250,26 @@ func (h *Hub) HandleEvents(w http.ResponseWriter, r *http.Request) {
 	ip := clientIP(r)
 	connectedAt := time.Now()
 	h.mu.Lock()
-	h.clients[ch] = struct{}{}
+	h.clients[ch] = isHost
 	n := len(h.clients)
+	hosts := h.hostCount()
 	h.onClientCountChange()
 	init := h.snapshot()
 	h.mu.Unlock()
-	log.Printf("sse: connect ip=%s viewers=%d", ip, n)
+	role := "viewer"
+	if isHost {
+		role = "host"
+	}
+	log.Printf("sse: connect ip=%s role=%s viewers=%d hosts=%d", ip, role, n, hosts)
 	defer func() {
 		h.mu.Lock()
 		delete(h.clients, ch)
 		left := len(h.clients)
+		leftHosts := h.hostCount()
 		h.onClientCountChange()
 		h.mu.Unlock()
-		log.Printf("sse: disconnect ip=%s viewers=%d after=%s",
-			ip, left, time.Since(connectedAt).Round(time.Second))
+		log.Printf("sse: disconnect ip=%s role=%s viewers=%d hosts=%d after=%s",
+			ip, role, left, leftHosts, time.Since(connectedAt).Round(time.Second))
 	}()
 
 	write := func(s State) {
