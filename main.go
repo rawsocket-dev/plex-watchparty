@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -34,7 +35,24 @@ func main() {
 	// Persist the library cache next to (not inside) the sessions dir so
 	// the prune sweep never touches it.
 	libraryCache := filepath.Join(filepath.Dir(workDir), "library-cache.json")
-	plex := NewPlex(plexURL, plexTok, libraryCache)
+	// Optional on-the-fly transcode through Plex's Universal Transcoder.
+	// Empty / 0 keeps the legacy direct-stream behavior; any positive
+	// integer targets 1080p h264 at that kbps (12000 is a sensible value
+	// for high-quality watch-party streaming).
+	transcodeKbps := 0
+	if v := os.Getenv("PLEX_TRANSCODE_BITRATE_KBPS"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 0 {
+			log.Fatalf("PLEX_TRANSCODE_BITRATE_KBPS must be a non-negative integer, got %q", v)
+		}
+		transcodeKbps = n
+	}
+	if transcodeKbps > 0 {
+		log.Printf("plex: on-the-fly transcode enabled → 1920x1080 h264 @ %d kbps", transcodeKbps)
+	} else {
+		log.Printf("plex: direct-stream mode (no transcode); set PLEX_TRANSCODE_BITRATE_KBPS to enable")
+	}
+	plex := NewPlex(plexURL, plexTok, libraryCache, transcodeKbps)
 	rx := NewRemuxer(workDir)
 	rx.PruneOlderThan(7 * 24 * time.Hour)
 	hub := NewHub(plex, rx)

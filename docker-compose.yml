@@ -18,6 +18,15 @@ services:
       # pick / play / pause / seek. Omit (or set blank) to keep the
       # old "any friend can drive" behaviour.
       HOST_PASSWORD: "${HOST_PASSWORD:-}"
+      # Optional Plex Universal Transcoder pass-through. When set to a
+      # positive integer, every loaded movie is routed through Plex's
+      # on-the-fly transcoder targeting 1080p h264 at this bitrate (in
+      # kbps). Plex handles HEVC→h264 + HDR→SDR (with hardware
+      # acceleration if configured on the Plex side). Leave blank / unset
+      # to direct-stream the original — fine for low-bitrate / h264
+      # sources, painful for 4K HDR HEVC remuxes.
+      # 12000 = 12 Mbps, a sensible default for high-quality streaming.
+      PLEX_TRANSCODE_BITRATE_KBPS: "${PLEX_TRANSCODE_BITRATE_KBPS:-}"
       # Persist remuxed segments outside the container layer so a
       # restart doesn't throw away hours of ffmpeg work.
       WORK_DIR: /data/sessions

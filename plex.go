@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -19,6 +20,15 @@ type Plex struct {
 	BaseURL string // e.g. http://192.168.1.10:32400
 	Token   string
 	http    *http.Client
+
+	// TranscodeKbps, when > 0, routes Resolve through Plex's Universal
+	// Transcoder at 1080p h264 / target kbps instead of fetching the raw
+	// original file. This is how we make 70+ Mbps 4K HEVC HDR Blu-ray
+	// remuxes watch-party-friendly without forcing the user to wait
+	// hours for Plex's offline Optimize feature. Plex transcodes on
+	// demand (uses its own hardware acceleration if configured).
+	// 0 / unset = direct-stream the original (legacy behaviour).
+	TranscodeKbps int
 
 	// ListMovies cache: walking every movie section costs several seconds
 	// on a large library. The cache is held in memory for the TTL below,
@@ -36,12 +46,13 @@ type Plex struct {
 // newly-added content shows up within the same evening.
 const moviesCacheTTL = 30 * time.Minute
 
-func NewPlex(baseURL, token, cacheFile string) *Plex {
+func NewPlex(baseURL, token, cacheFile string, transcodeKbps int) *Plex {
 	p := &Plex{
-		BaseURL:   strings.TrimRight(baseURL, "/"),
-		Token:     token,
-		http:      &http.Client{Timeout: 15 * time.Second},
-		cacheFile: cacheFile,
+		BaseURL:       strings.TrimRight(baseURL, "/"),
+		Token:         token,
+		http:          &http.Client{Timeout: 15 * time.Second},
+		TranscodeKbps: transcodeKbps,
+		cacheFile:     cacheFile,
 	}
 	p.loadCacheFromDisk()
 	return p
@@ -320,6 +331,26 @@ func (p *Plex) Resolve(ratingKey string) (*StreamInfo, error) {
 		Duration:      duration,
 		Size:          part.Size,
 	}
+	// If on-the-fly transcode is enabled, replace the direct-download URL
+	// with Plex's Universal Transcoder endpoint. Plex will do the heavy
+	// HEVC→h264 + HDR→SDR work on its own hardware; our ffmpeg just
+	// remuxes the resulting MKV stream to HLS. StreamInfo fields are
+	// updated to reflect the post-transcode characteristics so logs and
+	// the scrub bar show the right thing.
+	if p.TranscodeKbps > 0 {
+		si.URL = p.transcodeURL(ratingKey, mediaIdx, 0)
+		si.VideoCodec = "h264"
+		si.AudioCodec = "aac"
+		si.VideoProfile = "high"
+		si.AudioProfile = ""
+		si.Container = "mkv"
+		si.Width = 1920
+		si.Height = 1080
+		si.Bitrate = p.TranscodeKbps
+		si.AudioChannels = 2
+		log.Printf("plex: routing ratingKey %s through Universal Transcoder → 1920x1080 h264 @ %d kbps",
+			ratingKey, p.TranscodeKbps)
+	}
 	// Fall back to Stream entries if the top-level Media fields are empty
 	// (older Plex responses sometimes only populate one level).
 	for _, s := range part.Stream {
@@ -338,4 +369,39 @@ func (p *Plex) Resolve(ratingKey string) (*StreamInfo, error) {
 		}
 	}
 	return si, nil
+}
+
+// transcodeURL builds a Plex Universal Transcoder URL that targets
+// 1920x1080 h264 at p.TranscodeKbps. Plex transcodes on demand —
+// using its own hardware acceleration if configured — and serves
+// the result as a chunked MKV over HTTP. Our ffmpeg consumes that
+// directly, treating it just like the original input.
+//
+// The X-Plex-* params are required: Plex's transcoder refuses requests
+// that don't look like they're coming from a real Plex client.
+func (p *Plex) transcodeURL(ratingKey string, mediaIdx, partIdx int) string {
+	sessionID := "watchparty-" + strconv.FormatInt(time.Now().UnixNano(), 36)
+	q := url.Values{}
+	q.Set("path", "/library/metadata/"+ratingKey)
+	q.Set("mediaIndex", strconv.Itoa(mediaIdx))
+	q.Set("partIndex", strconv.Itoa(partIdx))
+	q.Set("protocol", "http")           // single MKV stream, not HLS/DASH
+	q.Set("fastSeek", "1")
+	q.Set("directPlay", "0")            // force transcode
+	q.Set("directStream", "0")          // force re-encode (not just remux)
+	q.Set("videoResolution", "1920x1080")
+	q.Set("maxVideoBitrate", strconv.Itoa(p.TranscodeKbps))
+	q.Set("videoBitrate", strconv.Itoa(p.TranscodeKbps))
+	q.Set("videoQuality", "100")
+	q.Set("audioBoost", "100")
+	q.Set("hasMDE", "1")
+	q.Set("X-Plex-Session-Identifier", sessionID)
+	q.Set("X-Plex-Token", p.Token)
+	q.Set("X-Plex-Client-Identifier", "plexwatchparty")
+	q.Set("X-Plex-Product", "plexwatchparty")
+	q.Set("X-Plex-Version", "1.0")
+	q.Set("X-Plex-Device", "Linux")
+	q.Set("X-Plex-Device-Name", "plexwatchparty")
+	q.Set("X-Plex-Platform", "Linux")
+	return p.BaseURL + "/video/:/transcode/universal/start.mkv?" + q.Encode()
 }
