@@ -164,3 +164,42 @@ docker compose up --build
 
 Go 1.26+. Plex token: Plex web → any item → "Get Info" → View XML → copy
 `X-Plex-Token` from the URL.
+
+---
+
+## 8. Maintenance: bump a base image
+
+The `Dockerfile` `FROM` lines reference base images **mirrored** into our
+own the registry Container Registry, not Docker Hub directly. This dodges Docker
+Hub's per-IP rate limit on the shared the registry runner egress.
+
+To bump a version (e.g. ffmpeg 8.1.1 → 8.2.0, or golang 1.26-alpine → 1.27),
+run **one command from `buildhost`** (which has registry write creds):
+
+```sh
+docker run --rm \
+  -v /root/.docker/config.json:/root/.docker/config.json:ro \
+  gcr.io/go-containerregistry/crane:debug \
+  copy <upstream:tag> registry.example.com:5050/example/plex-watchparty/<name:tag>
+```
+
+`crane copy` mirrors **all platforms** in the upstream manifest in a single
+call. Examples:
+
+```sh
+# new ffmpeg
+… crane:debug copy mwader/static-ffmpeg:8.2.0 \
+    registry.example.com:5050/example/plex-watchparty/static-ffmpeg:8.2.0
+
+# new golang
+… crane:debug copy golang:1.27-alpine \
+    registry.example.com:5050/example/plex-watchparty/golang:1.27-alpine
+```
+
+Then bump the corresponding `FROM` line in `Dockerfile`, commit, push. The
+CI build will pull only from our registry.
+
+> If the buildhost push auth ever breaks: it uses a the registry Deploy Token with
+> `read_registry` + `write_registry` scopes, mounted via `~/.docker/config.json`.
+> Recreate at `https://registry.example.com/example/plex-watchparty/-/settings/repository`
+> → **Deploy tokens** and `docker login registry.example.com:5050` with the new token.

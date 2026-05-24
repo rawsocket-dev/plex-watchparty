@@ -17,7 +17,8 @@ RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" \
     -o /out/plexwatchparty .
 
 # --- minimal runtime --------------------------------------------------------
-FROM alpine:3.20
+# Mirrored from library/alpine:3.20 — same reasoning as the other FROMs.
+FROM registry.example.com:5050/example/plex-watchparty/alpine:3.20
 RUN apk add --no-cache ca-certificates \
  && adduser -D -u 10001 app
 COPY --from=ffmpeg  /ffmpeg                 /usr/local/bin/ffmpeg
