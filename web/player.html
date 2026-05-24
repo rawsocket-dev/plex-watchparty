@@ -642,6 +642,14 @@ function setStatus(text, kind) {
   if (kind === 'drifting') syncEl.classList.add('drifting');
 }
 
+// Outer-scoped so v.error handler (video decode failure) can ask
+// hls.js to flush + reload around the bad position.
+let hlsInstance = null;
+// Track recovery attempts so we don't loop forever on a genuinely
+// unplayable stream.
+let mediaRecoveryAttempts = 0;
+const MAX_MEDIA_RECOVERIES = 3;
+
 function attach() {
   const src = '/hls/index.m3u8?ts=' + Date.now();
 
@@ -686,21 +694,19 @@ function attach() {
       }
     }
     const hls = new Hls({
-      // Buffer sized for 4K HEVC at 80 Mbps (= 10 MB/s of payload):
-      // - maxBufferLength 30: target 30s ahead of playhead during steady-
-      //   state playback. At 80 Mbps that's ~300 MB of MSE data.
-      // - maxMaxBufferLength 60: hard cap. Bigger than maxBufferLength
-      //   so hls.js can keep some breathing room without growing
-      //   unbounded.
-      // - maxBufferSize 500 MB: explicit byte budget. Generous enough
-      //   for 30-50s of 4K HEVC; if Chrome's MSE quota is tighter than
-      //   this on a given platform, it evicts oldest data on its own.
-      // - backBufferLength 30: keep 30s behind the playhead for cheap
-      //   scrub-back. Older data is re-fetched from the (VOD) playlist
-      //   when needed; segments are still on disk.
-      backBufferLength: 30,
-      maxBufferLength: 30,
-      maxMaxBufferLength: 60,
+      // Buffer sized for 4K HEVC at 80 Mbps but conservative on the
+      // ahead-of-playhead side to reduce MSE pressure on Chrome+
+      // VideoToolbox. Each 1s of 80 Mbps content is ~10 MB; even with
+      // generous limits the underlying VT decoder seems to choke when
+      // the source buffer is under sustained eviction pressure.
+      //   maxBufferLength 20: target 20s ahead during steady play
+      //   maxMaxBufferLength 40: hard cap
+      //   backBufferLength 15: cheap scrub-back; older is refetched
+      //                        from the (VOD) playlist as needed
+      //   maxBufferSize 500MB: byte budget headroom
+      backBufferLength: 15,
+      maxBufferLength: 20,
+      maxMaxBufferLength: 40,
       maxBufferSize: 500 * 1024 * 1024,
       // High-bitrate decode can stall briefly under load. 20 s of
       // patience before declaring starvation; plenty of time for the
@@ -733,16 +739,32 @@ function attach() {
                   ' v.seekable=', seekableStr());
     });
     hls.on(Hls.Events.ERROR, (_, data) => {
-      console.error('hls.js error', data);
-      if (data.fatal) {
-        const codecHint = !hevcMaybe
-          ? '  (this browser lacks HEVC support — try Safari, or Chrome on macOS / Windows w/ HEVC extension)'
-          : '';
-        setStatus('player error: ' + (data.details || data.type) + codecHint);
+      // Non-fatal errors (bufferFullError, fragLoadTimeOut on a single
+      // segment, etc.) — hls.js recovers automatically. Log as warn,
+      // one line, no stack: keeps the console scannable for real
+      // problems without losing visibility.
+      if (!data.fatal) {
+        console.warn('hls.js (non-fatal):', data.details, data.reason || '');
+        return;
       }
+      console.error('hls.js FATAL error', data);
+      // Try the documented recovery path for fatal media errors before
+      // giving up. A fresh source buffer often gets past one-off
+      // decoder bad-data frames (e.g. VideoToolbox HEVC quirks).
+      if (data.type === 'mediaError' && mediaRecoveryAttempts < MAX_MEDIA_RECOVERIES) {
+        mediaRecoveryAttempts++;
+        console.warn('attempting hls.recoverMediaError() (#' + mediaRecoveryAttempts + ')');
+        hls.recoverMediaError();
+        return;
+      }
+      const codecHint = !hevcMaybe
+        ? '  (this browser lacks HEVC support — try Safari, or Chrome on macOS / Windows w/ HEVC extension)'
+        : '';
+      setStatus('player error: ' + (data.details || data.type) + codecHint);
     });
     hls.loadSource(src);
     hls.attachMedia(v);
+    hlsInstance = hls;
     return;
   }
   v.src = src;
@@ -751,7 +773,22 @@ function attach() {
 v.addEventListener('error', () => {
   const err = v.error;
   console.error('video element error', err);
-  if (err) setStatus('video error: ' + err.code + ' ' + (err.message || ''));
+  if (!err) return;
+  // MEDIA_ERR_DECODE (code 3): the underlying decoder rejected a frame.
+  // On macOS Chrome + Safari this is overwhelmingly VideoToolbox hitting
+  // a HEVC frame it doesn't like (e.g. a SEI message that slipped past
+  // our strip, an unusual bitstream feature, or sustained pressure on
+  // the hardware path). hls.recoverMediaError() flushes MSE and reloads
+  // around the current position — often gets us past a one-off frame.
+  if (err.code === 3 && hlsInstance && mediaRecoveryAttempts < MAX_MEDIA_RECOVERIES) {
+    mediaRecoveryAttempts++;
+    console.warn('video decode error — attempting recoverMediaError() (#'
+                 + mediaRecoveryAttempts + ')');
+    setStatus('recovering from decoder hiccup…');
+    hlsInstance.recoverMediaError();
+    return;
+  }
+  setStatus('video error: ' + err.code + ' ' + (err.message || ''));
 });
 
 v.addEventListener('seeking', () => console.log('video seeking → currentTime=', v.currentTime.toFixed(2)));
@@ -761,6 +798,18 @@ v.addEventListener('seeked',  () => console.log('video seeked  → currentTime='
 // (no data appearing), `ended`, `ratechange` to 0, or a decoder
 // hitting capacity. Each event tells a different story.
 v.addEventListener('play',       () => console.log('video EVENT: play       currentTime=', v.currentTime.toFixed(2)));
+// Reset recovery attempts after 30s of clean playback so we have a
+// fresh budget if the decoder hiccups again later in the movie.
+let lastSuccessfulPlayMs = 0;
+v.addEventListener('playing', () => {
+  lastSuccessfulPlayMs = Date.now();
+  setTimeout(() => {
+    if (Date.now() - lastSuccessfulPlayMs >= 30000 && mediaRecoveryAttempts > 0) {
+      console.log('30s clean playback — resetting decode recovery counter');
+      mediaRecoveryAttempts = 0;
+    }
+  }, 30000);
+});
 v.addEventListener('pause',      () => console.log('video EVENT: pause      currentTime=', v.currentTime.toFixed(2)));
 v.addEventListener('waiting',    () => console.log('video EVENT: waiting    currentTime=', v.currentTime.toFixed(2),
                                                    ' readyState=', v.readyState,
