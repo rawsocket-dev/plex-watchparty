@@ -89,6 +89,18 @@
     align-items: center;
     gap: .45rem;
   }
+  /* Fixed footprint so the centered title doesn't bounce when the
+     drift number / bandwidth values change width. Both ends of the
+     top bar use tabular-nums + a min-width that comfortably fits the
+     widest expected value. */
+  #sync {
+    min-width: 12ch;
+    font-variant-numeric: tabular-nums;
+    justify-content: flex-start;
+  }
+  #bw {
+    font-variant-numeric: tabular-nums;
+  }
   #bw .you, #bw .room {
     color: var(--paper);
   }
@@ -670,22 +682,20 @@ function attach() {
       }
     }
     const hls = new Hls({
-      // Bounded buffer sizes — previously we tried Infinity / 600 to
-      // "keep everything in memory" so scrub-back would never refetch.
-      // That fights ffmpeg's 4× readrate and immediately hits the
-      // MSE source-buffer byte cap (bufferFullError cascade, then the
-      // VideoToolbox decoder gets corrupt input and panics with
-      // PIPELINE_ERROR_DECODE). Modest buffers + trust hls.js to
-      // re-fetch from the playlist on a backwards seek (segments are
-      // still on disk; the playlist is VOD-typed; the re-fetch is
-      // cheap and seamless).
-      backBufferLength: 90,
-      maxBufferLength: 30,
-      maxMaxBufferLength: 120,
-      // Be more patient before declaring a starvation/stall.
-      // Default 4s is short for a ffmpeg-fed playlist that polls
-      // every ~6s; a 12s tolerance lets the next playlist refresh
-      // recover us before we cry stall.
+      // Tight buffer sizes — high-bitrate HEVC (Blu-ray remuxes
+      // routinely hit 25-50 Mbps) blows past Chrome's MSE source-
+      // buffer byte cap at surprisingly little wall time. 30 s of a
+      // 30 Mbps stream is already 112 MB. Set explicit byte limit too
+      // so we don't depend on hls.js's defaults catching up to source
+      // bitrate. Trust hls.js to re-fetch on backwards seek from the
+      // VOD-typed playlist — segments are on disk; refetch is cheap.
+      backBufferLength: 30,
+      maxBufferLength: 15,
+      maxMaxBufferLength: 30,
+      maxBufferSize: 30 * 1024 * 1024, // 30 MB hard byte cap
+      // Be more patient before declaring a starvation/stall — the
+      // playlist polls every ~6s so a 12 s tolerance lets the next
+      // refresh recover us before we cry stall.
       maxStarvationDelay: 12,
       maxLoadingDelay: 12,
       pLoader: VodPLoader,
@@ -745,7 +755,7 @@ v.addEventListener('seeked',  () => console.log('video seeked  → currentTime='
 // bufferStalledError, and we sit in the gap until the next playlist
 // poll. Solution: only allow play() once we have enough lookahead to
 // cover at least one full playlist refresh cycle.
-const MIN_BUFFER_BEFORE_PLAY = 15; // seconds
+const MIN_BUFFER_BEFORE_PLAY = 8; // seconds — must stay below maxBufferLength
 let playWaitTimer = null;
 function bufferedAhead() {
   if (v.buffered.length === 0) return 0;
