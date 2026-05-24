@@ -387,18 +387,11 @@
   <div class="stage">
     <video id="v" playsinline disablepictureinpicture></video>
     <div id="join" role="button" tabindex="0" aria-label="Click to join the party">
-      <div class="icon-wrap">
-        <svg class="ring" viewBox="0 0 96 96" aria-hidden="true">
-          <circle class="track" cx="48" cy="48" r="46"></circle>
-          <circle class="fill"  cx="48" cy="48" r="46"
-                  stroke-dasharray="289.027" stroke-dashoffset="289.027"></circle>
-        </svg>
-        <div class="icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-        </div>
+      <div class="icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
       </div>
-      <div class="label">Warming the projector…</div>
-      <div class="hint">preparing your show</div>
+      <div class="label">Take your seat.</div>
+      <div class="hint">click anywhere to join</div>
     </div>
   </div>
 </div>
@@ -587,17 +580,15 @@ function commitScrubSeek() {
   }
   let target = scrubPendingPct * dur;
   scrubPendingPct = null;
-  // Clamp to the currently-seekable range. ffmpeg is producing
-  // segments incrementally; trying to seek past the buffered end
-  // throws hls.js into an error loop because there's no fragment to
-  // load yet. Clamp 0.5s in from each edge so we don't land exactly
-  // on the boundary (which Chrome can interpret as out-of-range).
+  // Clamp to the currently-seekable range. Clamp 0.5s in from each
+  // edge so we don't land exactly on the boundary (which Chrome can
+  // interpret as out-of-range).
   let clampedTo = null;
   if (v.seekable.length > 0) {
     const lo = v.seekable.start(0) + 0.5;
     const hi = v.seekable.end(v.seekable.length - 1) - 0.5;
     if (target < lo) { clampedTo = 'start'; target = lo; }
-    else if (target > hi) { clampedTo = 'end (waiting on more fragments)'; target = hi; }
+    else if (target > hi) { clampedTo = 'end'; target = hi; }
   }
   const seekableRanges = [];
   for (let i = 0; i < v.seekable.length; i++) {
@@ -651,12 +642,7 @@ function dismissJoin() {
   userJoined = true;
   joinEl.classList.add('hidden');
 }
-// Join overlay click is gated: ignored until the .ready class is set
-// (by the buffer-progress poll below). This prevents the autoplay-
-// policy user gesture from firing while buffer is still accumulating,
-// which would race v.play() against a half-prepared stream.
 joinEl.addEventListener('click', () => {
-  if (!joinEl.classList.contains('ready')) return;
   if (lastState && lastState.ratingKey) {
     const target = targetFromState(lastState);
     if (isFinite(target) && Math.abs(v.currentTime - target) > DRIFT) {
@@ -665,65 +651,14 @@ joinEl.addEventListener('click', () => {
       setTimeout(() => { applying = false; }, 250);
     }
   }
-  tryPlayWhenReady();
+  v.play().catch(() => {});
   dismissJoin();
 });
 joinEl.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); joinEl.click(); }
 });
 
-// Drive the overlay's progress ring + label based on bufferedAhead().
-// While buffer < MIN_BUFFER_BEFORE_PLAY: ring fills, label says
-// "Warming the projector…", clicks are no-ops. Once full: ring goes
-// solid ember, label switches to "Take your seat.", click is accepted.
-const joinLabel = joinEl.querySelector('.label');
-const joinHint  = joinEl.querySelector('.hint');
-const joinRingFill = joinEl.querySelector('.ring .fill');
-// 2πr where r=46 → ring circumference. dashoffset = circumference *
-// (1 - progress); 0 = full ring, circumference = empty ring.
-const JOIN_RING_CIRC = 2 * Math.PI * 46;
-// Track fill rate so we can show ETA and detect "stuck buffer" cases.
-let lastAhead = 0;
-let lastAheadAt = Date.now();
-let aheadRate = 0; // seconds-of-buffer per wall-second
-function refreshJoinOverlay() {
-  if (userJoined) return;
-  const ahead = bufferedAhead();
-  const now = Date.now();
-  const wallDelta = (now - lastAheadAt) / 1000;
-  if (wallDelta >= 1.0) {
-    aheadRate = (ahead - lastAhead) / wallDelta;
-    lastAhead = ahead;
-    lastAheadAt = now;
-    console.log('preroll: ahead=' + ahead.toFixed(2) + 's' +
-                ' fillRate=' + aheadRate.toFixed(2) + 'x' +
-                ' buffered=' + (v.buffered.length ?
-                  '[' + v.buffered.start(0).toFixed(1) + '..' +
-                  v.buffered.end(v.buffered.length - 1).toFixed(1) + ']' :
-                  'none') +
-                ' v.currentTime=' + v.currentTime.toFixed(2));
-  }
-  const ready = ahead >= MIN_BUFFER_BEFORE_PLAY;
-  const p = Math.min(1, ahead / MIN_BUFFER_BEFORE_PLAY);
-  joinRingFill.setAttribute('stroke-dashoffset', (JOIN_RING_CIRC * (1 - p)).toFixed(2));
-  if (ready) {
-    joinEl.classList.add('ready');
-    joinLabel.textContent = 'Take your seat.';
-    joinHint.textContent  = 'click anywhere to start';
-  } else {
-    joinEl.classList.remove('ready');
-    joinLabel.textContent = 'Warming the projector…';
-    let hint = ahead.toFixed(1) + 's / ' + MIN_BUFFER_BEFORE_PLAY + 's';
-    if (aheadRate > 0.05) {
-      const etaSec = Math.max(0, (MIN_BUFFER_BEFORE_PLAY - ahead) / aheadRate);
-      hint += ' · ' + Math.ceil(etaSec) + 's left';
-    }
-    joinHint.textContent = hint;
-  }
-}
-setInterval(refreshJoinOverlay, 250);
-v.addEventListener('progress', refreshJoinOverlay);
-v.addEventListener('playing', () => dismissJoin());
+
 let loadedKey = null;     // ratingKey currently attached to the <video>
 let applying = false;     // suppress echo while we apply server state
 const DRIFT = 0.75;       // seconds of tolerable drift before a hard seek
@@ -735,13 +670,7 @@ function setStatus(text, kind) {
   if (kind === 'drifting') syncEl.classList.add('drifting');
 }
 
-// Outer-scoped so v.error handler (video decode failure) can ask
-// hls.js to flush + reload around the bad position.
 let hlsInstance = null;
-// Track recovery attempts so we don't loop forever on a genuinely
-// unplayable stream.
-let mediaRecoveryAttempts = 0;
-const MAX_MEDIA_RECOVERIES = 3;
 
 function attach() {
   const src = '/hls/index.m3u8?ts=' + Date.now();
@@ -754,71 +683,10 @@ function attach() {
               ' MSE HEVC =', hevcMaybe);
 
   // Prefer hls.js over the browser's native HLS player whenever it's
-  // supported. Chrome on macOS reports canPlayType('...mpegurl') as
-  // 'maybe' and tries to use VideoToolbox under the hood — that path
-  // has been buggy for us: empty v.seekable on EVENT playlists, and
-  // occasional decoder bad-data errors mid-segment. hls.js gives us a
-  // predictable MSE-driven pipeline plus the playlist rewriter below.
-  // Only fall back to native HLS if hls.js isn't supported (very old
-  // browsers, or iOS Safari where MSE is restricted).
+  // supported. Only fall back to native HLS if hls.js isn't supported
+  // (very old browsers, or iOS Safari where MSE is restricted).
   if (window.Hls && Hls.isSupported()) {
-    // Rewrite the playlist on every fetch: strip the EVENT type tag and
-    // inject VOD instead. With VOD, hls.js sets MediaSource.duration to
-    // the sum of fragment durations and the whole range becomes seekable
-    // — which fixed our empty-v.seekable problem. We deliberately do NOT
-    // inject #EXT-X-ENDLIST until ffmpeg actually finishes, so hls.js
-    // keeps polling for newly-written segments.
-    class VodPLoader extends Hls.DefaultConfig.loader {
-      load(context, config, callbacks) {
-        const origOnSuccess = callbacks.onSuccess;
-        callbacks.onSuccess = (response, stats, ctx, net) => {
-          try {
-            if (typeof response.data === 'string' && response.data.includes('#EXTM3U')) {
-              const before = response.data;
-              response.data = before.replace(/#EXT-X-PLAYLIST-TYPE:EVENT/g,
-                                            '#EXT-X-PLAYLIST-TYPE:VOD');
-              const rewrote = response.data !== before;
-              // context.url can be a string (normal hls.js polling) or an
-              // array (when LEVEL_LOADING is triggered manually with a
-              // url payload). Coerce safely.
-              const u = Array.isArray(context.url) ? context.url[0] : context.url;
-              const name = (typeof u === 'string') ? u.split('/').pop() : '<unknown>';
-              console.log('pLoader: playlist len=', response.data.length,
-                          ' rewrote=', rewrote,
-                          ' url=', name);
-            }
-          } catch (e) {
-            // Whatever we did in the rewrite/logging, never break hls.js.
-            console.warn('pLoader: error during rewrite (continuing):', e);
-          }
-          origOnSuccess(response, stats, ctx, net);
-        };
-        super.load(context, config, callbacks);
-      }
-    }
-    const hls = new Hls({
-      // Buffer sized for 4K HEVC at 80 Mbps but conservative on the
-      // ahead-of-playhead side to reduce MSE pressure on Chrome+
-      // VideoToolbox. Each 1s of 80 Mbps content is ~10 MB; even with
-      // generous limits the underlying VT decoder seems to choke when
-      // the source buffer is under sustained eviction pressure.
-      //   maxBufferLength 60: target 60s ahead during steady play.
-      //     Generous so we have cushion against playlist-refresh gaps;
-      //     hls.js will eagerly load anything available up to this.
-      //   maxMaxBufferLength 90: hard cap
-      //   backBufferLength 15: cheap scrub-back; older is refetched
-      //   maxBufferSize 500MB: byte budget headroom (60s × 12 Mbps ≈ 90 MB)
-      backBufferLength: 15,
-      maxBufferLength: 60,
-      maxMaxBufferLength: 90,
-      maxBufferSize: 500 * 1024 * 1024,
-      // High-bitrate decode can stall briefly under load. 20 s of
-      // patience before declaring starvation; plenty of time for the
-      // next 2s segment to arrive.
-      maxStarvationDelay: 20,
-      maxLoadingDelay: 20,
-      pLoader: VodPLoader,
-    });
+    const hls = new Hls();
     const seekableStr = () => {
       const r = [];
       for (let i = 0; i < v.seekable.length; i++) {
@@ -842,64 +710,15 @@ function attach() {
                   ' v.duration=', v.duration,
                   ' v.seekable=', seekableStr());
     });
-    // bufferFullError fires constantly on high-bitrate 4K HEVC because
-    // hls.js targets a buffer length that exceeds Chrome's MSE byte
-    // quota at this bitrate. hls.js's automatic eviction handles it
-    // cleanly; logging each occurrence with a stack trace is just
-    // noise. Rate-limit to one summary line per 30s.
-    let bufferFullCount = 0;
-    let lastBufferFullLogMs = 0;
     hls.on(Hls.Events.ERROR, (_, data) => {
-      if (!data.fatal) {
-        if (data.details === 'bufferFullError') {
-          bufferFullCount++;
-          if (Date.now() - lastBufferFullLogMs > 30000) {
-            console.log('hls.js: bufferFullError ×' + bufferFullCount +
-                        ' in last 30s (hls.js handles via auto-eviction)');
-            lastBufferFullLogMs = Date.now();
-            bufferFullCount = 0;
-          }
-          return;
-        }
-        // Other non-fatal errors: one-line warn, no stack trace expansion.
-        console.log('hls.js non-fatal:', data.details, data.reason || '');
-        return;
-      }
-      console.error('hls.js FATAL error', data);
-      // Try the documented recovery path for fatal media errors before
-      // giving up. A fresh source buffer often gets past one-off
-      // decoder bad-data frames (e.g. VideoToolbox HEVC quirks).
-      if (data.type === 'mediaError' && mediaRecoveryAttempts < MAX_MEDIA_RECOVERIES) {
-        mediaRecoveryAttempts++;
-        console.warn('attempting hls.recoverMediaError() (#' + mediaRecoveryAttempts + ')');
-        hls.recoverMediaError();
-        return;
-      }
-      const codecHint = !hevcMaybe
-        ? '  (this browser lacks HEVC support — try Safari, or Chrome on macOS / Windows w/ HEVC extension)'
-        : '';
-      setStatus('player error: ' + (data.details || data.type) + codecHint);
+      if (!data.fatal) return;
+      console.error('hls.js FATAL', data);
+      setStatus('player error: ' + (data.details || data.type));
     });
     hls.loadSource(src);
     hls.attachMedia(v);
     hlsInstance = hls;
 
-    // hls.js's natural playlist-refresh cadence for VOD-typed manifests
-    // is roughly targetDuration / 2 = ~5s for our 10s Plex segments.
-    // That's barely faster than playback — one missed poll and the
-    // buffer runs dry. Force a refresh every 2s while playing so the
-    // buffer stays topped up. hls.trigger(LEVEL_LOADING) re-fetches
-    // the playlist; hls.js dedupes against in-flight requests so
-    // calling it while one is already pending is a safe no-op.
-    setInterval(() => {
-      if (!hlsInstance || !hlsInstance.levels || hlsInstance.levels.length === 0) return;
-      hlsInstance.trigger(Hls.Events.LEVEL_LOADING, {
-        level: hlsInstance.currentLevel >= 0 ? hlsInstance.currentLevel : 0,
-        pathwayId: null,
-        url: hlsInstance.levels[hlsInstance.currentLevel >= 0 ? hlsInstance.currentLevel : 0].url,
-        deliveryDirectives: null,
-      });
-    }, 2000);
     return;
   }
   v.src = src;
@@ -909,104 +728,10 @@ v.addEventListener('error', () => {
   const err = v.error;
   console.error('video element error', err);
   if (!err) return;
-  // MEDIA_ERR_DECODE (code 3): the underlying decoder rejected a frame.
-  // On macOS Chrome + Safari this is overwhelmingly VideoToolbox hitting
-  // a HEVC frame it doesn't like (e.g. a SEI message that slipped past
-  // our strip, an unusual bitstream feature, or sustained pressure on
-  // the hardware path). hls.recoverMediaError() flushes MSE and reloads
-  // around the current position — often gets us past a one-off frame.
-  if (err.code === 3 && hlsInstance && mediaRecoveryAttempts < MAX_MEDIA_RECOVERIES) {
-    mediaRecoveryAttempts++;
-    console.warn('video decode error — attempting recoverMediaError() (#'
-                 + mediaRecoveryAttempts + ')');
-    setStatus('recovering from decoder hiccup…');
-    hlsInstance.recoverMediaError();
-    return;
-  }
   setStatus('video error: ' + err.code + ' ' + (err.message || ''));
 });
 
-v.addEventListener('seeking', () => console.log('video seeking → currentTime=', v.currentTime.toFixed(2)));
-v.addEventListener('seeked',  () => console.log('video seeked  → currentTime=', v.currentTime.toFixed(2)));
-// Whole-truth playback event logging — playback stops "by itself" can
-// be any of: explicit pause(), `waiting` (buffer ran dry), `stalled`
-// (no data appearing), `ended`, `ratechange` to 0, or a decoder
-// hitting capacity. Each event tells a different story.
-v.addEventListener('play',       () => console.log('video EVENT: play       currentTime=', v.currentTime.toFixed(2)));
-// Reset recovery attempts after 30s of clean playback so we have a
-// fresh budget if the decoder hiccups again later in the movie.
-let lastSuccessfulPlayMs = 0;
-v.addEventListener('playing', () => {
-  lastSuccessfulPlayMs = Date.now();
-  setTimeout(() => {
-    if (Date.now() - lastSuccessfulPlayMs >= 30000 && mediaRecoveryAttempts > 0) {
-      console.log('30s clean playback — resetting decode recovery counter');
-      mediaRecoveryAttempts = 0;
-    }
-  }, 30000);
-});
-v.addEventListener('pause',      () => console.log('video EVENT: pause      currentTime=', v.currentTime.toFixed(2)));
-v.addEventListener('waiting',    () => console.log('video EVENT: waiting    currentTime=', v.currentTime.toFixed(2),
-                                                   ' readyState=', v.readyState,
-                                                   ' bufferedEnd=', v.buffered.length ? v.buffered.end(v.buffered.length-1).toFixed(2) : 'none'));
-v.addEventListener('stalled',    () => console.log('video EVENT: stalled    currentTime=', v.currentTime.toFixed(2)));
-v.addEventListener('canplay',    () => console.log('video EVENT: canplay    currentTime=', v.currentTime.toFixed(2)));
-v.addEventListener('canplaythrough', () => console.log('video EVENT: canplaythrough'));
-v.addEventListener('ended',      () => console.log('video EVENT: ended      currentTime=', v.currentTime.toFixed(2)));
-v.addEventListener('ratechange', () => console.log('video EVENT: ratechange playbackRate=', v.playbackRate));
 
-// Pre-roll buffer gate. Without this, the first SSE-driven play() can
-// fire when hls.js has only loaded a single 6 s segment (because
-// ffmpeg has just started and the playlist refresh interval is longer
-// than the segment). Playback then runs dry mid-segment, hls.js emits
-// bufferStalledError, and we sit in the gap until the next playlist
-// poll. Solution: only allow play() once we have enough lookahead to
-// cover at least one full playlist refresh cycle.
-// 10 s of pre-roll, matched to Plex's transcoder segment size. Plex
-// emits keyframes every ~10 s, and ffmpeg's stream-copy can't split
-// mid-GOP — so what we end up serving is 10 s HLS fragments even
-// though our -hls_time is set to 2. With this segment size:
-//
-//   - The first playlist hls.js sees has exactly one fragment
-//     (10.4 s). hls.js loads it and stops, then waits for the next
-//     playlist refresh (~3-6 s later) to see more.
-//   - A 15 s preroll would require waiting through that refresh cycle
-//     — visibly stuck on "10.4 / 15 s" for several seconds.
-//   - 10 s aligns with one segment, so as soon as the first segment
-//     downloads, we're ready. Subsequent segments are produced fast
-//     enough by Plex's HW transcoder (2-3× realtime) that we never
-//     run dry during playback.
-//
-// If your Plex outputs shorter segments (some configs do), this could
-// safely be lower. If your transcoder is slow (CPU-only), bump higher.
-const MIN_BUFFER_BEFORE_PLAY = 10;
-let playWaitTimer = null;
-function bufferedAhead() {
-  if (v.buffered.length === 0) return 0;
-  return v.buffered.end(v.buffered.length - 1) - v.currentTime;
-}
-function tryPlayWhenReady() {
-  if (!v.paused) return;
-  const ahead = bufferedAhead();
-  if (ahead >= MIN_BUFFER_BEFORE_PLAY) {
-    console.log('play: buffered=' + ahead.toFixed(1) + 's, starting');
-    v.play().catch((e) => console.warn('play() rejected:', e));
-    return;
-  }
-  // Not enough buffer yet — show a holding status and re-check soon.
-  // We don't loop forever: timer is cleared on real progress events.
-  setStatus('buffering · ' + ahead.toFixed(1) + 's / ' + MIN_BUFFER_BEFORE_PLAY + 's');
-  if (playWaitTimer) clearTimeout(playWaitTimer);
-  playWaitTimer = setTimeout(tryPlayWhenReady, 500);
-}
-v.addEventListener('progress', () => {
-  // hls.js appended new data — if we're holding for buffer, re-check.
-  if (playWaitTimer && bufferedAhead() >= MIN_BUFFER_BEFORE_PLAY) {
-    clearTimeout(playWaitTimer);
-    playWaitTimer = null;
-    tryPlayWhenReady();
-  }
-});
 
 function post(action, extra) {
   fetch('/control', {
@@ -1065,7 +790,7 @@ function applyState(s, reason) {
     v.currentTime = target;
   }
   firstStateApplied = true;
-  if (s.playing && v.paused) tryPlayWhenReady();
+  if (s.playing && v.paused) v.play().catch(() => {});
   if (!s.playing && !v.paused) v.pause();
   setTimeout(() => { applying = false; }, 250);
 
