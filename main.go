@@ -82,6 +82,17 @@ func main() {
 			http.NotFound(w, r)
 			return
 		}
+		// Go's mime.TypeByExtension doesn't know .m4s and inconsistently
+		// handles .m3u8. Set them explicitly so strict browsers / MSE
+		// don't refuse a segment served as application/octet-stream.
+		switch filepath.Ext(name) {
+		case ".m3u8":
+			w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
+		case ".m4s":
+			w.Header().Set("Content-Type", "video/iso.segment")
+		case ".mp4":
+			w.Header().Set("Content-Type", "video/mp4")
+		}
 		w.Header().Set("Cache-Control", "no-cache")
 		http.ServeFile(w, r, filepath.Join(dir, filepath.Base(name)))
 	})

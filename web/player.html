@@ -149,18 +149,50 @@ let loadedKey = null;     // ratingKey currently attached to the <video>
 let applying = false;     // suppress echo while we apply server state
 const DRIFT = 0.75;       // seconds of tolerable drift before a hard seek
 
+function setStatus(text, kind) {
+  syncEl.textContent = text;
+  syncEl.classList.remove('locked', 'drifting');
+  if (kind === 'locked') syncEl.classList.add('locked');
+  if (kind === 'drifting') syncEl.classList.add('drifting');
+}
+
 function attach() {
   const src = '/hls/index.m3u8?ts=' + Date.now();
+
+  // Quick capability probe — surface HEVC support up front so a Linux/Firefox
+  // user sees a useful message instead of an empty player.
+  const hevcMaybe = MediaSource.isTypeSupported
+    && MediaSource.isTypeSupported('video/mp4; codecs="hvc1.2.4.L150.B0"');
+  console.log('player: native HLS =', v.canPlayType('application/vnd.apple.mpegurl'),
+              ' MSE HEVC =', hevcMaybe);
+
   if (v.canPlayType('application/vnd.apple.mpegurl')) {
     v.src = src;                       // Safari: native HLS (incl. HEVC)
-  } else if (window.Hls && Hls.isSupported()) {
+    return;
+  }
+  if (window.Hls && Hls.isSupported()) {
     const hls = new Hls();
+    hls.on(Hls.Events.ERROR, (_, data) => {
+      console.error('hls.js error', data);
+      if (data.fatal) {
+        const codecHint = !hevcMaybe
+          ? '  (this browser lacks HEVC support — try Safari, or Chrome on macOS / Windows w/ HEVC extension)'
+          : '';
+        setStatus('player error: ' + (data.details || data.type) + codecHint);
+      }
+    });
     hls.loadSource(src);
     hls.attachMedia(v);
-  } else {
-    v.src = src;
+    return;
   }
+  v.src = src;
 }
+
+v.addEventListener('error', () => {
+  const err = v.error;
+  console.error('video element error', err);
+  if (err) setStatus('video error: ' + err.code + ' ' + (err.message || ''));
+});
 
 function post(action, extra) {
   fetch('/control', {
