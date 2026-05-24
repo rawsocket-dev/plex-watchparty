@@ -682,6 +682,12 @@ function attach() {
       backBufferLength: 90,
       maxBufferLength: 30,
       maxMaxBufferLength: 120,
+      // Be more patient before declaring a starvation/stall.
+      // Default 4s is short for a ffmpeg-fed playlist that polls
+      // every ~6s; a 12s tolerance lets the next playlist refresh
+      // recover us before we cry stall.
+      maxStarvationDelay: 12,
+      maxLoadingDelay: 12,
       pLoader: VodPLoader,
     });
     const seekableStr = () => {
@@ -731,6 +737,42 @@ v.addEventListener('error', () => {
 
 v.addEventListener('seeking', () => console.log('video seeking → currentTime=', v.currentTime.toFixed(2)));
 v.addEventListener('seeked',  () => console.log('video seeked  → currentTime=', v.currentTime.toFixed(2)));
+
+// Pre-roll buffer gate. Without this, the first SSE-driven play() can
+// fire when hls.js has only loaded a single 6 s segment (because
+// ffmpeg has just started and the playlist refresh interval is longer
+// than the segment). Playback then runs dry mid-segment, hls.js emits
+// bufferStalledError, and we sit in the gap until the next playlist
+// poll. Solution: only allow play() once we have enough lookahead to
+// cover at least one full playlist refresh cycle.
+const MIN_BUFFER_BEFORE_PLAY = 15; // seconds
+let playWaitTimer = null;
+function bufferedAhead() {
+  if (v.buffered.length === 0) return 0;
+  return v.buffered.end(v.buffered.length - 1) - v.currentTime;
+}
+function tryPlayWhenReady() {
+  if (!v.paused) return;
+  const ahead = bufferedAhead();
+  if (ahead >= MIN_BUFFER_BEFORE_PLAY) {
+    console.log('play: buffered=' + ahead.toFixed(1) + 's, starting');
+    v.play().catch((e) => console.warn('play() rejected:', e));
+    return;
+  }
+  // Not enough buffer yet — show a holding status and re-check soon.
+  // We don't loop forever: timer is cleared on real progress events.
+  setStatus('buffering · ' + ahead.toFixed(1) + 's / ' + MIN_BUFFER_BEFORE_PLAY + 's');
+  if (playWaitTimer) clearTimeout(playWaitTimer);
+  playWaitTimer = setTimeout(tryPlayWhenReady, 500);
+}
+v.addEventListener('progress', () => {
+  // hls.js appended new data — if we're holding for buffer, re-check.
+  if (playWaitTimer && bufferedAhead() >= MIN_BUFFER_BEFORE_PLAY) {
+    clearTimeout(playWaitTimer);
+    playWaitTimer = null;
+    tryPlayWhenReady();
+  }
+});
 
 function post(action, extra) {
   fetch('/control', {
@@ -789,7 +831,7 @@ function applyState(s, reason) {
     v.currentTime = target;
   }
   firstStateApplied = true;
-  if (s.playing && v.paused) v.play().catch(()=>{});
+  if (s.playing && v.paused) tryPlayWhenReady();
   if (!s.playing && !v.paused) v.pause();
   setTimeout(() => { applying = false; }, 250);
 
