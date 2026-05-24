@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"strconv"
 	"strings"
 )
@@ -42,11 +43,17 @@ type playlistSeg struct {
 	EndMs    int64
 }
 
-// rewritePlaylist parses an HLS playlist and replaces segment URLs with
-// our /hls/seg/<encoded>.ts form. sessionOffsetMs is the absolute movie
-// time at which Plex's session started, so the returned StartMs values
-// are absolute movie times suitable for cache indexing.
-func rewritePlaylist(data []byte, sessionOffsetMs int64, ratingKey string) ([]byte, []playlistSeg, error) {
+// rewritePlaylist parses an HLS media playlist and replaces segment
+// URIs with our /hls/seg/<encoded>.ts form. baseURL is the URL the
+// playlist was fetched from — segment URIs are resolved against it so
+// segCtx.PlexURL is always absolute. sessionOffsetMs is the absolute
+// movie time at which Plex's session started, so the returned StartMs
+// values are absolute movie times suitable for cache indexing.
+func rewritePlaylist(data []byte, baseURL string, sessionOffsetMs int64, ratingKey string) ([]byte, []playlistSeg, error) {
+	base, err := url.Parse(baseURL)
+	if err != nil {
+		return nil, nil, fmt.Errorf("parse base URL: %w", err)
+	}
 	lines := bytes.Split(data, []byte{'\n'})
 	var segs []playlistSeg
 	cumMs := sessionOffsetMs
@@ -66,17 +73,22 @@ func rewritePlaylist(data []byte, sessionOffsetMs int64, ratingKey string) ([]by
 			continue
 		}
 		if pendingDur > 0 && !strings.HasPrefix(line, "#") && line != "" {
+			ref, err := url.Parse(line)
+			if err != nil {
+				return nil, nil, fmt.Errorf("parse segment URI %q: %w", line, err)
+			}
+			absURL := base.ResolveReference(ref).String()
 			startMs := cumMs
 			endMs := cumMs + int64(pendingDur*1000)
 			seg := playlistSeg{
-				OrigURL:  line,
+				OrigURL:  absURL,
 				Duration: pendingDur,
 				StartMs:  startMs,
 				EndMs:    endMs,
 			}
 			segs = append(segs, seg)
 			enc := encodeSegCtx(segCtx{
-				PlexURL: line, StartMs: startMs, EndMs: endMs, Rating: ratingKey,
+				PlexURL: absURL, StartMs: startMs, EndMs: endMs, Rating: ratingKey,
 			})
 			lines[i] = []byte("/hls/seg/" + enc + ".ts")
 			cumMs = endMs

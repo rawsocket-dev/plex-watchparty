@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"net/http"
@@ -265,16 +266,40 @@ func (ps *PlexSession) OffsetMs() int64 {
 	return ps.offsetMs
 }
 
-// FetchPlaylist GETs the current session's playlist from Plex. Returns
-// the raw m3u8 bytes. Caller is responsible for parsing/rewriting.
-func (ps *PlexSession) FetchPlaylist() ([]byte, error) {
+// FetchPlaylist GETs the current session's playlist from Plex. If Plex
+// returns a master playlist (the usual case for protocol=hls — single
+// variant wrapped in a master), follow the variant URI transparently
+// and return the media playlist body instead. The returned baseURL is
+// the URL the returned body was fetched from — used to resolve any
+// relative segment URIs in the body.
+func (ps *PlexSession) FetchPlaylist() (body []byte, baseURL string, err error) {
 	ps.mu.Lock()
 	plUrl := ps.playlistURL
 	ps.mu.Unlock()
 	if plUrl == "" {
-		return nil, fmt.Errorf("no active Plex session")
+		return nil, "", fmt.Errorf("no active Plex session")
 	}
-	req, _ := http.NewRequest(http.MethodGet, plUrl, nil)
+	body, err = ps.fetchPlaylistBody(plUrl)
+	if err != nil {
+		return nil, "", err
+	}
+	baseURL = plUrl
+	if !bytes.Contains(body, []byte("#EXT-X-STREAM-INF")) {
+		return body, baseURL, nil
+	}
+	variantURL, err := resolveFirstVariantURL(body, plUrl)
+	if err != nil {
+		return nil, "", fmt.Errorf("resolve variant playlist: %w", err)
+	}
+	body, err = ps.fetchPlaylistBody(variantURL)
+	if err != nil {
+		return nil, "", err
+	}
+	return body, variantURL, nil
+}
+
+func (ps *PlexSession) fetchPlaylistBody(u string) ([]byte, error) {
+	req, _ := http.NewRequest(http.MethodGet, u, nil)
 	resp, err := ps.plex.http.Do(req)
 	if err != nil {
 		return nil, err
@@ -284,6 +309,38 @@ func (ps *PlexSession) FetchPlaylist() ([]byte, error) {
 		return nil, fmt.Errorf("plex playlist: status %d", resp.StatusCode)
 	}
 	return io.ReadAll(resp.Body)
+}
+
+// resolveFirstVariantURL scans a master playlist for the first
+// #EXT-X-STREAM-INF line and returns its variant URI resolved against
+// the master URL (so relative URIs become absolute).
+func resolveFirstVariantURL(master []byte, masterURL string) (string, error) {
+	base, err := url.Parse(masterURL)
+	if err != nil {
+		return "", err
+	}
+	lines := bytes.Split(master, []byte{'\n'})
+	streamInf := false
+	for _, raw := range lines {
+		line := strings.TrimRight(string(raw), "\r")
+		if strings.HasPrefix(line, "#EXT-X-STREAM-INF") {
+			streamInf = true
+			continue
+		}
+		if !streamInf {
+			continue
+		}
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		ref, err := url.Parse(trimmed)
+		if err != nil {
+			return "", err
+		}
+		return base.ResolveReference(ref).String(), nil
+	}
+	return "", fmt.Errorf("master playlist has no variant URI")
 }
 
 // FetchSegment GETs the given Plex segment URL and returns the body as

@@ -19,7 +19,7 @@ https://plex.example/seg-2.ts
 `
 
 func TestRewritePlaylistComputesTimeRanges(t *testing.T) {
-	_, segs, err := rewritePlaylist([]byte(samplePlexPlaylist), 0, "rk1")
+	_, segs, err := rewritePlaylist([]byte(samplePlexPlaylist), "https://plex.example/", 0, "rk1")
 	if err != nil {
 		t.Fatalf("rewritePlaylist: %v", err)
 	}
@@ -36,7 +36,7 @@ func TestRewritePlaylistComputesTimeRanges(t *testing.T) {
 }
 
 func TestRewritePlaylistRespectsSessionOffset(t *testing.T) {
-	_, segs, err := rewritePlaylist([]byte(samplePlexPlaylist), 600000, "rk1")
+	_, segs, err := rewritePlaylist([]byte(samplePlexPlaylist), "https://plex.example/", 600000, "rk1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,7 +47,7 @@ func TestRewritePlaylistRespectsSessionOffset(t *testing.T) {
 }
 
 func TestRewritePlaylistRewritesURLs(t *testing.T) {
-	out, _, err := rewritePlaylist([]byte(samplePlexPlaylist), 0, "rk1")
+	out, _, err := rewritePlaylist([]byte(samplePlexPlaylist), "https://plex.example/", 0, "rk1")
 	if err != nil {
 		t.Fatal(err)
 	}

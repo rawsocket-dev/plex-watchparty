@@ -131,12 +131,42 @@ func TestPlexSessionFetchPlaylist(t *testing.T) {
 
 	ps := NewPlexSession(NewPlex(srv.URL, "tok", ""), 12000)
 	_ = ps.Start("rk1", 0)
-	data, err := ps.FetchPlaylist()
+	data, baseURL, err := ps.FetchPlaylist()
 	if err != nil {
 		t.Fatalf("FetchPlaylist: %v", err)
 	}
 	if string(data) != body {
 		t.Errorf("FetchPlaylist body = %q, want %q", string(data), body)
+	}
+	if baseURL == "" {
+		t.Errorf("FetchPlaylist baseURL = %q, want non-empty", baseURL)
+	}
+}
+
+// TestPlexSessionFetchPlaylistFollowsMaster confirms that a master
+// playlist returned by Plex transparently resolves to the variant.
+func TestPlexSessionFetchPlaylistFollowsMaster(t *testing.T) {
+	const variantBody = "#EXTM3U\n#EXTINF:6,\nseg-0.ts\n"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "start.m3u8") {
+			w.Write([]byte("#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=12000000\nbase/index.m3u8\n"))
+			return
+		}
+		w.Write([]byte(variantBody))
+	}))
+	defer srv.Close()
+
+	ps := NewPlexSession(NewPlex(srv.URL, "tok", ""), 12000)
+	_ = ps.Start("rk1", 0)
+	data, baseURL, err := ps.FetchPlaylist()
+	if err != nil {
+		t.Fatalf("FetchPlaylist: %v", err)
+	}
+	if string(data) != variantBody {
+		t.Errorf("FetchPlaylist body = %q, want %q", string(data), variantBody)
+	}
+	if !strings.HasSuffix(baseURL, "/video/:/transcode/universal/base/index.m3u8") {
+		t.Errorf("variant baseURL = %q, expected to end with /base/index.m3u8", baseURL)
 	}
 }
 

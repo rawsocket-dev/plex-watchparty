@@ -168,13 +168,13 @@ func main() {
 			http.Error(w, "no active stream", http.StatusServiceUnavailable)
 			return
 		}
-		raw, err := plexSession.FetchPlaylist()
+		raw, baseURL, err := plexSession.FetchPlaylist()
 		if err != nil {
 			log.Printf("playlist: fetch failed: %v", err)
 			http.Error(w, "playlist fetch: "+err.Error(), http.StatusBadGateway)
 			return
 		}
-		rewritten, segs, err := rewritePlaylist(raw, plexSession.OffsetMs(), ratingKey)
+		rewritten, segs, err := rewritePlaylist(raw, baseURL, plexSession.OffsetMs(), ratingKey)
 		if err != nil {
 			log.Printf("playlist: parse failed: %v", err)
 			http.Error(w, "playlist parse: "+err.Error(), http.StatusBadGateway)
