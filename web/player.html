@@ -780,20 +780,50 @@ setInterval(() => {
 }, 2000);
 
 // Host position broadcast. While playing, periodically push the
-// host's actual v.currentTime to the server (via the existing seek
-// action). This keeps server-side state in sync with where the host
-// REALLY is — not where the 1×-extrapolation thinks they should be —
-// so a host with a slow HEVC decoder, brief stall, etc. doesn't
-// drag viewers out of position. Posts only when meaningfully out of
-// sync with server's view (to avoid spamming /control every few s).
+// host's actual v.currentTime to the server. We must NOT push when
+// the host's video isn't really playing smoothly — a 4K HEVC source
+// causes mid-playback stalls where v.paused=false but v.currentTime
+// is stuck (or has just rebuffered and jumped). Pushing during a
+// stall sends a garbage position to the server, which gets fanned
+// out to every viewer as a seek and trashes everyone's sync.
+let lastHostSample = null;
+let stableTicks = 0;
 setInterval(() => {
   if (!isHost) return;
   if (!lastState || !lastState.playing || !lastState.ratingKey) return;
-  if (v.paused || applying) return;
+  if (v.paused || applying) {
+    stableTicks = 0; lastHostSample = null;
+    return;
+  }
+  if (v.readyState < 3) {
+    // HAVE_FUTURE_DATA: not enough buffered to trust playback yet.
+    stableTicks = 0; lastHostSample = null;
+    return;
+  }
+  const now = Date.now();
+  if (lastHostSample) {
+    const wallΔ  = (now - lastHostSample.at) / 1000;
+    const videoΔ = v.currentTime - lastHostSample.t;
+    const ratio  = wallΔ > 0 ? videoΔ / wallΔ : 0;
+    // Normal playback: video advances at ~1× wall clock. Allow
+    // 0.5×..1.5× (decode pressure / fastforward); anything outside
+    // that is a stall, a jump, or a manual scrub — don't trust.
+    if (ratio < 0.5 || ratio > 1.5) {
+      console.log('host: unstable playback ratio', ratio.toFixed(2),
+                  ' (videoΔ=', videoΔ.toFixed(2), 'wallΔ=', wallΔ.toFixed(2), ') — not pushing');
+      stableTicks = 0;
+      lastHostSample = { t: v.currentTime, at: now };
+      return;
+    }
+    stableTicks++;
+  }
+  lastHostSample = { t: v.currentTime, at: now };
+  if (stableTicks < 1) return; // need at least one stable interval
+
   const serverThinks = targetFromState(lastState);
   if (!isFinite(serverThinks)) return;
   const delta = Math.abs(v.currentTime - serverThinks);
-  if (delta < 1.0) return; // server's view is fine; don't spam
+  if (delta < 1.0) return;
   console.log('host position correction: server thinks', serverThinks.toFixed(2),
               ' but we are at', v.currentTime.toFixed(2), '— pushing');
   lastLocalActionMs = Date.now();
