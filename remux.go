@@ -94,6 +94,13 @@ func (rx *Remuxer) Start(ratingKey string, si *StreamInfo) error {
 		// `discardcorrupt` drops demuxer-flagged bad packets cleanly
 		// instead of fighting them through decode (esp. DTS-HD MA XLL).
 		"-fflags", "+genpts+igndts+discardcorrupt",
+		// Burst the first 30 s of input so the playlist + first segment
+		// land fast (low TTFF), then pace to 2× real-time. Without this
+		// ffmpeg races through the whole file as fast as Plex can serve
+		// it, burning steady-state CPU on the DTS-HD MA → AAC transcode
+		// while still leaving us plenty of seek-ahead headroom.
+		"-readrate", "2.0",
+		"-readrate_initial_burst", "30",
 		"-i", si.URL,
 		"-map", "0:v:0", "-map", "0:a:0",
 		// Watchparty's design contract: never transcode video. The
