@@ -249,8 +249,26 @@ func (p *Plex) Resolve(ratingKey string) (*StreamInfo, error) {
 		len(mr.MediaContainer.Metadata[0].Media[0].Part) == 0 {
 		return nil, fmt.Errorf("no playable part for ratingKey %s", ratingKey)
 	}
-	media := mr.MediaContainer.Metadata[0].Media[0]
+	metadata := mr.MediaContainer.Metadata[0]
+	media := metadata.Media[0]
 	part := media.Part[0]
+
+	// Older Plex responses only populate Duration at the Metadata level,
+	// not inside the Media block. Prefer the inner value (it's per-version
+	// and more accurate when a library item has multiple Media entries)
+	// but fall back to the outer one so the scrub bar always has a real
+	// movie length and not 0 / v.duration.
+	duration := media.Duration
+	if duration == 0 {
+		duration = metadata.Duration
+		if duration > 0 {
+			log.Printf("plex: ratingKey %s — Media.Duration was 0, falling back to Metadata.Duration=%dms",
+				ratingKey, duration)
+		} else {
+			log.Printf("plex: ratingKey %s — no duration at either level; scrub bar will fall back to v.duration",
+				ratingKey)
+		}
+	}
 
 	si := &StreamInfo{
 		URL: p.BaseURL + part.Key + "?X-Plex-Token=" + url.QueryEscape(p.Token) +
@@ -265,7 +283,7 @@ func (p *Plex) Resolve(ratingKey string) (*StreamInfo, error) {
 		Bitrate:       media.Bitrate,
 		AudioChannels: media.AudioChannels,
 		FrameRate:     media.VideoFrameRate,
-		Duration:      media.Duration,
+		Duration:      duration,
 		Size:          part.Size,
 	}
 	// Fall back to Stream entries if the top-level Media fields are empty
