@@ -712,21 +712,59 @@ es.onmessage = (e) => applyState(JSON.parse(e.data), 'sse');
 // overlay can fall arbitrarily far behind by the time they click.
 // This tick re-applies the extrapolated state every 2 s while the
 // host is playing, hard-seeking when drift exceeds DRIFT.
+let tickCount = 0;
 setInterval(() => {
-  if (!lastState || !lastState.playing || !lastState.ratingKey) return;
-  if (applying || v.paused) return;
+  tickCount++;
+  if (!lastState) {
+    if (tickCount % 5 === 0) console.log('drift tick: no state yet');
+    return;
+  }
+  if (!lastState.ratingKey) return;
+  if (!lastState.playing) {
+    // Paused or idle. Still update the indicator so the user sees
+    // the current intent, just don't try to correct anything.
+    syncEl.textContent = 'paused';
+    syncEl.classList.remove('drifting', 'locked');
+    return;
+  }
   const target = targetFromState(lastState);
   if (!isFinite(target)) return;
   const drift = v.currentTime - target;
-  if (Math.abs(drift) > DRIFT) {
-    console.log('drift tick: correcting', drift.toFixed(2), 's → seek', target.toFixed(2));
-    applying = true;
-    v.currentTime = target;
-    setTimeout(() => { applying = false; }, 250);
-  }
+
+  // Always update the visible drift indicator. Earlier this was
+  // inside the if-correction branch so a stuck-paused-then-resumed
+  // viewer would never see a fresh number.
   syncEl.textContent = 'drift ' + drift.toFixed(2) + 's';
   syncEl.classList.toggle('drifting', Math.abs(drift) > DRIFT / 2);
   syncEl.classList.toggle('locked',   Math.abs(drift) <= DRIFT / 2);
+
+  if (applying) {
+    if (tickCount % 5 === 0) console.log('drift tick: still applying, skip correction');
+    return;
+  }
+  if (v.paused) {
+    // Host wants playing but we're paused (autoplay block / decode
+    // stall). Best we can do is the next tick.
+    if (tickCount % 5 === 0) console.log('drift tick: v.paused but state.playing — autoplay blocked?');
+    return;
+  }
+  if (Math.abs(drift) > DRIFT) {
+    const seekable = [];
+    for (let i = 0; i < v.seekable.length; i++) {
+      seekable.push(v.seekable.start(i).toFixed(1) + '..' + v.seekable.end(i).toFixed(1));
+    }
+    const before = v.currentTime;
+    console.log('drift tick: correcting', drift.toFixed(2), 's → seek', target.toFixed(2),
+                ' (seekable=[' + seekable.join(', ') + '])');
+    applying = true;
+    v.currentTime = target;
+    setTimeout(() => {
+      const after = v.currentTime;
+      console.log('drift tick: after seek currentTime=', after.toFixed(2),
+                  ' (moved by', (after - before).toFixed(2), 's)');
+      applying = false;
+    }, 250);
+  }
 }, 2000);
 
 // --- local controls broadcast to everyone -----------------------------------

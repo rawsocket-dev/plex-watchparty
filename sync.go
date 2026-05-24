@@ -189,7 +189,11 @@ func (h *Hub) HandleEvents(w http.ResponseWriter, r *http.Request) {
 	}
 	write(init)
 
-	heartbeat := time.NewTicker(15 * time.Second)
+	// 5 s heartbeat: also doubles as our "is the client still there?"
+	// probe. The write fails on a closed TCP connection, which is how
+	// Go's HTTP server cancels r.Context() and lets the defer GC the
+	// dead client. A long heartbeat = long ghost-viewer window.
+	heartbeat := time.NewTicker(5 * time.Second)
 	defer heartbeat.Stop()
 	for {
 		select {
