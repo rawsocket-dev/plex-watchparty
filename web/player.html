@@ -792,17 +792,15 @@ function attach() {
       // VideoToolbox. Each 1s of 80 Mbps content is ~10 MB; even with
       // generous limits the underlying VT decoder seems to choke when
       // the source buffer is under sustained eviction pressure.
-      //   maxBufferLength 25: target 25s ahead during steady play
-      //                       (must exceed MIN_BUFFER_BEFORE_PLAY=15
-      //                       so hls.js actually fetches that much
-      //                       before we attempt v.play())
-      //   maxMaxBufferLength 45: hard cap
+      //   maxBufferLength 60: target 60s ahead during steady play.
+      //     Generous so we have cushion against playlist-refresh gaps;
+      //     hls.js will eagerly load anything available up to this.
+      //   maxMaxBufferLength 90: hard cap
       //   backBufferLength 15: cheap scrub-back; older is refetched
-      //                        from the (VOD) playlist as needed
-      //   maxBufferSize 500MB: byte budget headroom
+      //   maxBufferSize 500MB: byte budget headroom (60s × 12 Mbps ≈ 90 MB)
       backBufferLength: 15,
-      maxBufferLength: 25,
-      maxMaxBufferLength: 45,
+      maxBufferLength: 60,
+      maxMaxBufferLength: 90,
       maxBufferSize: 500 * 1024 * 1024,
       // High-bitrate decode can stall briefly under load. 20 s of
       // patience before declaring starvation; plenty of time for the
@@ -875,6 +873,23 @@ function attach() {
     hls.loadSource(src);
     hls.attachMedia(v);
     hlsInstance = hls;
+
+    // hls.js's natural playlist-refresh cadence for VOD-typed manifests
+    // is roughly targetDuration / 2 = ~5s for our 10s Plex segments.
+    // That's barely faster than playback — one missed poll and the
+    // buffer runs dry. Force a refresh every 2s while playing so the
+    // buffer stays topped up. hls.trigger(LEVEL_LOADING) re-fetches
+    // the playlist; hls.js dedupes against in-flight requests so
+    // calling it while one is already pending is a safe no-op.
+    setInterval(() => {
+      if (!hlsInstance || !hlsInstance.levels || hlsInstance.levels.length === 0) return;
+      hlsInstance.trigger(Hls.Events.LEVEL_LOADING, {
+        level: hlsInstance.currentLevel >= 0 ? hlsInstance.currentLevel : 0,
+        pathwayId: null,
+        url: hlsInstance.levels[hlsInstance.currentLevel >= 0 ? hlsInstance.currentLevel : 0].url,
+        deliveryDirectives: null,
+      });
+    }, 2000);
     return;
   }
   v.src = src;
