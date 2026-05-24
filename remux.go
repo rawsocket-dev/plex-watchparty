@@ -69,9 +69,15 @@ func (rx *Remuxer) Start(ratingKey string, si *StreamInfo) error {
 	playlist := filepath.Join(dir, "index.m3u8")
 	args := []string{
 		"-nostdin", "-loglevel", "warning",
+		// Bigger probe window: Blu-ray remuxes with many subtitle / audio
+		// tracks blow past the defaults and stall startup.
+		"-analyzeduration", "100M", "-probesize", "100M",
 		"-i", si.URL,
 		"-map", "0:v:0", "-map", "0:a:0",
 		"-c:v", "copy",
+		// Allow non-standard MP4 boxes (dvcC/dvvC for Dolby Vision).
+		// Browsers ignore them; the HEVC base layer plays normally.
+		"-strict", "unofficial",
 	}
 	if si.VideoCodec == "hevc" || si.VideoCodec == "h265" {
 		args = append(args, "-tag:v", "hvc1") // Safari/Chrome need hvc1 in fMP4
@@ -103,8 +109,10 @@ func (rx *Remuxer) Start(ratingKey string, si *StreamInfo) error {
 		}
 	}()
 
-	// Wait for the playlist to materialize (or fail fast).
-	deadline := time.Now().Add(30 * time.Second)
+	// Wait for the playlist to materialize (or fail fast). Heavy-stream
+	// sources (e.g. Blu-ray remuxes with DV metadata) can take a while
+	// just to probe, so be generous here.
+	deadline := time.Now().Add(90 * time.Second)
 	for time.Now().Before(deadline) {
 		if _, err := os.Stat(playlist); err == nil {
 			return nil
