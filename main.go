@@ -33,6 +33,7 @@ func main() {
 	rx := NewRemuxer(workDir)
 	hub := NewHub(plex, rx)
 	auth := NewAuth(password)
+	bw := newBwTracker()
 
 	mux := http.NewServeMux()
 
@@ -71,6 +72,8 @@ func main() {
 
 	// HLS playlist + segments come from the active remux session dir.
 	// Clients only ever touch this — never Plex, never the token.
+	// We wrap the ResponseWriter so the bandwidth tracker sees every
+	// byte streamed, keyed by client IP.
 	protected.HandleFunc("/hls/", func(w http.ResponseWriter, r *http.Request) {
 		dir := rx.SessionDir()
 		if dir == "" {
@@ -94,7 +97,19 @@ func main() {
 			w.Header().Set("Content-Type", "video/mp4")
 		}
 		w.Header().Set("Cache-Control", "no-cache")
-		http.ServeFile(w, r, filepath.Join(dir, filepath.Base(name)))
+		cw := &countingResponseWriter{ResponseWriter: w}
+		http.ServeFile(cw, r, filepath.Join(dir, filepath.Base(name)))
+		bw.record(clientIP(r), cw.n)
+	})
+
+	protected.HandleFunc("/api/bandwidth", func(w http.ResponseWriter, r *http.Request) {
+		mine, total, viewers := bw.snapshot(clientIP(r))
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]int64{
+			"mineKbps":  mine,
+			"totalKbps": total,
+			"viewers":   int64(viewers),
+		})
 	})
 
 	mux.Handle("/", auth.Guard(protected))

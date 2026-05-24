@@ -13,4 +13,9 @@ services:
       PLEX_BASE_URL: "http://host.docker.internal:32400"
       PLEX_TOKEN: "${PLEX_TOKEN:?set PLEX_TOKEN}"
       WATCH_PASSWORD: "${WATCH_PASSWORD:?set WATCH_PASSWORD}"
+      # Persist remuxed segments outside the container layer so a
+      # restart doesn't throw away hours of ffmpeg work.
+      WORK_DIR: /data/sessions
+    volumes:
+      - ./data:/data
     restart: unless-stopped

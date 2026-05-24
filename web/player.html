@@ -79,7 +79,7 @@
   }
   #title.idle { color: var(--paper-mute); }
 
-  #sync {
+  #sync, #bw {
     font-family: var(--mono);
     font-size: .6rem;
     letter-spacing: .2em;
@@ -88,6 +88,13 @@
     display: flex;
     align-items: center;
     gap: .45rem;
+  }
+  #bw .you, #bw .room {
+    color: var(--paper);
+  }
+  #bw .sep {
+    color: var(--rule-hi, #3a342c);
+    margin: 0 .15rem;
   }
   #sync::before {
     content: '';
@@ -121,6 +128,57 @@
     background: #000;
     min-height: 0;
     display: block;
+  }
+
+  /* always-visible scrub bar below the top bar — the native HTML5
+     controls auto-hide and aren't obvious that you can drag-seek. */
+  #scrub {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: .55rem clamp(.8rem, 2vw, 1.5rem);
+    background: var(--ink-2);
+    border-bottom: 1px solid var(--rule);
+  }
+  #scrub-track {
+    flex: 1;
+    height: 4px;
+    background: var(--rule);
+    border-radius: 2px;
+    position: relative;
+    cursor: pointer;
+    transition: height .15s ease;
+  }
+  #scrub-track:hover { height: 6px; }
+  #scrub-buffered, #scrub-fill {
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    border-radius: 2px;
+    pointer-events: none;
+  }
+  #scrub-buffered { background: var(--rule-hi, #3a342c); width: 0; }
+  #scrub-fill     { background: var(--ember);            width: 0; }
+  #scrub-thumb {
+    position: absolute;
+    left: 0; top: 50%;
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    background: var(--ember);
+    transform: translate(-50%, -50%) scale(.85);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .15s ease, transform .15s ease;
+    box-shadow: 0 0 6px rgba(212, 165, 116, .35);
+  }
+  #scrub-track:hover #scrub-thumb { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  #scrub-time {
+    font-family: var(--mono);
+    font-size: .65rem;
+    letter-spacing: .15em;
+    color: var(--paper-mute);
+    white-space: nowrap;
+    min-width: 9em;
+    text-align: right;
   }
 
   /* Stage area wraps the <video> so the join overlay can sit absolutely
@@ -245,8 +303,17 @@
     <span id="title" class="idle">awaiting the host…</span>
     <div class="right">
       <span id="sync">idle</span>
+      <span id="bw" hidden></span>
       <a class="back" href="/">← library</a>
     </div>
+  </div>
+  <div id="scrub" aria-label="Playback position">
+    <div id="scrub-track">
+      <div id="scrub-buffered"></div>
+      <div id="scrub-fill"></div>
+      <div id="scrub-thumb"></div>
+    </div>
+    <div id="scrub-time">0:00 / —</div>
   </div>
   <div class="stage">
     <video id="v" playsinline controls></video>
@@ -268,6 +335,78 @@ const titleEl = document.getElementById('title');
 const syncEl  = document.getElementById('sync');
 const perfEl  = document.getElementById('perf');
 const joinEl  = document.getElementById('join');
+const bwEl    = document.getElementById('bw');
+const scrubTrack    = document.getElementById('scrub-track');
+const scrubFill     = document.getElementById('scrub-fill');
+const scrubBuffered = document.getElementById('scrub-buffered');
+const scrubThumb    = document.getElementById('scrub-thumb');
+const scrubTime     = document.getElementById('scrub-time');
+
+// --- scrub bar --------------------------------------------------------------
+function fmtTime(s) {
+  if (!isFinite(s) || s < 0) return '0:00';
+  s = Math.floor(s);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  const mm = String(m).padStart(h > 0 ? 2 : 1, '0');
+  const ss = String(sec).padStart(2, '0');
+  return h > 0 ? h + ':' + mm + ':' + ss : mm + ':' + ss;
+}
+function updateScrub() {
+  const dur = v.duration;
+  const cur = v.currentTime || 0;
+  if (isFinite(dur) && dur > 0) {
+    const pct = Math.min(100, (cur / dur) * 100);
+    scrubFill.style.width = pct + '%';
+    scrubThumb.style.left = pct + '%';
+    if (v.buffered.length > 0) {
+      const buf = v.buffered.end(v.buffered.length - 1);
+      scrubBuffered.style.width = Math.min(100, (buf / dur) * 100) + '%';
+    }
+    scrubTime.textContent = fmtTime(cur) + ' / ' + fmtTime(dur);
+  } else {
+    scrubFill.style.width = '0%';
+    scrubBuffered.style.width = '0%';
+    scrubTime.textContent = fmtTime(cur) + ' / —';
+  }
+}
+v.addEventListener('timeupdate', updateScrub);
+v.addEventListener('durationchange', updateScrub);
+v.addEventListener('progress', updateScrub);
+scrubTrack.addEventListener('click', (e) => {
+  if (!isFinite(v.duration) || v.duration <= 0) return;
+  const rect = scrubTrack.getBoundingClientRect();
+  const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+  v.currentTime = pct * v.duration;
+  // the `seeked` handler below broadcasts to everyone else.
+});
+
+// --- bandwidth poll ---------------------------------------------------------
+async function pollBandwidth() {
+  try {
+    const r = await fetch('/api/bandwidth');
+    if (!r.ok) return;
+    const d = await r.json();
+    if (d.mineKbps === 0 && d.totalKbps === 0) {
+      bwEl.hidden = true;
+      return;
+    }
+    bwEl.hidden = false;
+    bwEl.innerHTML =
+      '<span>you</span> <span class="you">' + fmtRate(d.mineKbps) + '</span>' +
+      '<span class="sep">·</span>' +
+      '<span>room</span> <span class="room">' + fmtRate(d.totalKbps) + '</span>' +
+      '<span class="sep">·</span>' +
+      '<span>' + d.viewers + ' viewer' + (d.viewers === 1 ? '' : 's') + '</span>';
+  } catch (_) { /* network blip — try again next tick */ }
+}
+function fmtRate(kbps) {
+  if (kbps >= 1000) return (kbps / 1000).toFixed(1) + ' Mbps';
+  return kbps + ' kbps';
+}
+setInterval(pollBandwidth, 2000);
+pollBandwidth();
 
 // Browser autoplay policy: v.play() is rejected until the user has
 // interacted with the page. We satisfy that with a visible overlay

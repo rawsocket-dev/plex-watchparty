@@ -94,13 +94,15 @@ func (rx *Remuxer) Start(ratingKey string, si *StreamInfo) error {
 		// `discardcorrupt` drops demuxer-flagged bad packets cleanly
 		// instead of fighting them through decode (esp. DTS-HD MA XLL).
 		"-fflags", "+genpts+igndts+discardcorrupt",
-		// Burst the first 30 s of input so the playlist + first segment
-		// land fast (low TTFF), then pace to 2× real-time. Without this
-		// ffmpeg races through the whole file as fast as Plex can serve
-		// it, burning steady-state CPU on the DTS-HD MA → AAC transcode
-		// while still leaving us plenty of seek-ahead headroom.
-		"-readrate", "2.0",
-		"-readrate_initial_burst", "30",
+		// Burst the first 60 s of input so the playlist + first segment
+		// land fast (low TTFF), then pace to 4× real-time. Without
+		// pacing, ffmpeg races through the whole file as fast as Plex
+		// can serve it (pinning the audio encode at 200%+ CPU); too
+		// tight a cap and the audio encode can momentarily lag below
+		// playback rate during heavy decode regions, audible as a skip.
+		// 4× is the empirical sweet spot for HEVC + DTS-HD sources.
+		"-readrate", "4.0",
+		"-readrate_initial_burst", "60",
 		"-i", si.URL,
 		"-map", "0:v:0", "-map", "0:a:0",
 		// Watchparty's design contract: never transcode video. The
@@ -130,7 +132,14 @@ func (rx *Remuxer) Start(ratingKey string, si *StreamInfo) error {
 	if si.AudioCodec == "aac" {
 		args = append(args, "-c:a", "copy")
 	} else {
-		args = append(args, "-c:a", "aac", "-b:a", "192k", "-ac", "2")
+		args = append(args,
+			"-c:a", "aac", "-b:a", "192k", "-ac", "2",
+			// Insert silence / resync for timing gaps caused by upstream
+			// decode dropouts (esp. DTS-HD MA XLL frames the dca decoder
+			// can't parse). Without this, dropped frames surface as
+			// audible audio skips.
+			"-af", "aresample=async=1",
+		)
 	}
 	args = append(args,
 		"-f", "hls",
