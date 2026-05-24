@@ -8,7 +8,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -20,15 +19,6 @@ type Plex struct {
 	BaseURL string // e.g. http://192.168.1.10:32400
 	Token   string
 	http    *http.Client
-
-	// TranscodeKbps, when > 0, routes Resolve through Plex's Universal
-	// Transcoder at 1080p h264 / target kbps instead of fetching the raw
-	// original file. This is how we make 70+ Mbps 4K HEVC HDR Blu-ray
-	// remuxes watch-party-friendly without forcing the user to wait
-	// hours for Plex's offline Optimize feature. Plex transcodes on
-	// demand (uses its own hardware acceleration if configured).
-	// 0 / unset = direct-stream the original (legacy behaviour).
-	TranscodeKbps int
 
 	// ListMovies cache: walking every movie section costs several seconds
 	// on a large library. The cache is held in memory for the TTL below,
@@ -46,13 +36,12 @@ type Plex struct {
 // newly-added content shows up within the same evening.
 const moviesCacheTTL = 30 * time.Minute
 
-func NewPlex(baseURL, token, cacheFile string, transcodeKbps int) *Plex {
+func NewPlex(baseURL, token, cacheFile string) *Plex {
 	p := &Plex{
-		BaseURL:       strings.TrimRight(baseURL, "/"),
-		Token:         token,
-		http:          &http.Client{Timeout: 15 * time.Second},
-		TranscodeKbps: transcodeKbps,
-		cacheFile:     cacheFile,
+		BaseURL:   strings.TrimRight(baseURL, "/"),
+		Token:     token,
+		http:      &http.Client{Timeout: 15 * time.Second},
+		cacheFile: cacheFile,
 	}
 	p.loadCacheFromDisk()
 	return p
@@ -363,34 +352,6 @@ func (p *Plex) Resolve(ratingKey string) (*StreamInfo, error) {
 		Duration:      duration,
 		Size:          part.Size,
 	}
-	// If on-the-fly transcode is enabled, replace the direct-download URL
-	// with Plex's Universal Transcoder endpoint. Plex will do the heavy
-	// HEVC→h264 + HDR→SDR work on its own hardware; our ffmpeg just
-	// remuxes the resulting MKV stream to HLS. StreamInfo fields are
-	// updated to reflect the post-transcode characteristics so logs and
-	// the scrub bar show the right thing.
-	if p.TranscodeKbps > 0 {
-		si.URL = p.transcodeURL(ratingKey, mediaIdx, 0)
-		si.Transcoded = true
-		si.VideoCodec = "h264"
-		si.AudioCodec = "aac"
-		si.VideoProfile = "high"
-		si.AudioProfile = ""
-		si.Container = "mkv"
-		si.Width = 1920
-		si.Height = 1080
-		si.Bitrate = p.TranscodeKbps
-		si.AudioChannels = 2
-		log.Printf("plex: routing ratingKey %s through Universal Transcoder → 1920x1080 h264 @ %d kbps",
-			ratingKey, p.TranscodeKbps)
-		log.Printf("plex: transcode URL = %s", redactedURL(si.URL))
-		// Pre-flight the transcode URL so we surface Plex's actual error
-		// message (which usually identifies the missing parameter or
-		// reason) instead of letting ffmpeg report a bare 400.
-		if err := p.preflightTranscode(si.URL); err != nil {
-			return nil, fmt.Errorf("plex transcoder rejected request: %w", err)
-		}
-	}
 	// Fall back to Stream entries if the top-level Media fields are empty
 	// (older Plex responses sometimes only populate one level).
 	for _, s := range part.Stream {
@@ -409,127 +370,4 @@ func (p *Plex) Resolve(ratingKey string) (*StreamInfo, error) {
 		}
 	}
 	return si, nil
-}
-
-// preflightTranscode validates our transcode params against Plex's
-// /decision endpoint, which is the dry-run sibling of /start.mkv. It
-// accepts the same parameters but returns structured JSON describing
-// what the transcoder *would* do — or, on failure, why it can't. This
-// is far more useful for debugging than /start.mkv's generic HTML 400.
-func (p *Plex) preflightTranscode(transcodeURL string) error {
-	decisionURL := strings.Replace(transcodeURL,
-		"/transcode/universal/start?",
-		"/transcode/universal/decision?", 1)
-	req, err := http.NewRequest(http.MethodGet, decisionURL, nil)
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Accept", "application/json")
-	resp, err := p.http.Do(req)
-	if err != nil {
-		return fmt.Errorf("connect: %w", err)
-	}
-	defer resp.Body.Close()
-	body := make([]byte, 4096)
-	n, _ := resp.Body.Read(body)
-	bodyStr := strings.TrimSpace(string(body[:n]))
-	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-		log.Printf("plex: decision OK (status %d, body: %s)", resp.StatusCode, truncate(bodyStr, 400))
-		return nil
-	}
-	if bodyStr == "" {
-		bodyStr = "<empty body>"
-	}
-	return fmt.Errorf("decision status %d: %s", resp.StatusCode, bodyStr)
-}
-
-func truncate(s string, n int) string {
-	if len(s) <= n {
-		return s
-	}
-	return s[:n] + "…"
-}
-
-// transcodeURL builds a Plex Universal Transcoder URL that targets
-// 1920x1080 h264 at p.TranscodeKbps. Plex transcodes on demand —
-// using its own hardware acceleration if configured — and serves
-// the result as a chunked MKV over HTTP. Our ffmpeg consumes that
-// directly, treating it just like the original input.
-//
-// The X-Plex-* params are required: Plex's transcoder refuses requests
-// that don't look like they're coming from a real Plex client.
-func (p *Plex) transcodeURL(ratingKey string, mediaIdx, partIdx int) string {
-	sessionID := "watchparty-" + strconv.FormatInt(time.Now().UnixNano(), 36)
-	// X-Plex-Client-Profile-Extra defines the transcode target Plex
-	// should pick. Required for our use case — Plex's "Generic" base
-	// platform has NO preset transcode targets, so without these
-	// add-transcode-target clauses Plex returns decision code 2000
-	// ("neither direct play nor conversion is available") which surfaces
-	// as a blank HTML 400 from /start. Pattern + comma encoding
-	// (%2C inside the DSL value) mirrors plezy's reference client.
-	profileExtra := strings.Join([]string{
-		"add-settings(DirectPlayStreamSelection=true)",
-		fmt.Sprintf("add-limitation(scope=videoCodec&scopeName=*&type=upperBound&name=video.bitrate&value=%d&replace=true)",
-			p.TranscodeKbps),
-		"add-transcode-target(type=videoProfile&context=streaming&protocol=http&container=mkv" +
-			"&videoCodec=h264%2Chevc%2C*&audioCodec=opus%2Cvorbis%2Cflac%2C*" +
-			"&subtitleCodec=ass%2Cpgs%2Cvobsub%2C*)",
-		"add-transcode-target-settings(type=videoProfile&context=streaming" +
-			"&protocol=http&CopyMatroskaAttachments=true)",
-	}, "+")
-
-	q := url.Values{}
-	q.Set("hasMDE", "1")
-	q.Set("path", "/library/metadata/"+ratingKey)
-	q.Set("mediaIndex", strconv.Itoa(mediaIdx))
-	q.Set("partIndex", strconv.Itoa(partIdx))
-	q.Set("protocol", "http") // chunked MKV from the universal start endpoint
-	q.Set("fastSeek", "1")
-	q.Set("directPlay", "0")
-	q.Set("directStream", "0")
-	q.Set("subtitleSize", "100")
-	q.Set("audioBoost", "100")
-	q.Set("location", "lan")
-	q.Set("maxVideoBitrate", strconv.Itoa(p.TranscodeKbps))
-	q.Set("addDebugOverlay", "0")
-	q.Set("autoAdjustQuality", "0")
-	q.Set("directStreamAudio", "0")
-	q.Set("mediaBufferSize", "102400")
-	q.Set("session", sessionID)
-	q.Set("subtitles", "none")
-	q.Set("copyts", "1")
-	q.Set("Accept-Language", "en")
-	q.Set("X-Plex-Session-Identifier", sessionID)
-	q.Set("X-Plex-Client-Profile-Extra", profileExtra)
-	q.Set("X-Plex-Chunked", "1")
-	q.Set("X-Plex-Features", "external-media,indirect-media")
-	q.Set("X-Plex-Model", "standalone")
-	q.Set("X-Plex-Language", "en")
-	q.Set("X-Plex-Product", "plexwatchparty")
-	q.Set("X-Plex-Version", "1.0")
-	q.Set("X-Plex-Client-Identifier", "plexwatchparty")
-	// X-Plex-Platform=Linux is REJECTED by Plex's transcoder with a
-	// blank HTML 400. Plex maps known platform names ("Chrome", "Mac",
-	// etc.) to base transcode profiles; "Linux" / "MacOSX" / "Flutter"
-	// are NOT recognized. "Generic" is accepted and starts with no
-	// preset targets — which is fine because we supplied our own via
-	// X-Plex-Client-Profile-Extra above.
-	q.Set("X-Plex-Platform", "Generic")
-	q.Set("X-Plex-Device", "plexwatchparty")
-	q.Set("X-Plex-Token", p.Token)
-	return p.BaseURL + "/video/:/transcode/universal/start?" + q.Encode()
-}
-
-// redactedURL returns a transcode URL with the token replaced by
-// "<redacted>" so we can safely log it.
-func redactedURL(u string) string {
-	idx := strings.Index(u, "X-Plex-Token=")
-	if idx == -1 {
-		return u
-	}
-	end := strings.Index(u[idx:], "&")
-	if end == -1 {
-		return u[:idx] + "X-Plex-Token=<redacted>"
-	}
-	return u[:idx] + "X-Plex-Token=<redacted>" + u[idx+end:]
 }

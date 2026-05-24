@@ -52,7 +52,9 @@ func main() {
 	} else {
 		log.Printf("plex: direct-stream mode (no transcode); set PLEX_TRANSCODE_BITRATE_KBPS to enable")
 	}
-	plex := NewPlex(plexURL, plexTok, libraryCache, transcodeKbps)
+	plex := NewPlex(plexURL, plexTok, libraryCache)
+	plexSession := NewPlexSession(plex, transcodeKbps)
+	_ = plexSession // wired in later tasks
 	// Health check: confirm we can reach the configured Plex server and
 	// that the token is valid before binding the HTTP port. Non-fatal so
 	// a transient Plex outage at boot doesn't take down the watch party
