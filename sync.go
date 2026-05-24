@@ -180,9 +180,9 @@ func (h *Hub) idleShutdown(forRatingKey string) {
 	if h.state.RatingKey == "" {
 		return // already cleared
 	}
-	log.Printf("idle: stopping ffmpeg session %q after %s with no viewers",
+	log.Printf("idle: stopping plex session %q after %s with no viewers",
 		h.state.Title, idleGrace)
-	h.rx.Stop()
+	h.session.Stop()
 	h.state = State{UpdatedAtMs: nowMs()}
 	h.broadcast()
 }
@@ -350,38 +350,33 @@ func (h *Hub) HandleControl(w http.ResponseWriter, r *http.Request) {
 		}
 		listMs := time.Since(tList).Milliseconds()
 
-		tRemux := time.Now()
-		if err := h.rx.Start(req.RatingKey, si); err != nil {
-			http.Error(w, "remux: "+err.Error(), http.StatusBadGateway)
+		tStart := time.Now()
+		if err := h.session.Start(req.RatingKey, 0); err != nil {
+			log.Printf("control: plex Start failed ip=%s ratingKey=%s err=%v",
+				clientIP(r), req.RatingKey, err)
+			http.Error(w, "plex start: "+err.Error(), http.StatusBadGateway)
 			return
 		}
-		remuxMs := time.Since(tRemux).Milliseconds()
+		startMs := time.Since(tStart).Milliseconds()
 		totalMs := time.Since(t0).Milliseconds()
 
-		log.Printf("load %q: resolve=%dms list=%dms remux=%dms total=%dms",
-			title, resolveMs, listMs, remuxMs, totalMs)
-		log.Printf("media %q: %s %s%s · %dx%d @ %s · %s%dch%s · %d kbps total · %s · %s",
-			title,
-			orDash(si.VideoCodec),
-			orDash(si.VideoProfile),
-			containerSuffix(si.Container),
-			si.Width, si.Height, orDash(si.FrameRate),
-			orDash(si.AudioCodec),
-			si.AudioChannels,
-			audioProfileSuffix(si.AudioProfile),
-			si.Bitrate,
-			humanBytes(si.Size),
+		log.Printf("load %q: resolve=%dms list=%dms plexStart=%dms total=%dms",
+			title, resolveMs, listMs, startMs, totalMs)
+		log.Printf("media %q: %s %s · %dx%d @ %s · %d kbps · %s",
+			title, orDash(si.VideoCodec), orDash(si.VideoProfile),
+			si.Width, si.Height, orDash(si.FrameRate), si.Bitrate,
 			fmtDurationMs(si.Duration),
 		)
 
 		h.mu.Lock()
 		h.state = State{
-			RatingKey:   req.RatingKey,
-			Title:       title,
-			Playing:     false,
-			PositionSec: 0,
-			DurationSec: float64(si.Duration) / 1000.0,
-			UpdatedAtMs: nowMs(),
+			RatingKey:    req.RatingKey,
+			Title:        title,
+			Playing:      false,
+			PositionSec:  0,
+			DurationSec:  float64(si.Duration) / 1000.0,
+			SessionToken: h.session.SessionToken(),
+			UpdatedAtMs:  nowMs(),
 		}
 		h.broadcast()
 		h.mu.Unlock()
@@ -390,7 +385,7 @@ func (h *Hub) HandleControl(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]int64{
 			"plexResolveMs": resolveMs,
 			"plexListMs":    listMs,
-			"remuxStartMs":  remuxMs,
+			"plexStartMs":   startMs,
 			"totalMs":       totalMs,
 		})
 		return
@@ -414,7 +409,37 @@ func (h *Hub) HandleControl(w http.ResponseWriter, r *http.Request) {
 	case "seek":
 		log.Printf("state: seek  ip=%s title=%q from=%.2f to=%.2f",
 			clientIP(r), cur.Title, cur.PositionSec, req.PositionSec)
-		cur.PositionSec = req.PositionSec
+		// Decide whether the seek target is reachable from cache alone
+		// (no Plex restart) or whether we need to restart Plex at the
+		// new offset. Cached ranges + the current session's edge define
+		// what's instantly seekable.
+		target := req.PositionSec
+		needRestart := target > h.session.EdgeSec()+0.5
+		if needRestart {
+			// Also check cache — backward seeks into a previously-watched
+			// range (perhaps before a prior Restart) don't need a restart.
+			for _, rng := range h.cache.RangesFor(cur.RatingKey) {
+				if target >= rng[0] && target <= rng[1] {
+					needRestart = false
+					break
+				}
+			}
+		}
+		if needRestart {
+			h.mu.Unlock()
+			log.Printf("seek: restart needed (target=%.2f > edge=%.2f, no cache hit)",
+				target, h.session.EdgeSec())
+			if err := h.session.Restart(target); err != nil {
+				log.Printf("seek: plex Restart failed: %v", err)
+				h.mu.Lock()
+				http.Error(w, "plex restart: "+err.Error(), http.StatusBadGateway)
+				return
+			}
+			h.mu.Lock()
+			cur = h.snapshot()
+			cur.SessionToken = h.session.SessionToken()
+		}
+		cur.PositionSec = target
 	}
 	cur.UpdatedAtMs = nowMs()
 	h.state = cur
