@@ -383,13 +383,17 @@ function fmtTime(s) {
   const ss = String(sec).padStart(2, '0');
   return h > 0 ? h + ':' + mm + ':' + ss : mm + ':' + ss;
 }
-// Server pushes the movie duration via SSE state. We use that in
-// preference to v.duration because our HLS playlist is `event` type
-// (incremental) and v.duration is Infinity until the playlist closes.
+// Server pushes the movie duration via SSE state (sourced from Plex
+// metadata at load time — authoritative). We prefer it over v.duration
+// because with our incrementally-loaded VOD playlist v.duration only
+// reflects the fragments hls.js has seen so far, NOT the actual movie
+// length. Using v.duration would shrink the scrub bar to "buffered so
+// far" instead of "the whole movie".
 let serverDuration = 0;
 function knownDuration() {
+  if (serverDuration > 0) return serverDuration;
   if (isFinite(v.duration) && v.duration > 0) return v.duration;
-  return serverDuration > 0 ? serverDuration : 0;
+  return 0;
 }
 let scrubDragging = false;
 let scrubPendingPct = null;
@@ -524,8 +528,20 @@ function commitScrubSeek() {
     scrubPendingPct = null;
     return;
   }
-  const target = scrubPendingPct * dur;
+  let target = scrubPendingPct * dur;
   scrubPendingPct = null;
+  // Clamp to the currently-seekable range. ffmpeg is producing
+  // segments incrementally; trying to seek past the buffered end
+  // throws hls.js into an error loop because there's no fragment to
+  // load yet. Clamp 0.5s in from each edge so we don't land exactly
+  // on the boundary (which Chrome can interpret as out-of-range).
+  let clampedTo = null;
+  if (v.seekable.length > 0) {
+    const lo = v.seekable.start(0) + 0.5;
+    const hi = v.seekable.end(v.seekable.length - 1) - 0.5;
+    if (target < lo) { clampedTo = 'start'; target = lo; }
+    else if (target > hi) { clampedTo = 'end (waiting on more fragments)'; target = hi; }
+  }
   const seekableRanges = [];
   for (let i = 0; i < v.seekable.length; i++) {
     seekableRanges.push(v.seekable.start(i).toFixed(1) + '..' + v.seekable.end(i).toFixed(1));
@@ -533,6 +549,7 @@ function commitScrubSeek() {
   console.log('scrub commit:',
               ' target=', target.toFixed(2), 's',
               ' dur=', dur.toFixed(0),
+              ' clamped=', clampedTo,
               ' v.currentTime(before)=', v.currentTime.toFixed(2),
               ' v.duration=', v.duration,
               ' v.seekable=[', seekableRanges.join(', '), ']');
@@ -653,9 +670,18 @@ function attach() {
       }
     }
     const hls = new Hls({
-      backBufferLength: Infinity,
-      maxBufferLength: 60,
-      maxMaxBufferLength: 600,
+      // Bounded buffer sizes — previously we tried Infinity / 600 to
+      // "keep everything in memory" so scrub-back would never refetch.
+      // That fights ffmpeg's 4× readrate and immediately hits the
+      // MSE source-buffer byte cap (bufferFullError cascade, then the
+      // VideoToolbox decoder gets corrupt input and panics with
+      // PIPELINE_ERROR_DECODE). Modest buffers + trust hls.js to
+      // re-fetch from the playlist on a backwards seek (segments are
+      // still on disk; the playlist is VOD-typed; the re-fetch is
+      // cheap and seamless).
+      backBufferLength: 90,
+      maxBufferLength: 30,
+      maxMaxBufferLength: 120,
       pLoader: VodPLoader,
     });
     const seekableStr = () => {
