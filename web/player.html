@@ -629,6 +629,23 @@ function attach() {
       maxBufferLength: 60,
       maxMaxBufferLength: 600,
     });
+    // Surface every playlist refresh + the resulting seekable range
+    // so we can tell whether hls.js is actually polling our EVENT
+    // playlist and how the seekable window evolves.
+    hls.on(Hls.Events.LEVEL_UPDATED, (_, data) => {
+      const d = data.details || {};
+      const seekable = [];
+      for (let i = 0; i < v.seekable.length; i++) {
+        seekable.push(v.seekable.start(i).toFixed(1) + '..' + v.seekable.end(i).toFixed(1));
+      }
+      console.log('hls level update:',
+                  ' live=', d.live,
+                  ' totalDur=', d.totalduration ? d.totalduration.toFixed(1) : '?',
+                  ' fragments=', d.fragments ? d.fragments.length : '?',
+                  ' targetDur=', d.targetduration,
+                  ' holdBack=', d.holdBack,
+                  ' v.seekable=[' + seekable.join(', ') + ']');
+    });
     hls.on(Hls.Events.ERROR, (_, data) => {
       console.error('hls.js error', data);
       if (data.fatal) {
