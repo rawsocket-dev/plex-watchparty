@@ -158,6 +158,15 @@ func main() {
 		})
 	})
 
+	// One-shot view of current playback state. Used by the library so
+	// it can detect "the movie you just clicked is already loaded" and
+	// offer Resume / Start over before issuing the /control load.
+	protected.HandleFunc("/api/state", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "no-store")
+		_ = json.NewEncoder(w).Encode(hub.Snapshot())
+	})
+
 	// /hls/index.m3u8 — fetch Plex's playlist, rewrite segment URLs to
 	// point through us, return to client. Plex's segment URLs are kept
 	// internal (never exposed to viewers); they pass through our proxy

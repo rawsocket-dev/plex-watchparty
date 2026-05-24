@@ -222,6 +222,15 @@ func (h *Hub) snapshot() State {
 	return s
 }
 
+// Snapshot is the locked, public counterpart of snapshot(). Used by
+// HTTP handlers that need a one-shot view of current state (e.g. the
+// /api/state endpoint that drives the library's "Resume?" prompt).
+func (h *Hub) Snapshot() State {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.snapshot()
+}
+
 func (h *Hub) broadcast() {
 	if h.state.RatingKey != "" && h.cache != nil {
 		h.state.CachedRanges = h.cache.RangesFor(h.state.RatingKey)
@@ -307,6 +316,11 @@ type controlReq struct {
 	Action      string  `json:"action"` // load | play | pause | seek
 	RatingKey   string  `json:"ratingKey"`
 	PositionSec float64 `json:"positionSec"`
+	// Restart, when set on a 'load', forces a fresh Plex Start even
+	// when the requested movie is already the active session. Used by
+	// the library's "Start over" prompt to discard the current
+	// position and begin from offset 0.
+	Restart bool `json:"restart"`
 }
 
 // HandleControl applies an action from any authenticated friend and rebroadcasts.
@@ -328,8 +342,10 @@ func (h *Hub) HandleControl(w http.ResponseWriter, r *http.Request) {
 		// 200 without actually freeing the slot, and the next /start
 		// then 400s with a bare HTML body. Reusing the existing session
 		// avoids that whole class of failure when the user clicks the
-		// same movie twice (back + forward, refresh, etc.).
-		if h.session.RatingKey() == req.RatingKey {
+		// same movie twice (back + forward, refresh, etc.). The
+		// library prompts "Resume / Start over" for this case; Start
+		// over sends restart=true to force the full path.
+		if h.session.RatingKey() == req.RatingKey && !req.Restart {
 			log.Printf("load %q: same movie already loaded, reusing session", req.RatingKey)
 			h.mu.Lock()
 			cur := h.state

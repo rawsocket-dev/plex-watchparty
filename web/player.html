@@ -913,6 +913,15 @@ function applyState(s, reason) {
 const es = new EventSource('/events');
 es.onmessage = (e) => applyState(JSON.parse(e.data), 'sse');
 
+// Close the SSE the moment the page is hidden or pushed into the
+// browser's bfcache — otherwise hitting Back and returning to /watch
+// opens a fresh connection while the bfcached one sits open for a
+// minute+, so the server's viewer count balloons to 2-3+ from a
+// single user. pagehide fires for both real navigation and bfcache
+// stash; the page reloads via the index.html pageshow handler when
+// the user comes back, so we don't need to reattach here.
+window.addEventListener('pagehide', () => { try { es.close(); } catch {} });
+
 // Periodic drift correction. SSE only fires on state changes, so a
 // viewer who joins mid-playback and gets stuck on the autoplay
 // overlay can fall arbitrarily far behind by the time they click.
