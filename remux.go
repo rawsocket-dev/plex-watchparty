@@ -95,15 +95,23 @@ func (rx *Remuxer) Start(ratingKey string, si *StreamInfo) error {
 		// `discardcorrupt` drops demuxer-flagged bad packets cleanly
 		// instead of fighting them through decode (esp. DTS-HD MA XLL).
 		"-fflags", "+genpts+igndts+discardcorrupt",
-		// Burst the first 60 s of input so the playlist + first segment
-		// land fast (low TTFF), then pace to 4× real-time. Without
-		// pacing, ffmpeg races through the whole file as fast as Plex
-		// can serve it (pinning the audio encode at 200%+ CPU); too
-		// tight a cap and the audio encode can momentarily lag below
-		// playback rate during heavy decode regions, audible as a skip.
-		// 4× is the empirical sweet spot for HEVC + DTS-HD sources.
-		"-readrate", "4.0",
-		"-readrate_initial_burst", "60",
+	}
+	if !si.Transcoded {
+		// Direct-stream source (raw Plex file): Plex would happily push it
+		// at gigabit speeds, so ffmpeg would race ahead and pin the audio
+		// encoder at 200%+ CPU. Burst the first 60s for fast time-to-
+		// first-frame, then pace to 4× real-time. Empirically the sweet
+		// spot for HEVC + DTS-HD direct-from-disk sources.
+		args = append(args,
+			"-readrate", "4.0",
+			"-readrate_initial_burst", "60",
+		)
+	}
+	// Transcoded source (Plex Universal Transcoder): the upstream paces
+	// its own output (~1.5-3× real-time depending on Plex's hardware),
+	// so a client-side readrate would just add noise. Let ffmpeg consume
+	// as fast as Plex delivers.
+	args = append(args,
 		"-i", si.URL,
 		"-map", "0:v:0", "-map", "0:a:0",
 		// Watchparty's design contract: never transcode video. The
@@ -119,7 +127,7 @@ func (rx *Remuxer) Start(ratingKey string, si *StreamInfo) error {
 		// in the sample description and refuses the stream with
 		// kUnsupportedConfig even on machines that fully support the
 		// underlying HEVC Main10 codec config we'd otherwise hand it.
-	}
+	)
 	if si.VideoCodec == "hevc" || si.VideoCodec == "h265" {
 		args = append(args, "-tag:v", "hvc1") // Safari/Chrome need hvc1 in fMP4
 		// Strip HEVC SEI NAL units (39 = prefix SEI, 40 = suffix SEI).

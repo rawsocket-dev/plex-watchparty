@@ -81,6 +81,11 @@ type StreamInfo struct {
 	FrameRate    string // "24p", "60p", ...
 	Duration     int64  // ms
 	Size         int64  // bytes
+	// Transcoded is true when URL points to Plex's Universal Transcoder
+	// (rather than a raw file). The remuxer uses this to drop the
+	// -readrate cap: Plex's transcoder paces its own output, so there's
+	// no need to throttle reads.
+	Transcoded bool
 }
 
 // ServerIdentity is the subset of Plex's root response we care about
@@ -366,6 +371,7 @@ func (p *Plex) Resolve(ratingKey string) (*StreamInfo, error) {
 	// the scrub bar show the right thing.
 	if p.TranscodeKbps > 0 {
 		si.URL = p.transcodeURL(ratingKey, mediaIdx, 0)
+		si.Transcoded = true
 		si.VideoCodec = "h264"
 		si.AudioCodec = "aac"
 		si.VideoProfile = "high"
