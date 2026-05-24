@@ -659,9 +659,10 @@ joinEl.addEventListener('keydown', (e) => {
 });
 
 
-let loadedKey = null;     // ratingKey currently attached to the <video>
-let applying = false;     // suppress echo while we apply server state
-const DRIFT = 0.75;       // seconds of tolerable drift before a hard seek
+let loadedKey = null;       // ratingKey currently attached to the <video>
+let lastSessionToken = 0;  // Plex session token last seen; used to detect transcoder restarts
+let applying = false;      // suppress echo while we apply server state
+const DRIFT = 0.75;        // seconds of tolerable drift before a hard seek
 
 function setStatus(text, kind) {
   syncEl.textContent = text;
@@ -670,10 +671,29 @@ function setStatus(text, kind) {
   if (kind === 'drifting') syncEl.classList.add('drifting');
 }
 
+// Show a non-interactive overlay during a mid-session transcoder restart
+// (host seeked past Plex's transcoded edge → new SessionToken from server).
+function showRestartOverlay() {
+  joinEl.classList.remove('hidden', 'ready');
+  const label = joinEl.querySelector('.label');
+  const hint  = joinEl.querySelector('.hint');
+  if (label) label.textContent = 'Reseating the audience…';
+  if (hint)  hint.textContent  = 'preparing the new scene';
+}
+
+// When hls.js reports playback resumed after a session restart, hide the
+// overlay. lastSessionToken > 0 guards against firing on the very first
+// 'playing' event (which is part of normal initial join).
+v.addEventListener('playing', () => {
+  if (lastSessionToken > 0) {
+    joinEl.classList.add('hidden');
+  }
+});
+
 let hlsInstance = null;
 
 function attach() {
-  const src = '/hls/index.m3u8?ts=' + Date.now();
+  const src = '/hls/index.m3u8?st=' + lastSessionToken;
 
   // Quick capability probe — surface HEVC support up front so a Linux/Firefox
   // user sees a useful message instead of an empty player.
@@ -780,7 +800,25 @@ function applyState(s, reason) {
     updateScrub();
   }
 
-  if (s.ratingKey !== loadedKey) { loadedKey = s.ratingKey; attach(); }
+  const ratingKeyChanged   = s.ratingKey !== loadedKey;
+  const sessionTokenChanged = s.sessionToken && s.sessionToken !== lastSessionToken;
+  if (ratingKeyChanged || sessionTokenChanged) {
+    loadedKey = s.ratingKey;
+    if (s.sessionToken) lastSessionToken = s.sessionToken;
+    if (hlsInstance) {
+      try { hlsInstance.destroy(); } catch (e) {}
+      hlsInstance = null;
+    }
+    if (s.ratingKey) {
+      attach();
+      // Only show "preparing the new scene" overlay when this is a restart
+      // of an existing session, not the initial load (the initial-load case
+      // already has the join overlay visible).
+      if (sessionTokenChanged && !ratingKeyChanged) {
+        showRestartOverlay();
+      }
+    }
+  }
 
   const target = targetFromState(s);
   applying = true;
