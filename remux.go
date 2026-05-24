@@ -91,7 +91,9 @@ func (rx *Remuxer) Start(ratingKey string, si *StreamInfo) error {
 		"-analyzeduration", "100M", "-probesize", "100M",
 		// Regenerate / forgive timestamps — Dolby Vision sources sometimes
 		// emit DTS=0 frames at the start that otherwise stall the muxer.
-		"-fflags", "+genpts+igndts",
+		// `discardcorrupt` drops demuxer-flagged bad packets cleanly
+		// instead of fighting them through decode (esp. DTS-HD MA XLL).
+		"-fflags", "+genpts+igndts+discardcorrupt",
 		"-i", si.URL,
 		"-map", "0:v:0", "-map", "0:a:0",
 		"-c:v", "copy",
@@ -101,6 +103,13 @@ func (rx *Remuxer) Start(ratingKey string, si *StreamInfo) error {
 	}
 	if si.VideoCodec == "hevc" || si.VideoCodec == "h265" {
 		args = append(args, "-tag:v", "hvc1") // Safari/Chrome need hvc1 in fMP4
+		// Strip HEVC SEI NAL units (39 = prefix SEI, 40 = suffix SEI).
+		// Dolby Vision RPU rides in unregistered SEI; some browser
+		// decoders refuse the whole stream when they can't parse it.
+		// Stripping is a copy-only bitstream filter — no transcode.
+		// HDR10 metadata also lives here, so HDR sources play as SDR,
+		// which is the right trade for a browser watch-party.
+		args = append(args, "-bsf:v", "filter_units=remove_types=39|40")
 	}
 	if si.AudioCodec == "aac" {
 		args = append(args, "-c:a", "copy")
