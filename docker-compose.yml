@@ -27,8 +27,13 @@ services:
       # sources, painful for 4K HDR HEVC remuxes.
       # 12000 = 12 Mbps, a sensible default for high-quality streaming.
       PLEX_TRANSCODE_BITRATE_KBPS: "${PLEX_TRANSCODE_BITRATE_KBPS:-}"
-      # Persist remuxed segments outside the container layer so a
-      # restart doesn't throw away hours of ffmpeg work.
+      # Disk cap for the HLS segment cache (Gigabytes). Cached segments
+      # survive container restarts so previously-watched parts of a movie
+      # are instant-seekable on next watch. LRU eviction kicks in when
+      # the cap is hit. 20 GB fits ~3 typical 2hr movies at 12 Mbps.
+      CACHE_MAX_GB: "${CACHE_MAX_GB:-20}"
+      # Root data directory for cache and work files. Persisted outside
+      # the container layer so cached segments survive restarts.
       WORK_DIR: /data/sessions
     volumes:
       - ./data:/data
