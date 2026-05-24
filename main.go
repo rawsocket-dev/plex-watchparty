@@ -30,7 +30,10 @@ func main() {
 		log.Fatal(err)
 	}
 
-	plex := NewPlex(plexURL, plexTok)
+	// Persist the library cache next to (not inside) the sessions dir so
+	// the prune sweep never touches it.
+	libraryCache := filepath.Join(filepath.Dir(workDir), "library-cache.json")
+	plex := NewPlex(plexURL, plexTok, libraryCache)
 	rx := NewRemuxer(workDir)
 	rx.PruneOlderThan(7 * 24 * time.Hour)
 	hub := NewHub(plex, rx)

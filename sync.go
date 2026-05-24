@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"sync"
@@ -32,6 +33,41 @@ func NewHub(plex *Plex, rx *Remuxer) *Hub {
 }
 
 func nowMs() int64 { return time.Now().UnixMilli() }
+
+func orDash(s string) string {
+	if s == "" {
+		return "—"
+	}
+	return s
+}
+
+func containerSuffix(c string) string {
+	if c == "" {
+		return ""
+	}
+	return " (" + c + ")"
+}
+
+func audioProfileSuffix(p string) string {
+	if p == "" {
+		return ""
+	}
+	return " " + p
+}
+
+func fmtDurationMs(ms int64) string {
+	if ms <= 0 {
+		return "—"
+	}
+	d := time.Duration(ms) * time.Millisecond
+	h := int(d / time.Hour)
+	m := int((d % time.Hour) / time.Minute)
+	s := int((d % time.Minute) / time.Second)
+	if h > 0 {
+		return fmt.Sprintf("%d:%02d:%02d", h, m, s)
+	}
+	return fmt.Sprintf("%d:%02d", m, s)
+}
 
 func (h *Hub) snapshot() State {
 	s := h.state
@@ -143,6 +179,19 @@ func (h *Hub) HandleControl(w http.ResponseWriter, r *http.Request) {
 
 		log.Printf("load %q: resolve=%dms list=%dms remux=%dms total=%dms",
 			title, resolveMs, listMs, remuxMs, totalMs)
+		log.Printf("media %q: %s %s%s · %dx%d @ %s · %s%dch%s · %d kbps total · %s · %s",
+			title,
+			orDash(si.VideoCodec),
+			orDash(si.VideoProfile),
+			containerSuffix(si.Container),
+			si.Width, si.Height, orDash(si.FrameRate),
+			orDash(si.AudioCodec),
+			si.AudioChannels,
+			audioProfileSuffix(si.AudioProfile),
+			si.Bitrate,
+			humanBytes(si.Size),
+			fmtDurationMs(si.Duration),
+		)
 
 		h.mu.Lock()
 		h.state = State{
