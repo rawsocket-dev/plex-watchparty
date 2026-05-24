@@ -792,56 +792,23 @@ setInterval(() => {
   }
 }, 2000);
 
-// Host position broadcast. While playing, periodically push the
-// host's actual v.currentTime to the server. We must NOT push when
-// the host's video isn't really playing smoothly — a 4K HEVC source
-// causes mid-playback stalls where v.paused=false but v.currentTime
-// is stuck (or has just rebuffered and jumped). Pushing during a
-// stall sends a garbage position to the server, which gets fanned
-// out to every viewer as a seek and trashes everyone's sync.
-let lastHostSample = null;
-let stableTicks = 0;
-setInterval(() => {
-  if (!isHost) return;
-  if (!lastState || !lastState.playing || !lastState.ratingKey) return;
-  if (v.paused || applying) {
-    stableTicks = 0; lastHostSample = null;
-    return;
-  }
-  if (v.readyState < 3) {
-    // HAVE_FUTURE_DATA: not enough buffered to trust playback yet.
-    stableTicks = 0; lastHostSample = null;
-    return;
-  }
-  const now = Date.now();
-  if (lastHostSample) {
-    const wallΔ  = (now - lastHostSample.at) / 1000;
-    const videoΔ = v.currentTime - lastHostSample.t;
-    const ratio  = wallΔ > 0 ? videoΔ / wallΔ : 0;
-    // Normal playback: video advances at ~1× wall clock. Allow
-    // 0.5×..1.5× (decode pressure / fastforward); anything outside
-    // that is a stall, a jump, or a manual scrub — don't trust.
-    if (ratio < 0.5 || ratio > 1.5) {
-      console.log('host: unstable playback ratio', ratio.toFixed(2),
-                  ' (videoΔ=', videoΔ.toFixed(2), 'wallΔ=', wallΔ.toFixed(2), ') — not pushing');
-      stableTicks = 0;
-      lastHostSample = { t: v.currentTime, at: now };
-      return;
-    }
-    stableTicks++;
-  }
-  lastHostSample = { t: v.currentTime, at: now };
-  if (stableTicks < 1) return; // need at least one stable interval
-
-  const serverThinks = targetFromState(lastState);
-  if (!isFinite(serverThinks)) return;
-  const delta = Math.abs(v.currentTime - serverThinks);
-  if (delta < 1.0) return;
-  console.log('host position correction: server thinks', serverThinks.toFixed(2),
-              ' but we are at', v.currentTime.toFixed(2), '— pushing');
-  lastLocalActionMs = Date.now();
-  post('seek', { positionSec: v.currentTime });
-}, 3000);
+// NOTE: previously we ran a "host position broadcast" tick that
+// periodically pushed the host's v.currentTime to the server so
+// viewers would track the host's actual playback (in case decode
+// lag made server's 1× extrapolation diverge). We removed it
+// because hls.js occasionally resets v.currentTime to 0 during
+// internal playlist/buffer maintenance, and even with stability
+// checks the tick eventually trusted a bogus reading and
+// broadcast it as a seek — producing the visible "seek storm"
+// (state jumping 50 → 0 → 51 → 0 → 54 multiple times per second).
+//
+// Server state is now set by explicit host actions only:
+//   * play / pause  → button presses
+//   * seek          → scrub-bar drag (commitScrubSeek)
+// Between actions, server extrapolates at 1×; viewers follow that
+// extrapolation. If host's decoder runs at 0.97× the divergence
+// after an hour is ~2 min — still vastly better than the chaos.
+// A user-triggered scrub / pause re-anchors the state precisely.
 
 // --- local controls broadcast to everyone -----------------------------------
 // Viewers can't drive playback; their event echoes don't post.
