@@ -80,3 +80,43 @@ func TestPlexSessionStopCallsPlex(t *testing.T) {
 		t.Error("expected ratingKey cleared after Stop")
 	}
 }
+
+func TestPlexSessionRestartBumpsToken(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("#EXTM3U\n"))
+	}))
+	defer srv.Close()
+
+	ps := NewPlexSession(NewPlex(srv.URL, "tok", ""), 12000)
+	_ = ps.Start("rk1", 0)
+	tokenBefore := ps.SessionToken()
+	if err := ps.Restart(120); err != nil {
+		t.Fatalf("Restart: %v", err)
+	}
+	if ps.SessionToken() <= tokenBefore {
+		t.Errorf("SessionToken did not bump on Restart (before=%d after=%d)",
+			tokenBefore, ps.SessionToken())
+	}
+}
+
+func TestPlexSessionEdgeMsTracks(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("#EXTM3U\n"))
+	}))
+	defer srv.Close()
+
+	ps := NewPlexSession(NewPlex(srv.URL, "tok", ""), 12000)
+	_ = ps.Start("rk1", 30) // session starts at 30s
+	if got := ps.EdgeSec(); got != 30.0 {
+		t.Errorf("EdgeSec after start = %v, want 30.0", got)
+	}
+	ps.UpdateEdge(95000) // playlist now shows segments out to 95s
+	if got := ps.EdgeSec(); got != 95.0 {
+		t.Errorf("EdgeSec after update = %v, want 95.0", got)
+	}
+	// Edge never moves backward.
+	ps.UpdateEdge(50000)
+	if got := ps.EdgeSec(); got != 95.0 {
+		t.Errorf("EdgeSec after backward update = %v, want 95.0 (no regression)", got)
+	}
+}

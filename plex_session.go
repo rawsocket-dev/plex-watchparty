@@ -173,3 +173,60 @@ func sessionIDFromURL(u string) string {
 	}
 	return rest
 }
+
+// Restart stops the current Plex session and starts a new one at the
+// given offset. Used when the host seeks forward into untranscoded
+// territory. Atomic under ps.mu: concurrent restarts serialize.
+func (ps *PlexSession) Restart(offsetSec float64) error {
+	ps.mu.Lock()
+	ratingKey := ps.ratingKey
+	ps.mu.Unlock()
+	if ratingKey == "" {
+		return fmt.Errorf("Restart with no active session")
+	}
+	ps.mu.Lock()
+	ps.stopLocked()
+	ps.mu.Unlock()
+	return ps.Start(ratingKey, offsetSec)
+}
+
+// EdgeSec is the highest segment-end time observed in Plex's playlist
+// so far, in seconds (absolute movie time). Used to decide whether a
+// seek target requires a Plex Restart.
+func (ps *PlexSession) EdgeSec() float64 {
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+	return float64(ps.edgeMs) / 1000.0
+}
+
+// UpdateEdge records a new edge time observed from a playlist parse.
+// Never regresses — edges only grow within a session.
+func (ps *PlexSession) UpdateEdge(edgeMs int64) {
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+	if edgeMs > ps.edgeMs {
+		ps.edgeMs = edgeMs
+	}
+}
+
+// RatingKey reports the active session's movie, or "" if none.
+func (ps *PlexSession) RatingKey() string {
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+	return ps.ratingKey
+}
+
+// PlaylistURL returns the current Plex playlist URL ("" if no session).
+func (ps *PlexSession) PlaylistURL() string {
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+	return ps.playlistURL
+}
+
+// OffsetMs reports the movie time at which the current Plex session
+// began. Used by the playlist parser to compute absolute times.
+func (ps *PlexSession) OffsetMs() int64 {
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+	return ps.offsetMs
+}
