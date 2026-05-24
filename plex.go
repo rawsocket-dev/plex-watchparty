@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -15,7 +16,16 @@ type Plex struct {
 	BaseURL string // e.g. http://192.168.1.10:32400
 	Token   string
 	http    *http.Client
+
+	// ListMovies cache: walking every movie section can take seconds on a
+	// large library. Cache it briefly so consecutive page loads / clicks
+	// don't re-pay that cost.
+	moviesMu  sync.Mutex
+	moviesAt  time.Time
+	moviesVal []Movie
 }
+
+const moviesCacheTTL = 60 * time.Second
 
 func NewPlex(baseURL, token string) *Plex {
 	return &Plex{
@@ -84,7 +94,17 @@ type libraryResp struct {
 }
 
 // ListMovies returns every item across all movie-type library sections.
+// Result is cached for `moviesCacheTTL`; a multi-thousand-title library can
+// cost several seconds on Plex, which adds straight to every click latency.
 func (p *Plex) ListMovies() ([]Movie, error) {
+	p.moviesMu.Lock()
+	if p.moviesVal != nil && time.Since(p.moviesAt) < moviesCacheTTL {
+		out := p.moviesVal
+		p.moviesMu.Unlock()
+		return out, nil
+	}
+	p.moviesMu.Unlock()
+
 	var sr sectionsResp
 	if err := p.get("/library/sections", &sr); err != nil {
 		return nil, err
@@ -102,6 +122,11 @@ func (p *Plex) ListMovies() ([]Movie, error) {
 			out = append(out, Movie{RatingKey: m.RatingKey, Title: m.Title, Year: m.Year})
 		}
 	}
+
+	p.moviesMu.Lock()
+	p.moviesVal = out
+	p.moviesAt = time.Now()
+	p.moviesMu.Unlock()
 	return out, nil
 }
 

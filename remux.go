@@ -66,6 +66,19 @@ func (rx *Remuxer) Start(ratingKey string, si *StreamInfo) error {
 	rx.cancel = cancel
 	rx.mu.Unlock()
 
+	// On any error below we must clear the session state so the next click
+	// of the same movie actually re-attempts ffmpeg, instead of hitting the
+	// short-circuit above and returning a stale-but-dead session.
+	clearOnError := func() {
+		rx.mu.Lock()
+		if rx.current == ratingKey {
+			rx.current = ""
+			rx.dir = ""
+			rx.cancel = nil
+		}
+		rx.mu.Unlock()
+	}
+
 	playlist := filepath.Join(dir, "index.m3u8")
 	args := []string{
 		"-nostdin",
@@ -97,7 +110,11 @@ func (rx *Remuxer) Start(ratingKey string, si *StreamInfo) error {
 	args = append(args,
 		"-f", "hls",
 		"-hls_time", "6",
-		"-hls_playlist_type", "vod",
+		// `event` instead of `vod`: writes the playlist incrementally as
+		// each segment lands. `vod` only finalizes the playlist when
+		// ffmpeg ends — useless when we want to start playback immediately
+		// and read along while ffmpeg races ahead.
+		"-hls_playlist_type", "event",
 		"-hls_segment_type", "fmp4",
 		"-hls_flags", "independent_segments",
 		"-hls_segment_filename", filepath.Join(dir, "seg_%05d.m4s"),
@@ -109,6 +126,7 @@ func (rx *Remuxer) Start(ratingKey string, si *StreamInfo) error {
 	startedAt := time.Now()
 	if err := cmd.Start(); err != nil {
 		cancel()
+		clearOnError()
 		return fmt.Errorf("start ffmpeg: %w", err)
 	}
 	spawnMs := time.Since(startedAt).Milliseconds()
@@ -129,11 +147,13 @@ func (rx *Remuxer) Start(ratingKey string, si *StreamInfo) error {
 			return nil
 		}
 		if ctx.Err() != nil {
+			clearOnError()
 			return fmt.Errorf("ffmpeg aborted before playlist")
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
 	cancel()
+	clearOnError()
 	return fmt.Errorf("timed out waiting for HLS playlist")
 }
 
