@@ -322,6 +322,27 @@ func (h *Hub) HandleControl(w http.ResponseWriter, r *http.Request) {
 
 	if req.Action == "load" {
 		t0 := time.Now()
+		// If the same movie is already loaded and Plex still has a live
+		// session for it, skip the Stop+Start dance entirely. Plex's
+		// universal-transcoder /stop is unreliable: it often returns
+		// 200 without actually freeing the slot, and the next /start
+		// then 400s with a bare HTML body. Reusing the existing session
+		// avoids that whole class of failure when the user clicks the
+		// same movie twice (back + forward, refresh, etc.).
+		if h.session.RatingKey() == req.RatingKey {
+			log.Printf("load %q: same movie already loaded, reusing session", req.RatingKey)
+			h.mu.Lock()
+			cur := h.state
+			h.broadcast()
+			h.mu.Unlock()
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"reused":      true,
+				"durationSec": cur.DurationSec,
+			})
+			return
+		}
+
 		si, err := h.plex.Resolve(req.RatingKey)
 		if err != nil {
 			log.Printf("control: resolve failed ip=%s ratingKey=%s err=%v",
