@@ -1,7 +1,11 @@
 services:
   watchparty:
+    # Pulls the CI-built multi-arch image by default. Run
+    # `docker compose pull` after `docker login` (see README) on the
+    # first deploy. For local dev, `docker compose up --build` will
+    # build from the local Dockerfile instead.
+    image: registry.example.com:5050/example/plex-watchparty:latest
     build: .
-    image: plex-watchparty
     ports:
       - "8080:8080"
     environment:

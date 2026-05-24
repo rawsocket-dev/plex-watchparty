@@ -24,6 +24,23 @@ Plex ──(one pull, server-side token)──▶ ffmpeg -c:v copy ──▶ fMP
 
 ## Run with Docker (recommended — bundles latest static ffmpeg)
 
+Two flavors, depending on whether you want to pull the CI-built image
+or build locally:
+
+**Pull the pre-built image (multi-arch, from this project's registry):**
+
+```sh
+# One-time: log in to the registry. See "Registry login" below for token.
+docker login registry.example.com:5050 -u <access-token-user> -p <access-token>
+
+export PLEX_TOKEN=xxxxxxxxxxxx
+export WATCH_PASSWORD=movienight
+docker compose pull
+docker compose up -d
+```
+
+**Build locally instead:**
+
 ```sh
 export PLEX_TOKEN=xxxxxxxxxxxx
 export WATCH_PASSWORD=movienight
@@ -34,6 +51,38 @@ Then open `http://<your-ip>:8080`, enter the password, pick a movie.
 
 > Edit `PLEX_BASE_URL` in `docker-compose.yml` if Plex isn't reachable at
 > `host.docker.internal:32400`.
+
+### Registry login
+
+Each push to `master` publishes a multi-arch image (amd64 + arm64) at
+`registry.example.com:5050/example/plex-watchparty:latest`. To pull it you
+need a token with `read_registry` scope.
+
+Easiest: create a **deploy token** (project-scoped, no human user
+attached, ideal for a deploy host):
+
+1. Go to
+   <https://registry.example.com/example/plex-watchparty/-/settings/repository>
+   → **Deploy tokens** → fill in a name (e.g. `prod-pull`), scope
+   `read_registry`, and create.
+2. the registry shows a generated **username** like `the registry+access-token-3`
+   and a one-time **token value** — copy both now (the token is not
+   shown again).
+3. On the deploy host:
+
+   ```sh
+   docker login registry.example.com:5050 \
+     -u the registry+access-token-3 -p <token-value>
+   ```
+
+   The `:5050` port is required — that's where the registry lives.
+   Credentials get cached in `~/.docker/config.json`, so this is a
+   one-time step per host.
+
+For a personal laptop, a **personal access token**
+(<https://registry.example.com/-/user_settings/personal_access_tokens>)
+with `read_registry` scope works the same way — use your the registry
+username instead of the access-token username.
 
 ## Run locally (needs ffmpeg on PATH)
 
