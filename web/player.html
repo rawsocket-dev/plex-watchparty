@@ -608,14 +608,20 @@ function attach() {
   }
   if (window.Hls && Hls.isSupported()) {
     const hls = new Hls({
-      // Never trim back buffer — viewers need to be able to seek to
-      // anywhere in the movie. Memory cost is tolerable for one stream.
       backBufferLength: Infinity,
-      // Give us a generous forward buffer so the ffmpeg→browser gap
-      // doesn't cause stalls on fast-paced sources.
       maxBufferLength: 60,
       maxMaxBufferLength: 600,
     });
+    // Our server rewrites the playlist as PLAYLIST-TYPE:VOD so hls.js
+    // gives us a full seekable range, but a VOD playlist doesn't get
+    // periodically refreshed — and ours actually grows as ffmpeg
+    // produces more segments. Force a manifest refresh every 10 s so
+    // new fragments get picked up. The src URL gets a cache-busting
+    // timestamp so we definitely re-fetch from the server.
+    setInterval(() => {
+      if (!hls.media) return;
+      try { hls.loadSource('/hls/index.m3u8?ts=' + Date.now()); } catch (_) {}
+    }, 10000);
     hls.on(Hls.Events.ERROR, (_, data) => {
       console.error('hls.js error', data);
       if (data.fatal) {

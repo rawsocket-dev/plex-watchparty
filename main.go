@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -106,21 +107,40 @@ func main() {
 			http.NotFound(w, r)
 			return
 		}
-		// Go's mime.TypeByExtension doesn't know .m4s and inconsistently
-		// handles .m3u8. Set them explicitly so strict browsers / MSE
-		// don't refuse a segment served as application/octet-stream.
+		path := filepath.Join(dir, filepath.Base(name))
+		w.Header().Set("Cache-Control", "no-cache")
+		cw := &countingResponseWriter{ResponseWriter: w}
+		defer func() { bw.record(clientIP(r), cw.n) }()
+
 		switch filepath.Ext(name) {
 		case ".m3u8":
-			w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
+			// hls.js (and Safari native HLS) treats a playlist tagged
+			// PLAYLIST-TYPE:EVENT as a live stream — which gives it a
+			// tiny sliding seekable window and makes scrub-back fail
+			// silently. ffmpeg's vod playlist type DOESN'T write the
+			// .m3u8 incrementally, so we can't just tell ffmpeg to use
+			// it. Compromise: ffmpeg keeps writing an EVENT playlist
+			// on disk, but we transform it to VOD on every response.
+			// Players get the full seekable range; ffmpeg keeps
+			// appending segments and the next playlist fetch picks
+			// them up.
+			content, err := os.ReadFile(path)
+			if err != nil {
+				http.NotFound(w, r)
+				return
+			}
+			content = bytes.ReplaceAll(content,
+				[]byte("#EXT-X-PLAYLIST-TYPE:EVENT"),
+				[]byte("#EXT-X-PLAYLIST-TYPE:VOD"))
+			cw.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
+			cw.Write(content)
+			return
 		case ".m4s":
 			w.Header().Set("Content-Type", "video/iso.segment")
 		case ".mp4":
 			w.Header().Set("Content-Type", "video/mp4")
 		}
-		w.Header().Set("Cache-Control", "no-cache")
-		cw := &countingResponseWriter{ResponseWriter: w}
-		http.ServeFile(cw, r, filepath.Join(dir, filepath.Base(name)))
-		bw.record(clientIP(r), cw.n)
+		http.ServeFile(cw, r, path)
 	})
 
 	protected.HandleFunc("/api/bandwidth", func(w http.ResponseWriter, r *http.Request) {
