@@ -298,15 +298,24 @@
     width: 96px; height: 96px;
     display: flex; align-items: center; justify-content: center;
   }
+  /* The conic-gradient itself can't be smoothly transitioned, but we
+     can animate the --p custom property via @property + transition,
+     which makes the ring fill feel continuous rather than jerky. */
+  @property --p {
+    syntax: '<number>';
+    initial-value: 0;
+    inherits: false;
+  }
   #join .ring {
     position: absolute; inset: 0;
     border-radius: 50%;
+    --p: 0;
     background:
-      conic-gradient(var(--ember) calc(var(--p, 0) * 360deg), transparent 0);
+      conic-gradient(var(--ember) calc(var(--p) * 360deg), rgba(212, 165, 116, 0.12) 0);
     -webkit-mask: radial-gradient(circle, transparent 38px, #000 39px, #000 47px, transparent 48px);
             mask: radial-gradient(circle, transparent 38px, #000 39px, #000 47px, transparent 48px);
     opacity: .9;
-    transition: opacity .4s ease;
+    transition: --p .25s linear, opacity .4s ease;
   }
   /* Once ready we replace the partial ring with a full ember outline. */
   #join.ready .ring {
@@ -670,9 +679,27 @@ joinEl.addEventListener('keydown', (e) => {
 const joinLabel = joinEl.querySelector('.label');
 const joinHint  = joinEl.querySelector('.hint');
 const joinRing  = joinEl.querySelector('.ring');
+// Track fill rate so we can show ETA and detect "stuck buffer" cases.
+let lastAhead = 0;
+let lastAheadAt = Date.now();
+let aheadRate = 0; // seconds-of-buffer per wall-second
 function refreshJoinOverlay() {
   if (userJoined) return;
   const ahead = bufferedAhead();
+  const now = Date.now();
+  const wallDelta = (now - lastAheadAt) / 1000;
+  if (wallDelta >= 1.0) {
+    aheadRate = (ahead - lastAhead) / wallDelta;
+    lastAhead = ahead;
+    lastAheadAt = now;
+    console.log('preroll: ahead=' + ahead.toFixed(2) + 's' +
+                ' fillRate=' + aheadRate.toFixed(2) + 'x' +
+                ' buffered=' + (v.buffered.length ?
+                  '[' + v.buffered.start(0).toFixed(1) + '..' +
+                  v.buffered.end(v.buffered.length - 1).toFixed(1) + ']' :
+                  'none') +
+                ' v.currentTime=' + v.currentTime.toFixed(2));
+  }
   const ready = ahead >= MIN_BUFFER_BEFORE_PLAY;
   const p = Math.min(1, ahead / MIN_BUFFER_BEFORE_PLAY);
   joinRing.style.setProperty('--p', p.toFixed(3));
@@ -683,7 +710,12 @@ function refreshJoinOverlay() {
   } else {
     joinEl.classList.remove('ready');
     joinLabel.textContent = 'Warming the projector…';
-    joinHint.textContent  = ahead.toFixed(1) + 's / ' + MIN_BUFFER_BEFORE_PLAY + 's buffered';
+    let hint = ahead.toFixed(1) + 's / ' + MIN_BUFFER_BEFORE_PLAY + 's';
+    if (aheadRate > 0.05) {
+      const etaSec = Math.max(0, (MIN_BUFFER_BEFORE_PLAY - ahead) / aheadRate);
+      hint += ' · ' + Math.ceil(etaSec) + 's left';
+    }
+    joinHint.textContent = hint;
   }
 }
 setInterval(refreshJoinOverlay, 250);
