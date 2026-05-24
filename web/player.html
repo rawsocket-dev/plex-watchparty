@@ -741,12 +741,9 @@ function applyState(s, reason) {
   }
   lastState = s;
   if (!s.ratingKey) {
-    titleEl.textContent = 'awaiting the host…';
-    titleEl.classList.add('idle');
-    syncEl.textContent = 'idle';
-    syncEl.classList.remove('locked', 'drifting');
-    serverDuration = 0;
-    updateScrub();
+    // Session ended (idle shutdown or host cleared). The server will
+    // now serve waiting.html at /watch — reload so we land there.
+    window.location.reload();
     return;
   }
   titleEl.textContent = s.title;

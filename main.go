@@ -65,6 +65,19 @@ func main() {
 
 	protected.HandleFunc("/watch", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		// Disable bfcache + cached responses so a back-button arrival
+		// always re-evaluates whether a movie is loaded (and reconnects
+		// the SSE for the live state). Without this Chrome will happily
+		// serve a stale /watch from history.
+		w.Header().Set("Cache-Control", "no-store")
+		// When no movie is loaded, route everyone to the waiting room
+		// instead of the empty player. The host gets copy nudging them
+		// back to the lobby; viewers get a "house lights are up" hold
+		// screen that auto-redirects here once the host picks something.
+		if rx.CurrentKey() == "" {
+			w.Write(waitingHTML)
+			return
+		}
 		w.Write(playerHTML)
 	})
 

@@ -10,3 +10,6 @@ var indexHTML []byte
 
 //go:embed web/player.html
 var playerHTML []byte
+
+//go:embed web/waiting.html
+var waitingHTML []byte
