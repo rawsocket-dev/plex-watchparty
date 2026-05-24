@@ -271,7 +271,10 @@
 
   /* Browser autoplay policy blocks v.play() until a user gesture on the
      page. Without this overlay the video element just sits silently
-     paused and viewers don't realise they need to click. */
+     paused and viewers don't realise they need to click. The overlay
+     also doubles as a buffer-fill progress indicator at startup so
+     viewers see the transcoder + buffer accumulating instead of
+     wondering why the play icon isn't responsive. */
   #join {
     position: absolute; inset: 0;
     display: flex;
@@ -281,21 +284,49 @@
     gap: 1rem;
     background: rgba(5, 4, 3, .65);
     backdrop-filter: blur(4px);
-    cursor: pointer;
+    cursor: default;
     z-index: 50;
     transition: opacity .4s ease;
   }
   #join.hidden { opacity: 0; pointer-events: none; }
+  #join.ready { cursor: pointer; }
+
+  /* SVG progress ring lives behind the play icon. The conic-gradient
+     trick (mask-image) sweeps from 0° to 360° as --p goes 0→1. */
+  #join .icon-wrap {
+    position: relative;
+    width: 96px; height: 96px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  #join .ring {
+    position: absolute; inset: 0;
+    border-radius: 50%;
+    background:
+      conic-gradient(var(--ember) calc(var(--p, 0) * 360deg), transparent 0);
+    -webkit-mask: radial-gradient(circle, transparent 38px, #000 39px, #000 47px, transparent 48px);
+            mask: radial-gradient(circle, transparent 38px, #000 39px, #000 47px, transparent 48px);
+    opacity: .9;
+    transition: opacity .4s ease;
+  }
+  /* Once ready we replace the partial ring with a full ember outline. */
+  #join.ready .ring {
+    background: conic-gradient(var(--ember) 360deg, var(--ember) 360deg);
+  }
   #join .icon {
     width: 84px; height: 84px;
     border-radius: 50%;
-    border: 1.5px solid var(--ember);
+    border: 1.5px solid var(--rule);
     display: flex; align-items: center; justify-content: center;
-    color: var(--ember);
-    transition: transform .25s ease, background .25s ease, box-shadow .25s ease;
+    color: var(--paper-mute);
+    transition: transform .25s ease, background .25s ease,
+                box-shadow .25s ease, border-color .25s ease, color .25s ease;
   }
   #join .icon svg { width: 32px; height: 32px; margin-left: 4px; }
-  #join:hover .icon {
+  #join.ready .icon {
+    border-color: var(--ember);
+    color: var(--ember);
+  }
+  #join.ready:hover .icon {
     background: rgba(212, 165, 116, .12);
     transform: scale(1.05);
     box-shadow: 0 0 32px rgba(212, 165, 116, .25);
@@ -315,7 +346,9 @@
     letter-spacing: .25em;
     text-transform: uppercase;
     color: var(--paper-mute);
+    font-variant-numeric: tabular-nums;
   }
+  #join.ready .hint { color: var(--ember); }
 
 </style>
 </head>
@@ -349,11 +382,14 @@
   <div class="stage">
     <video id="v" playsinline disablepictureinpicture></video>
     <div id="join" role="button" tabindex="0" aria-label="Click to join the party">
-      <div class="icon" aria-hidden="true">
-        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+      <div class="icon-wrap">
+        <div class="ring" aria-hidden="true"></div>
+        <div class="icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+        </div>
       </div>
-      <div class="label">Take your seat.</div>
-      <div class="hint">click anywhere to join</div>
+      <div class="label">Warming the projector…</div>
+      <div class="hint">preparing your show</div>
     </div>
   </div>
 </div>
@@ -606,12 +642,12 @@ function dismissJoin() {
   userJoined = true;
   joinEl.classList.add('hidden');
 }
+// Join overlay click is gated: ignored until the .ready class is set
+// (by the buffer-progress poll below). This prevents the autoplay-
+// policy user gesture from firing while buffer is still accumulating,
+// which would race v.play() against a half-prepared stream.
 joinEl.addEventListener('click', () => {
-  // Re-sync to wherever the host is RIGHT NOW before we let the
-  // browser actually start playback. Otherwise the player resumes
-  // from whatever currentTime was set when we first received state,
-  // which can be many seconds behind the host by the time the user
-  // gets around to clicking.
+  if (!joinEl.classList.contains('ready')) return;
   if (lastState && lastState.ratingKey) {
     const target = targetFromState(lastState);
     if (isFinite(target) && Math.abs(v.currentTime - target) > DRIFT) {
@@ -620,16 +656,38 @@ joinEl.addEventListener('click', () => {
       setTimeout(() => { applying = false; }, 250);
     }
   }
-  // Go through the pre-roll gate (not bare v.play()) so a click with
-  // only one segment buffered doesn't run dry six seconds later.
-  // tryPlayWhenReady also satisfies the autoplay-policy user-gesture
-  // requirement when buffer is ready.
   tryPlayWhenReady();
   dismissJoin();
 });
 joinEl.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); joinEl.click(); }
 });
+
+// Drive the overlay's progress ring + label based on bufferedAhead().
+// While buffer < MIN_BUFFER_BEFORE_PLAY: ring fills, label says
+// "Warming the projector…", clicks are no-ops. Once full: ring goes
+// solid ember, label switches to "Take your seat.", click is accepted.
+const joinLabel = joinEl.querySelector('.label');
+const joinHint  = joinEl.querySelector('.hint');
+const joinRing  = joinEl.querySelector('.ring');
+function refreshJoinOverlay() {
+  if (userJoined) return;
+  const ahead = bufferedAhead();
+  const ready = ahead >= MIN_BUFFER_BEFORE_PLAY;
+  const p = Math.min(1, ahead / MIN_BUFFER_BEFORE_PLAY);
+  joinRing.style.setProperty('--p', p.toFixed(3));
+  if (ready) {
+    joinEl.classList.add('ready');
+    joinLabel.textContent = 'Take your seat.';
+    joinHint.textContent  = 'click anywhere to start';
+  } else {
+    joinEl.classList.remove('ready');
+    joinLabel.textContent = 'Warming the projector…';
+    joinHint.textContent  = ahead.toFixed(1) + 's / ' + MIN_BUFFER_BEFORE_PLAY + 's buffered';
+  }
+}
+setInterval(refreshJoinOverlay, 250);
+v.addEventListener('progress', refreshJoinOverlay);
 v.addEventListener('playing', () => dismissJoin());
 let loadedKey = null;     // ratingKey currently attached to the <video>
 let applying = false;     // suppress echo while we apply server state
@@ -699,14 +757,17 @@ function attach() {
       // VideoToolbox. Each 1s of 80 Mbps content is ~10 MB; even with
       // generous limits the underlying VT decoder seems to choke when
       // the source buffer is under sustained eviction pressure.
-      //   maxBufferLength 20: target 20s ahead during steady play
-      //   maxMaxBufferLength 40: hard cap
+      //   maxBufferLength 25: target 25s ahead during steady play
+      //                       (must exceed MIN_BUFFER_BEFORE_PLAY=15
+      //                       so hls.js actually fetches that much
+      //                       before we attempt v.play())
+      //   maxMaxBufferLength 45: hard cap
       //   backBufferLength 15: cheap scrub-back; older is refetched
       //                        from the (VOD) playlist as needed
       //   maxBufferSize 500MB: byte budget headroom
       backBufferLength: 15,
-      maxBufferLength: 20,
-      maxMaxBufferLength: 40,
+      maxBufferLength: 25,
+      maxMaxBufferLength: 45,
       maxBufferSize: 500 * 1024 * 1024,
       // High-bitrate decode can stall briefly under load. 20 s of
       // patience before declaring starvation; plenty of time for the
@@ -841,7 +902,15 @@ v.addEventListener('ratechange', () => console.log('video EVENT: ratechange play
 // bufferStalledError, and we sit in the gap until the next playlist
 // poll. Solution: only allow play() once we have enough lookahead to
 // cover at least one full playlist refresh cycle.
-const MIN_BUFFER_BEFORE_PLAY = 8; // seconds — must stay below maxBufferLength
+// 15 s of pre-roll. Plex's transcoder ramps up slowly from a cold
+// start (first few seconds are sub-realtime while threads spin up
+// and the decoder primes), then settles at ~2× realtime sustained.
+// A short pre-roll runs dry before Plex hits sustained throughput
+// and the player stalls. 15 s gives the transcoder time to catch up
+// AND leaves enough cushion that any one network hiccup doesn't
+// re-stall us. Must stay strictly below maxBufferLength so hls.js
+// will actually accumulate this much before plateauing.
+const MIN_BUFFER_BEFORE_PLAY = 15;
 let playWaitTimer = null;
 function bufferedAhead() {
   if (v.buffered.length === 0) return 0;
