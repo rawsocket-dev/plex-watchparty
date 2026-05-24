@@ -96,21 +96,31 @@ func (rx *Remuxer) Start(ratingKey string, si *StreamInfo) error {
 		"-fflags", "+genpts+igndts+discardcorrupt",
 		"-i", si.URL,
 		"-map", "0:v:0", "-map", "0:a:0",
-		"-c:v", "copy",
-		// Allow non-standard MP4 boxes (dvcC/dvvC for Dolby Vision).
-		// Browsers ignore them; the HEVC base layer plays normally.
-		"-strict", "unofficial",
 	}
-	if si.VideoCodec == "hevc" || si.VideoCodec == "h265" {
-		args = append(args, "-tag:v", "hvc1") // Safari/Chrome need hvc1 in fMP4
-		// Strip HEVC SEI NAL units (39 = prefix SEI, 40 = suffix SEI).
-		// Dolby Vision RPU rides in unregistered SEI; some browser
-		// decoders refuse the whole stream when they can't parse it.
-		// Stripping is a copy-only bitstream filter — no transcode.
-		// HDR10 metadata also lives here, so HDR sources play as SDR,
-		// which is the right trade for a browser watch-party.
-		args = append(args, "-bsf:v", "filter_units=remove_types=39|40")
+
+	// Video: stream-copy H.264 (the universal browser codec), transcode
+	// everything else. HEVC in particular is unreliable in browsers —
+	// Firefox can't decode it at all on any OS; Chrome's HEVC support
+	// varies by OS and chokes on Main10 / Dolby Vision flavors that
+	// 4K UHD remuxes commonly use. Downscale to ≤1080p along the way:
+	// the encoder work goes down quadratically and nobody at a browser-
+	// based watch party is actually viewing 4K.
+	if si.VideoCodec == "h264" || si.VideoCodec == "avc1" || si.VideoCodec == "avc" {
+		args = append(args, "-c:v", "copy")
+	} else {
+		args = append(args,
+			"-c:v", "libx264",
+			"-preset", "ultrafast",
+			"-crf", "23",
+			"-pix_fmt", "yuv420p", // force 8-bit even from a Main10 source
+			"-profile:v", "high",
+			"-level:v", "4.1",
+			"-tune", "fastdecode",
+			// Downscale to 1080p max; -2 keeps aspect, divisible by 2.
+			"-vf", "scale=-2:min(1080\\,ih)",
+		)
 	}
+
 	if si.AudioCodec == "aac" {
 		args = append(args, "-c:a", "copy")
 	} else {
