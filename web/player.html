@@ -620,7 +620,11 @@ joinEl.addEventListener('click', () => {
       setTimeout(() => { applying = false; }, 250);
     }
   }
-  v.play().catch(() => { /* may need more buffering; periodic tick will retry */ });
+  // Go through the pre-roll gate (not bare v.play()) so a click with
+  // only one segment buffered doesn't run dry six seconds later.
+  // tryPlayWhenReady also satisfies the autoplay-policy user-gesture
+  // requirement when buffer is ready.
+  tryPlayWhenReady();
   dismissJoin();
 });
 joinEl.addEventListener('keydown', (e) => {
