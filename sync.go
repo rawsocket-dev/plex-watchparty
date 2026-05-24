@@ -47,7 +47,7 @@ type Hub struct {
 	clients map[chan State]bool
 
 	// Idle shutdown: when the last SSE viewer disconnects, start a
-	// grace timer; if no one rejoins by the time it fires, stop ffmpeg
+	// grace timer; if no one rejoins by the time it fires, stop plex session
 	// so we don't keep transcoding for nobody.
 	idleTimer *time.Timer
 
@@ -58,14 +58,14 @@ type Hub struct {
 	hostExitTimer *time.Timer
 }
 
-// idleGrace is how long we keep ffmpeg alive after the last viewer
+// idleGrace is how long we keep the plex session alive after the last viewer
 // leaves. Long enough to forgive a tab refresh or short reconnect,
 // short enough that a forgotten session doesn't burn CPU all night.
 const idleGrace = 60 * time.Second
 
 // hostExitGrace forgives a quick host reconnect (refresh, brief network
 // blip). Shorter than idleGrace because the cost of a wrong pause is
-// just "host clicks play again," not "ffmpeg session killed."
+// just "host clicks play again," not "plex session killed."
 const hostExitGrace = 10 * time.Second
 
 func NewHub(plex *Plex, session *PlexSession, cache *SegmentCache) *Hub {
@@ -109,7 +109,7 @@ func (h *Hub) hostCount() int {
 
 // onClientCountChange must be called with h.mu held whenever a client
 // is added to or removed from h.clients. Manages two timers:
-//   - idle shutdown: ffmpeg stops when ALL viewers leave
+//   - idle shutdown: plex session stops when ALL viewers leave
 //   - host-exit pause: room pauses when the last HOST leaves mid-playback
 func (h *Hub) onClientCountChange() {
 	// --- idle shutdown (any-viewer) ---
@@ -121,7 +121,7 @@ func (h *Hub) onClientCountChange() {
 	} else if h.state.RatingKey != "" && h.idleTimer == nil {
 		rk := h.state.RatingKey
 		h.idleTimer = time.AfterFunc(idleGrace, func() { h.idleShutdown(rk) })
-		log.Printf("idle: no viewers, will stop ffmpeg in %s if nobody returns", idleGrace)
+		log.Printf("idle: no viewers, will stop plex session in %s if nobody returns", idleGrace)
 	}
 
 	// --- host-exit pause ---
@@ -197,20 +197,6 @@ func orDash(s string) string {
 		return "—"
 	}
 	return s
-}
-
-func containerSuffix(c string) string {
-	if c == "" {
-		return ""
-	}
-	return " (" + c + ")"
-}
-
-func audioProfileSuffix(p string) string {
-	if p == "" {
-		return ""
-	}
-	return " " + p
 }
 
 func fmtDurationMs(ms int64) string {

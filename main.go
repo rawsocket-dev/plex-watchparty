@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"time"
 )
 
 func env(key, def string) string {
@@ -90,8 +89,6 @@ func main() {
 		log.Printf("plex: connected to %q (version %s, %s %s, machine %s)",
 			id.FriendlyName, id.Version, id.Platform, id.PlatformVersion, id.MachineIdentifier)
 	}
-	rx := NewRemuxer(workDir)
-	rx.PruneOlderThan(7 * 24 * time.Hour)
 	hub := NewHub(plex, plexSession, segCache)
 	auth := NewAuth(password, hostPassword)
 	bw := newBwTracker()
@@ -129,7 +126,7 @@ func main() {
 		// instead of the empty player. The host gets copy nudging them
 		// back to the lobby; viewers get a "house lights are up" hold
 		// screen that auto-redirects here once the host picks something.
-		if rx.CurrentKey() == "" {
+		if plexSession.RatingKey() == "" {
 			w.Write(waitingHTML)
 			return
 		}
