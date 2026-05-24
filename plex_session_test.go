@@ -1,6 +1,7 @@
 package main
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -118,5 +119,42 @@ func TestPlexSessionEdgeMsTracks(t *testing.T) {
 	ps.UpdateEdge(50000)
 	if got := ps.EdgeSec(); got != 95.0 {
 		t.Errorf("EdgeSec after backward update = %v, want 95.0 (no regression)", got)
+	}
+}
+
+func TestPlexSessionFetchPlaylist(t *testing.T) {
+	const body = "#EXTM3U\n#EXTINF:10,\nhttps://plex/seg-0.ts\n"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(body))
+	}))
+	defer srv.Close()
+
+	ps := NewPlexSession(NewPlex(srv.URL, "tok", ""), 12000)
+	_ = ps.Start("rk1", 0)
+	data, err := ps.FetchPlaylist()
+	if err != nil {
+		t.Fatalf("FetchPlaylist: %v", err)
+	}
+	if string(data) != body {
+		t.Errorf("FetchPlaylist body = %q, want %q", string(data), body)
+	}
+}
+
+func TestPlexSessionFetchSegment(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("segment-bytes"))
+	}))
+	defer srv.Close()
+
+	ps := NewPlexSession(NewPlex(srv.URL, "tok", ""), 12000)
+	_ = ps.Start("rk1", 0)
+	rc, err := ps.FetchSegment(srv.URL + "/some-seg.ts")
+	if err != nil {
+		t.Fatalf("FetchSegment: %v", err)
+	}
+	defer rc.Close()
+	data, _ := io.ReadAll(rc)
+	if string(data) != "segment-bytes" {
+		t.Errorf("FetchSegment data = %q, want %q", string(data), "segment-bytes")
 	}
 }

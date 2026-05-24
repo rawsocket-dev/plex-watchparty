@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -229,4 +230,41 @@ func (ps *PlexSession) OffsetMs() int64 {
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
 	return ps.offsetMs
+}
+
+// FetchPlaylist GETs the current session's playlist from Plex. Returns
+// the raw m3u8 bytes. Caller is responsible for parsing/rewriting.
+func (ps *PlexSession) FetchPlaylist() ([]byte, error) {
+	ps.mu.Lock()
+	plUrl := ps.playlistURL
+	ps.mu.Unlock()
+	if plUrl == "" {
+		return nil, fmt.Errorf("no active Plex session")
+	}
+	req, _ := http.NewRequest(http.MethodGet, plUrl, nil)
+	resp, err := ps.plex.http.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("plex playlist: status %d", resp.StatusCode)
+	}
+	return io.ReadAll(resp.Body)
+}
+
+// FetchSegment GETs the given Plex segment URL and returns the body as
+// a ReadCloser the caller MUST close. The URL already contains the
+// X-Plex-Token; Plex's segment endpoint authenticates from that.
+func (ps *PlexSession) FetchSegment(segURL string) (io.ReadCloser, error) {
+	req, _ := http.NewRequest(http.MethodGet, segURL, nil)
+	resp, err := ps.plex.http.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		resp.Body.Close()
+		return nil, fmt.Errorf("plex segment %s: status %d", redactedURL(segURL), resp.StatusCode)
+	}
+	return resp.Body, nil
 }
