@@ -39,8 +39,8 @@ type Hub struct {
 	session *PlexSession
 	cache   *SegmentCache
 
-	mu sync.Mutex
-	state   State
+	mu    sync.Mutex
+	state State
 	// clients map[chan]→isHost. Tracking role per-connection so we can
 	// pause the room when the last host leaves (viewers should never
 	// see the movie keep playing without the host present).

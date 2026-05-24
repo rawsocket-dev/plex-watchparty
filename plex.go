@@ -14,7 +14,7 @@ import (
 )
 
 // Plex talks to a Plex Media Server using a server-side token.
-// The token NEVER leaves this process — clients only ever see remuxed HLS.
+// The token NEVER leaves this process — clients only ever see HLS via our proxy.
 type Plex struct {
 	BaseURL string // e.g. http://192.168.1.10:32400
 	Token   string
@@ -53,28 +53,17 @@ type Movie struct {
 	Year      int    `json:"year"`
 }
 
-// StreamInfo is everything the remuxer needs for one movie, plus enough
-// human-readable detail to log what's about to play.
+// StreamInfo describes a movie's source metadata in enough detail to log
+// what's about to play. Playback itself goes through Plex's Universal
+// Transcoder via PlexSession — we don't touch the source URL ourselves.
 type StreamInfo struct {
-	URL          string // direct progressive Part URL incl. token (server-side only)
 	VideoCodec   string // "h264", "hevc", ...
-	AudioCodec   string // "aac", "ac3", "eac3", "dca" (= DTS), ...
-	Container    string // "mkv", "mp4", ...
 	VideoProfile string // "Main 10", "High", ...
-	AudioProfile string // "ma" (DTS-HD MA), "es" (DTS-ES), ...
 	Width        int
 	Height       int
 	Bitrate      int    // kbps, total file
-	AudioBitrate int    // kbps
-	AudioChannels int
 	FrameRate    string // "24p", "60p", ...
 	Duration     int64  // ms
-	Size         int64  // bytes
-	// Transcoded is true when URL points to Plex's Universal Transcoder
-	// (rather than a raw file). The remuxer uses this to drop the
-	// -readrate cap: Plex's transcoder paces its own output, so there's
-	// no need to throttle reads.
-	Transcoded bool
 }
 
 // ServerIdentity is the subset of Plex's root response we care about
@@ -244,17 +233,17 @@ type metadataResp struct {
 			Title    string `json:"title"`
 			Duration int64  `json:"duration"`
 			Media    []struct {
-				Container             string `json:"container"`
-				VideoCodec            string `json:"videoCodec"`
-				AudioCodec            string `json:"audioCodec"`
-				VideoProfile          string `json:"videoProfile"`
-				AudioProfile          string `json:"audioProfile"`
-				Width                 int    `json:"width"`
-				Height                int    `json:"height"`
-				Bitrate               int    `json:"bitrate"`
-				AudioChannels         int    `json:"audioChannels"`
-				VideoFrameRate        string `json:"videoFrameRate"`
-				Duration              int64  `json:"duration"`
+				Container      string `json:"container"`
+				VideoCodec     string `json:"videoCodec"`
+				AudioCodec     string `json:"audioCodec"`
+				VideoProfile   string `json:"videoProfile"`
+				AudioProfile   string `json:"audioProfile"`
+				Width          int    `json:"width"`
+				Height         int    `json:"height"`
+				Bitrate        int    `json:"bitrate"`
+				AudioChannels  int    `json:"audioChannels"`
+				VideoFrameRate string `json:"videoFrameRate"`
+				Duration       int64  `json:"duration"`
 				// Plex sets this to 1 on Optimized (pre-transcoded)
 				// versions and on Direct Stream-friendly originals.
 				// We treat 1 as "browser-friendly variant" and prefer
@@ -337,36 +326,19 @@ func (p *Plex) Resolve(ratingKey string) (*StreamInfo, error) {
 	}
 
 	si := &StreamInfo{
-		URL: p.BaseURL + part.Key + "?X-Plex-Token=" + url.QueryEscape(p.Token) +
-			"&download=1",
-		Container:     media.Container,
-		VideoCodec:    strings.ToLower(media.VideoCodec),
-		AudioCodec:    strings.ToLower(media.AudioCodec),
-		VideoProfile:  media.VideoProfile,
-		AudioProfile:  media.AudioProfile,
-		Width:         media.Width,
-		Height:        media.Height,
-		Bitrate:       media.Bitrate,
-		AudioChannels: media.AudioChannels,
-		FrameRate:     media.VideoFrameRate,
-		Duration:      duration,
-		Size:          part.Size,
+		VideoCodec:   strings.ToLower(media.VideoCodec),
+		VideoProfile: media.VideoProfile,
+		Width:        media.Width,
+		Height:       media.Height,
+		Bitrate:      media.Bitrate,
+		FrameRate:    media.VideoFrameRate,
+		Duration:     duration,
 	}
-	// Fall back to Stream entries if the top-level Media fields are empty
+	// Fall back to Stream entries if the top-level VideoCodec is empty
 	// (older Plex responses sometimes only populate one level).
 	for _, s := range part.Stream {
-		switch s.StreamType {
-		case 1:
-			if si.VideoCodec == "" {
-				si.VideoCodec = strings.ToLower(s.Codec)
-			}
-		case 2:
-			if si.AudioCodec == "" {
-				si.AudioCodec = strings.ToLower(s.Codec)
-			}
-			if si.AudioBitrate == 0 {
-				si.AudioBitrate = s.Bitrate
-			}
+		if s.StreamType == 1 && si.VideoCodec == "" {
+			si.VideoCodec = strings.ToLower(s.Codec)
 		}
 	}
 	return si, nil

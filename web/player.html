@@ -304,32 +304,6 @@
   #join.hidden { opacity: 0; pointer-events: none; }
   #join.ready { cursor: pointer; }
 
-  /* SVG progress ring behind the play icon. stroke-dashoffset is the
-     bulletproof way to do an animated progress arc — works the same in
-     every browser, transitions smoothly via plain CSS, and doesn't need
-     @property or conic-gradient gymnastics. */
-  #join .icon-wrap {
-    position: relative;
-    width: 96px; height: 96px;
-    display: flex; align-items: center; justify-content: center;
-  }
-  #join .ring {
-    position: absolute; inset: 0;
-    width: 100%; height: 100%;
-    transform: rotate(-90deg); /* start at 12 o'clock */
-  }
-  #join .ring .track {
-    fill: none;
-    stroke: rgba(212, 165, 116, 0.15);
-    stroke-width: 3;
-  }
-  #join .ring .fill {
-    fill: none;
-    stroke: var(--ember);
-    stroke-width: 3;
-    stroke-linecap: round;
-    transition: stroke-dashoffset .25s linear;
-  }
   #join .icon {
     width: 84px; height: 84px;
     border-radius: 50%;
