@@ -1,12 +1,14 @@
 # syntax=docker/dockerfile:1
 
 # --- ffmpeg: pinned static build, full codec support (x265/HEVC, aac, ...) ---
-# mwader/static-ffmpeg tracks upstream FFmpeg releases. Pinned for
-# reproducible builds; bump intentionally when a new upstream release lands.
-FROM mwader/static-ffmpeg:8.1.1 AS ffmpeg
+# Mirrored from mwader/static-ffmpeg:8.1.1 into our the registry registry so CI
+# builds don't hit Docker Hub's unauthenticated pull rate limit. Rehydrate
+# with crane from buildhost when bumping versions.
+FROM registry.example.com:5050/example/plex-watchparty/static-ffmpeg:8.1.1 AS ffmpeg
 
 # --- build the Go binary (pure Go, no cgo) ----------------------------------
-FROM golang:1.26-alpine AS build
+# Mirrored from library/golang:1.26-alpine — same reasoning as above.
+FROM registry.example.com:5050/example/plex-watchparty/golang:1.26-alpine AS build
 WORKDIR /src
 COPY go.mod ./
 RUN go mod download
