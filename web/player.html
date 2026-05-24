@@ -624,27 +624,58 @@ function attach() {
     return;
   }
   if (window.Hls && Hls.isSupported()) {
+    // Rewrite the playlist on every fetch: strip the EVENT type tag and
+    // inject VOD instead. With VOD, hls.js sets MediaSource.duration to
+    // the sum of fragment durations and the whole range becomes seekable
+    // — which fixed our empty-v.seekable problem. We deliberately do NOT
+    // inject #EXT-X-ENDLIST until ffmpeg actually finishes, so hls.js
+    // keeps polling for newly-written segments.
+    class VodPLoader extends Hls.DefaultConfig.loader {
+      load(context, config, callbacks) {
+        const origOnSuccess = callbacks.onSuccess;
+        callbacks.onSuccess = (response, stats, ctx, net) => {
+          if (typeof response.data === 'string' && response.data.includes('#EXTM3U')) {
+            const before = response.data;
+            response.data = before.replace(/#EXT-X-PLAYLIST-TYPE:EVENT/g,
+                                          '#EXT-X-PLAYLIST-TYPE:VOD');
+            const rewrote = response.data !== before;
+            console.log('pLoader: playlist len=', response.data.length,
+                        ' rewrote=', rewrote,
+                        ' url=', context.url.split('/').pop());
+          }
+          origOnSuccess(response, stats, ctx, net);
+        };
+        super.load(context, config, callbacks);
+      }
+    }
     const hls = new Hls({
       backBufferLength: Infinity,
       maxBufferLength: 60,
       maxMaxBufferLength: 600,
+      pLoader: VodPLoader,
     });
-    // Surface every playlist refresh + the resulting seekable range
-    // so we can tell whether hls.js is actually polling our EVENT
-    // playlist and how the seekable window evolves.
-    hls.on(Hls.Events.LEVEL_UPDATED, (_, data) => {
-      const d = data.details || {};
-      const seekable = [];
+    const seekableStr = () => {
+      const r = [];
       for (let i = 0; i < v.seekable.length; i++) {
-        seekable.push(v.seekable.start(i).toFixed(1) + '..' + v.seekable.end(i).toFixed(1));
+        r.push(v.seekable.start(i).toFixed(1) + '..' + v.seekable.end(i).toFixed(1));
       }
-      console.log('hls level update:',
+      return '[' + r.join(', ') + ']';
+    };
+    hls.on(Hls.Events.MANIFEST_PARSED, (_, data) => {
+      console.log('hls manifest parsed: levels=', data.levels.length,
+                  ' v.duration=', v.duration,
+                  ' v.seekable=', seekableStr());
+    });
+    hls.on(Hls.Events.LEVEL_LOADED, (_, data) => {
+      const d = data.details || {};
+      console.log('hls level loaded:',
                   ' live=', d.live,
+                  ' type=', d.type,
                   ' totalDur=', d.totalduration ? d.totalduration.toFixed(1) : '?',
                   ' fragments=', d.fragments ? d.fragments.length : '?',
-                  ' targetDur=', d.targetduration,
-                  ' holdBack=', d.holdBack,
-                  ' v.seekable=[' + seekable.join(', ') + ']');
+                  ' endList=', d.endList,
+                  ' v.duration=', v.duration,
+                  ' v.seekable=', seekableStr());
     });
     hls.on(Hls.Events.ERROR, (_, data) => {
       console.error('hls.js error', data);
