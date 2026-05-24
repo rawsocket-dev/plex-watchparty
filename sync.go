@@ -86,6 +86,9 @@ func (h *Hub) broadcastLoop() {
 	for range t.C {
 		h.mu.Lock()
 		if len(h.clients) > 0 {
+			if h.state.RatingKey != "" {
+				h.state.CachedRanges = h.cache.RangesFor(h.state.RatingKey)
+			}
 			h.broadcast()
 		}
 		h.mu.Unlock()
@@ -234,6 +237,9 @@ func (h *Hub) snapshot() State {
 }
 
 func (h *Hub) broadcast() {
+	if h.state.RatingKey != "" && h.cache != nil {
+		h.state.CachedRanges = h.cache.RangesFor(h.state.RatingKey)
+	}
 	s := h.snapshot()
 	for ch := range h.clients {
 		select {
