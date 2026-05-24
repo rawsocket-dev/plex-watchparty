@@ -145,13 +145,15 @@ func (rx *Remuxer) Start(ratingKey string, si *StreamInfo) error {
 	args = append(args,
 		"-f", "hls",
 		"-hls_time", "6",
-		// `event` instead of `vod`: writes the playlist incrementally as
-		// each segment lands. `vod` only finalizes the playlist when
-		// ffmpeg ends — useless when we want to start playback immediately
-		// and read along while ffmpeg races ahead.
-		"-hls_playlist_type", "event",
+		// VOD playlist type so hls.js advertises the full seekable range
+		// (event-type is treated as a live stream → tiny sliding seekable
+		// window → drag-back fails silently). The `omit_endlist` flag
+		// keeps ffmpeg from appending `#EXT-X-ENDLIST` even when it
+		// finishes, so the playlist can keep growing while we watch
+		// without ever closing.
+		"-hls_playlist_type", "vod",
 		"-hls_segment_type", "fmp4",
-		"-hls_flags", "independent_segments",
+		"-hls_flags", "omit_endlist+independent_segments",
 		"-hls_segment_filename", filepath.Join(dir, "seg_%05d.m4s"),
 		playlist,
 	)

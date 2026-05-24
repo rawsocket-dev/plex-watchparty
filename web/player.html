@@ -565,7 +565,15 @@ function attach() {
     return;
   }
   if (window.Hls && Hls.isSupported()) {
-    const hls = new Hls();
+    const hls = new Hls({
+      // Never trim back buffer — viewers need to be able to seek to
+      // anywhere in the movie. Memory cost is tolerable for one stream.
+      backBufferLength: Infinity,
+      // Give us a generous forward buffer so the ffmpeg→browser gap
+      // doesn't cause stalls on fast-paced sources.
+      maxBufferLength: 60,
+      maxMaxBufferLength: 600,
+    });
     hls.on(Hls.Events.ERROR, (_, data) => {
       console.error('hls.js error', data);
       if (data.fatal) {
