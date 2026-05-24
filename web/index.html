@@ -5,47 +5,155 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Pick a movie</title>
 <style>
+  :root { color-scheme: dark; }
   body { margin:0; background:#0d0d10; color:#eee;
          font-family:system-ui,sans-serif; }
-  header { padding:1rem 1.5rem; font-size:1.2rem; border-bottom:1px solid #222; }
-  ul { list-style:none; margin:0; padding:1rem; display:grid;
+  header { padding:1rem 1.5rem; border-bottom:1px solid #222;
+           display:flex; gap:1rem; align-items:center; flex-wrap:wrap;
+           position:sticky; top:0; background:#0d0d10; z-index:10; }
+  header h1 { font-size:1.1rem; margin:0; font-weight:600; }
+  #search { flex:1; min-width:200px; padding:.55rem .85rem;
+            background:#17171c; color:#eee; border:1px solid #2a2a32;
+            border-radius:8px; font-size:.95rem; }
+  #search:focus { outline:none; border-color:#5b6cff; }
+  #status { padding:1rem 1.5rem; color:#888; }
+  .letter-group { padding:.5rem 1.5rem 1rem; }
+  .letter-group h2 { margin:1rem 0 .5rem; font-size:1rem; color:#8a8aa0;
+                     font-weight:600; letter-spacing:.05em; }
+  ul { list-style:none; margin:0; padding:0; display:grid;
        grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:.6rem; }
   li button { width:100%; text-align:left; padding:.9rem 1rem; cursor:pointer;
-       background:#17171c; color:#eee; border:1px solid #2a2a32;
-       border-radius:10px; font-size:.95rem; }
+              background:#17171c; color:#eee; border:1px solid #2a2a32;
+              border-radius:10px; font-size:.95rem; }
   li button:hover { border-color:#5b6cff; }
-  .year { color:#888; font-size:.8rem; }
-  #status { padding:1rem 1.5rem; color:#888; }
+  li button:disabled { opacity:.6; cursor:default; }
+  .year { color:#888; font-size:.8rem; margin-left:.4rem; }
+  .empty { padding:2rem 1.5rem; color:#888; }
 </style>
 </head>
 <body>
-  <header>Choose what we watch together</header>
-  <div id="status">Loading library…</div>
-  <ul id="list"></ul>
+<header>
+  <h1>Choose what we watch</h1>
+  <input id="search" type="search" placeholder="Search titles…" autofocus>
+</header>
+<div id="status">Loading library…</div>
+<div id="groups"></div>
+
 <script>
-async function load() {
-  const r = await fetch('/api/movies');
-  if (!r.ok) { status.textContent = 'Failed to load library'; return; }
-  const movies = await r.json();
-  status.textContent = movies.length + ' movies';
-  list.innerHTML = '';
-  for (const m of movies) {
-    const li = document.createElement('li');
-    const b = document.createElement('button');
-    b.innerHTML = m.title +
-      (m.year ? ' <span class="year">' + m.year + '</span>' : '');
-    b.onclick = async () => {
-      b.disabled = true; b.textContent = 'Starting…';
-      await fetch('/control', {
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({action:'load', ratingKey:m.ratingKey})
+const status = document.getElementById('status');
+const groups = document.getElementById('groups');
+const search = document.getElementById('search');
+
+let allMovies = [];
+
+// "The Matrix" → "Matrix", "An American …" → "American …"
+// So titles group + sort the way a human reader expects.
+function sortKey(title) {
+  return title.replace(/^(the|a|an)\s+/i, '').toLocaleLowerCase();
+}
+
+function bucketFor(title) {
+  const c = sortKey(title).charAt(0).toUpperCase();
+  return /[A-Z]/.test(c) ? c : '#';
+}
+
+function makeButton(m) {
+  const b = document.createElement('button');
+  b.innerHTML = escapeHTML(m.title) +
+    (m.year ? ' <span class="year">' + m.year + '</span>' : '');
+  b.onclick = async () => {
+    b.disabled = true;
+    b.textContent = 'Starting…';
+    try {
+      const r = await fetch('/control', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({action: 'load', ratingKey: m.ratingKey}),
       });
+      if (!r.ok) throw new Error(await r.text());
       location.href = '/watch';
-    };
-    li.appendChild(b); list.appendChild(li);
+    } catch (e) {
+      b.disabled = false;
+      b.textContent = m.title + ' (retry)';
+      console.error(e);
+    }
+  };
+  return b;
+}
+
+function escapeHTML(s) {
+  return s.replace(/[&<>"']/g, c => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;',
+  })[c]);
+}
+
+function render(movies) {
+  groups.innerHTML = '';
+  if (movies.length === 0) {
+    groups.innerHTML = '<div class="empty">No matches.</div>';
+    return;
+  }
+
+  // Group by first letter (using the article-stripped sort key).
+  const byLetter = new Map();
+  for (const m of movies) {
+    const b = bucketFor(m.title);
+    if (!byLetter.has(b)) byLetter.set(b, []);
+    byLetter.get(b).push(m);
+  }
+
+  // Letters A–Z first (in order), then '#' for numbers/symbols.
+  const letters = [...byLetter.keys()].sort((a, b) => {
+    if (a === '#') return 1;
+    if (b === '#') return -1;
+    return a.localeCompare(b);
+  });
+
+  for (const letter of letters) {
+    const section = document.createElement('section');
+    section.className = 'letter-group';
+    const h = document.createElement('h2');
+    h.textContent = letter;
+    section.appendChild(h);
+    const ul = document.createElement('ul');
+    for (const m of byLetter.get(letter)) {
+      const li = document.createElement('li');
+      li.appendChild(makeButton(m));
+      ul.appendChild(li);
+    }
+    section.appendChild(ul);
+    groups.appendChild(section);
   }
 }
+
+function applyFilter() {
+  const q = search.value.trim().toLocaleLowerCase();
+  if (!q) {
+    render(allMovies);
+    return;
+  }
+  const filtered = allMovies.filter(m =>
+    m.title.toLocaleLowerCase().includes(q)
+  );
+  render(filtered);
+}
+
+async function load() {
+  try {
+    const r = await fetch('/api/movies');
+    if (!r.ok) throw new Error(await r.text());
+    allMovies = await r.json();
+    // Sort once globally so each bucket is already in display order.
+    allMovies.sort((a, b) => sortKey(a.title).localeCompare(sortKey(b.title)));
+    status.textContent = allMovies.length + ' movies';
+    render(allMovies);
+  } catch (e) {
+    status.textContent = 'Failed to load library';
+    console.error(e);
+  }
+}
+
+search.addEventListener('input', applyFilter);
 load();
 </script>
 </body>
