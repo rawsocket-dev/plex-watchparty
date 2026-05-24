@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
+	"strings"
 	"sync"
 )
 
@@ -143,4 +145,72 @@ func (c *SegmentCache) RangesFor(ratingKey string) [][2]float64 {
 		out[i] = [2]float64{float64(m.s) / 1000.0, float64(m.e) / 1000.0}
 	}
 	return out
+}
+
+// LoadFromDisk walks the cache directory and rebuilds the in-memory
+// index from existing files. Stale .tmp files are cleaned up. Garbage
+// filenames are skipped (we don't delete them — could be user data
+// the cache shares a dir with).
+func (c *SegmentCache) LoadFromDisk() error {
+	movieDirs, err := os.ReadDir(c.dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for _, md := range movieDirs {
+		if !md.IsDir() {
+			continue
+		}
+		ratingKey := md.Name()
+		movieDir := filepath.Join(c.dir, ratingKey)
+		entries, err := os.ReadDir(movieDir)
+		if err != nil {
+			continue
+		}
+		for _, ent := range entries {
+			name := ent.Name()
+			full := filepath.Join(movieDir, name)
+			if strings.HasSuffix(name, ".tmp") {
+				_ = os.Remove(full) // stale write
+				continue
+			}
+			startMs, endMs, ok := parseCacheName(name)
+			if !ok {
+				continue
+			}
+			info, err := ent.Info()
+			if err != nil {
+				continue
+			}
+			key := cacheKey{ratingKey: ratingKey, startMs: startMs, endMs: endMs}
+			e := &cacheEntry{key: key, path: full, bytes: info.Size()}
+			e.elem = c.lru.PushBack(e) // back = oldest; LoadFromDisk creates LRU as old
+			c.entries[key] = e
+			c.totalBytes += e.bytes
+		}
+	}
+	return nil
+}
+
+// parseCacheName extracts (startMs, endMs) from "seg_<startMs>_<endMs>.ts".
+// Returns ok=false for any filename that doesn't match.
+func parseCacheName(name string) (int64, int64, bool) {
+	if !strings.HasPrefix(name, "seg_") || !strings.HasSuffix(name, ".ts") {
+		return 0, 0, false
+	}
+	mid := strings.TrimSuffix(strings.TrimPrefix(name, "seg_"), ".ts")
+	parts := strings.Split(mid, "_")
+	if len(parts) != 2 {
+		return 0, 0, false
+	}
+	s, err1 := strconv.ParseInt(parts[0], 10, 64)
+	e, err2 := strconv.ParseInt(parts[1], 10, 64)
+	if err1 != nil || err2 != nil {
+		return 0, 0, false
+	}
+	return s, e, true
 }

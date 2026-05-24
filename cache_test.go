@@ -152,3 +152,44 @@ func TestSegmentCacheRangesForSeparatesMovies(t *testing.T) {
 		t.Fatalf("expected 1 range per movie, got rk1=%v rk2=%v", r1, r2)
 	}
 }
+
+func TestSegmentCacheLoadFromDisk(t *testing.T) {
+	dir := t.TempDir()
+	// First instance: populate.
+	c1 := NewSegmentCache(dir, 1<<30)
+	for _, k := range []cacheKey{
+		{ratingKey: "rk1", startMs: 0, endMs: 6000},
+		{ratingKey: "rk1", startMs: 6000, endMs: 12000},
+		{ratingKey: "rk2", startMs: 0, endMs: 6000},
+	} {
+		if _, err := c1.Put(k, strings.NewReader("xxxxx")); err != nil {
+			t.Fatalf("Put: %v", err)
+		}
+	}
+	// Plant a garbage filename + a stale .tmp; both should be ignored / cleaned.
+	if err := os.WriteFile(filepath.Join(dir, "rk1", "junk.ts"), []byte("nope"), 0o644); err != nil {
+		t.Fatalf("write junk: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "rk1", "seg_0_6000.ts.tmp"), []byte("partial"), 0o644); err != nil {
+		t.Fatalf("write tmp: %v", err)
+	}
+
+	// Second instance: load and verify.
+	c2 := NewSegmentCache(dir, 1<<30)
+	if err := c2.LoadFromDisk(); err != nil {
+		t.Fatalf("LoadFromDisk: %v", err)
+	}
+	for _, k := range []cacheKey{
+		{ratingKey: "rk1", startMs: 0, endMs: 6000},
+		{ratingKey: "rk1", startMs: 6000, endMs: 12000},
+		{ratingKey: "rk2", startMs: 0, endMs: 6000},
+	} {
+		if _, ok := c2.Get(k); !ok {
+			t.Errorf("expected %v in loaded cache", k)
+		}
+	}
+	// .tmp file should be cleaned up.
+	if _, err := os.Stat(filepath.Join(dir, "rk1", "seg_0_6000.ts.tmp")); !os.IsNotExist(err) {
+		t.Errorf("expected .tmp cleaned, stat err = %v", err)
+	}
+}
