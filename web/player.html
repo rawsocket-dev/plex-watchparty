@@ -661,10 +661,15 @@ function targetFromState(s) {
   return t;
 }
 
+// Host's player is the source of truth for its own playback. We only
+// auto-seek it ONCE (the very first state we receive — useful when
+// the host refreshes their tab mid-movie and we want to resume them
+// at the right position). After that, host's v.currentTime is law,
+// and we instead push the host's actual position back to the server
+// (see broadcastHostPosition below) so viewers can sync to reality.
+let firstStateApplied = false;
+
 function applyState(s, reason) {
-  // Drop broadcasts that predate our last local action — those can
-  // otherwise revert a scrub/play/pause the moment a stale in-flight
-  // message arrives. (Server clock vs client clock — 500 ms slack.)
   if (lastLocalActionMs && s.updatedAtMs && s.updatedAtMs < lastLocalActionMs - 500) {
     console.log('ignoring stale state @', s.updatedAtMs, '(local action @', lastLocalActionMs, ')');
     return;
@@ -690,10 +695,12 @@ function applyState(s, reason) {
 
   const target = targetFromState(s);
   applying = true;
-  if (Math.abs(v.currentTime - target) > DRIFT && isFinite(target)) {
+  const shouldCorrect = !isHost || !firstStateApplied;
+  if (shouldCorrect && Math.abs(v.currentTime - target) > DRIFT && isFinite(target)) {
     if (reason) console.log('apply', reason, '→ seek', target.toFixed(2));
     v.currentTime = target;
   }
+  firstStateApplied = true;
   if (s.playing && v.paused) v.play().catch(()=>{});
   if (!s.playing && !v.paused) v.pause();
   setTimeout(() => { applying = false; }, 250);
@@ -738,13 +745,18 @@ setInterval(() => {
   syncEl.classList.toggle('drifting', Math.abs(drift) > DRIFT / 2);
   syncEl.classList.toggle('locked',   Math.abs(drift) <= DRIFT / 2);
 
+  // Host: never auto-correct. Host's v.currentTime is the source of
+  // truth — if their 4K HEVC decoder is lagging, we DO NOT want to
+  // hard-seek forward (it'd cause visible skips). Instead, the
+  // broadcastHostPosition tick below pushes the host's actual
+  // position back to the server, so viewers sync to reality.
+  if (isHost) return;
+
   if (applying) {
     if (tickCount % 5 === 0) console.log('drift tick: still applying, skip correction');
     return;
   }
   if (v.paused) {
-    // Host wants playing but we're paused (autoplay block / decode
-    // stall). Best we can do is the next tick.
     if (tickCount % 5 === 0) console.log('drift tick: v.paused but state.playing — autoplay blocked?');
     return;
   }
@@ -766,6 +778,27 @@ setInterval(() => {
     }, 250);
   }
 }, 2000);
+
+// Host position broadcast. While playing, periodically push the
+// host's actual v.currentTime to the server (via the existing seek
+// action). This keeps server-side state in sync with where the host
+// REALLY is — not where the 1×-extrapolation thinks they should be —
+// so a host with a slow HEVC decoder, brief stall, etc. doesn't
+// drag viewers out of position. Posts only when meaningfully out of
+// sync with server's view (to avoid spamming /control every few s).
+setInterval(() => {
+  if (!isHost) return;
+  if (!lastState || !lastState.playing || !lastState.ratingKey) return;
+  if (v.paused || applying) return;
+  const serverThinks = targetFromState(lastState);
+  if (!isFinite(serverThinks)) return;
+  const delta = Math.abs(v.currentTime - serverThinks);
+  if (delta < 1.0) return; // server's view is fine; don't spam
+  console.log('host position correction: server thinks', serverThinks.toFixed(2),
+              ' but we are at', v.currentTime.toFixed(2), '— pushing');
+  lastLocalActionMs = Date.now();
+  post('seek', { positionSec: v.currentTime });
+}, 3000);
 
 // --- local controls broadcast to everyone -----------------------------------
 // Viewers can't drive playback; their event echoes don't post.
