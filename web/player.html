@@ -305,6 +305,7 @@
   #join.ready { cursor: pointer; }
 
   #join .icon {
+    position: relative;
     width: 84px; height: 84px;
     border-radius: 50%;
     border: 1.5px solid var(--rule);
@@ -313,15 +314,48 @@
     transition: transform .25s ease, background .25s ease,
                 box-shadow .25s ease, border-color .25s ease, color .25s ease;
   }
+  /* Soft halo that pulses behind the icon when the overlay is ready —
+     the strongest "this is interactive" cue. Sits behind the icon via
+     z-index so the play glyph stays crisp on top. */
+  #join .icon::before {
+    content: "";
+    position: absolute;
+    inset: -18px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(212, 165, 116, .35) 0%,
+                                        rgba(212, 165, 116, 0) 70%);
+    opacity: 0;
+    pointer-events: none;
+    z-index: -1;
+  }
   #join .icon svg { width: 32px; height: 32px; margin-left: 4px; }
   #join.ready .icon {
     border-color: var(--ember);
     color: var(--ember);
+    animation: join-breathe 2.6s ease-in-out infinite;
+  }
+  #join.ready .icon::before {
+    animation: join-halo 2.6s ease-in-out infinite;
   }
   #join.ready:hover .icon {
     background: rgba(212, 165, 116, .12);
-    transform: scale(1.05);
-    box-shadow: 0 0 32px rgba(212, 165, 116, .25);
+    transform: scale(1.08);
+    box-shadow: 0 0 36px rgba(212, 165, 116, .35);
+    animation: none;
+  }
+  #join.ready:hover .icon::before { animation: none; opacity: .55; }
+  @keyframes join-breathe {
+    0%, 100% { transform: scale(1);    box-shadow: 0 0 0 rgba(212, 165, 116, 0); }
+    50%      { transform: scale(1.04); box-shadow: 0 0 24px rgba(212, 165, 116, .18); }
+  }
+  @keyframes join-halo {
+    0%, 100% { opacity: 0;   transform: scale(0.9); }
+    50%      { opacity: .55; transform: scale(1.1); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    #join.ready .icon,
+    #join.ready .icon::before { animation: none; }
+    #join.ready .icon::before { opacity: .35; }
   }
   #join .label {
     font-family: var(--serif);
@@ -659,6 +693,30 @@ joinEl.addEventListener('click', () => {
 joinEl.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); joinEl.click(); }
 });
+
+// Pick a random tagline pair so the join screen feels alive across
+// reloads. Pure cosmetic — the click handler doesn't care which one
+// is shown.
+const joinTaglines = [
+  ['Take your seat.',        'click anywhere to join'],
+  ['Settle in.',             'tap any spot to begin'],
+  ['House lights dimming.',  'one click and we roll'],
+  ['Find your spot.',        'press to begin'],
+  ['Pull up a chair.',       'click here when ready'],
+  ['Almost showtime.',       'click anywhere to join'],
+];
+function pickJoinTagline() {
+  const [label, hint] = joinTaglines[Math.floor(Math.random() * joinTaglines.length)];
+  const lbl = joinEl.querySelector('.label');
+  const hnt = joinEl.querySelector('.hint');
+  if (lbl) lbl.textContent = label;
+  if (hnt) hnt.textContent = hint;
+}
+// The overlay is up the moment /watch loads. With the migration's
+// thinner client, there's no buffer gate to wait for — a single user
+// gesture is all we need to satisfy autoplay policy. Light it up now.
+pickJoinTagline();
+joinEl.classList.add('ready');
 
 
 let loadedKey = null;       // ratingKey currently attached to the <video>
