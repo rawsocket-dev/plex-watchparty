@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"sync"
 	"time"
@@ -113,11 +114,15 @@ func (h *Hub) HandleControl(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if req.Action == "load" {
+		t0 := time.Now()
 		si, err := h.plex.Resolve(req.RatingKey)
 		if err != nil {
 			http.Error(w, "resolve: "+err.Error(), http.StatusBadGateway)
 			return
 		}
+		resolveMs := time.Since(t0).Milliseconds()
+
+		tList := time.Now()
 		movies, _ := h.plex.ListMovies()
 		title := req.RatingKey
 		for _, m := range movies {
@@ -126,10 +131,19 @@ func (h *Hub) HandleControl(w http.ResponseWriter, r *http.Request) {
 				break
 			}
 		}
+		listMs := time.Since(tList).Milliseconds()
+
+		tRemux := time.Now()
 		if err := h.rx.Start(req.RatingKey, si); err != nil {
 			http.Error(w, "remux: "+err.Error(), http.StatusBadGateway)
 			return
 		}
+		remuxMs := time.Since(tRemux).Milliseconds()
+		totalMs := time.Since(t0).Milliseconds()
+
+		log.Printf("load %q: resolve=%dms list=%dms remux=%dms total=%dms",
+			title, resolveMs, listMs, remuxMs, totalMs)
+
 		h.mu.Lock()
 		h.state = State{
 			RatingKey: req.RatingKey, Title: title,
@@ -137,7 +151,14 @@ func (h *Hub) HandleControl(w http.ResponseWriter, r *http.Request) {
 		}
 		h.broadcast()
 		h.mu.Unlock()
-		w.WriteHeader(http.StatusNoContent)
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]int64{
+			"plexResolveMs": resolveMs,
+			"plexListMs":    listMs,
+			"remuxStartMs":  remuxMs,
+			"totalMs":       totalMs,
+		})
 		return
 	}
 

@@ -106,10 +106,12 @@ func (rx *Remuxer) Start(ratingKey string, si *StreamInfo) error {
 
 	cmd := exec.CommandContext(ctx, "ffmpeg", args...)
 	cmd.Stderr = os.Stderr
+	startedAt := time.Now()
 	if err := cmd.Start(); err != nil {
 		cancel()
 		return fmt.Errorf("start ffmpeg: %w", err)
 	}
+	spawnMs := time.Since(startedAt).Milliseconds()
 	go func() {
 		if err := cmd.Wait(); err != nil && ctx.Err() == nil {
 			log.Printf("ffmpeg exited: %v", err)
@@ -122,6 +124,8 @@ func (rx *Remuxer) Start(ratingKey string, si *StreamInfo) error {
 	deadline := time.Now().Add(90 * time.Second)
 	for time.Now().Before(deadline) {
 		if _, err := os.Stat(playlist); err == nil {
+			log.Printf("ffmpeg %s: spawn=%dms playlist=%dms",
+				ratingKey, spawnMs, time.Since(startedAt).Milliseconds())
 			return nil
 		}
 		if ctx.Err() != nil {

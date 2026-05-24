@@ -295,6 +295,7 @@ function makeButton(m) {
   b.onclick = async () => {
     b.disabled = true;
     b.querySelector('.title').textContent = 'cueing the projector…';
+    const t0 = performance.now();
     try {
       const r = await fetch('/control', {
         method: 'POST',
@@ -302,6 +303,17 @@ function makeButton(m) {
         body: JSON.stringify({action: 'load', ratingKey: m.ratingKey}),
       });
       if (!r.ok) throw new Error(await r.text());
+      const clickToControlMs = Math.round(performance.now() - t0);
+      // Server returns phase timings (resolve/list/remux/total). Stash with
+      // the click timestamp so /watch can report end-to-end TTFF.
+      let server = {};
+      try { server = await r.json(); } catch (_) {}
+      sessionStorage.setItem('lastLoad', JSON.stringify({
+        title: m.title,
+        clickToControlMs,
+        server,
+        navAt: Date.now(),
+      }));
       location.href = '/watch';
     } catch (e) {
       b.disabled = false;
@@ -358,12 +370,15 @@ function render(movies) {
 }
 
 function applyFilter() {
+  const t0 = performance.now();
   const q = searchEl.value.trim().toLocaleLowerCase();
   const list = q
     ? allMovies.filter(m => m.title.toLocaleLowerCase().includes(q))
     : allMovies;
   render(list);
   countEl.textContent = list.length + ' / ' + allMovies.length + ' titles';
+  console.log('search filter+render:', (performance.now() - t0).toFixed(1), 'ms',
+              '·', list.length, 'of', allMovies.length);
 }
 
 async function load() {
