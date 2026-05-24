@@ -738,13 +738,27 @@ function attach() {
                   ' v.duration=', v.duration,
                   ' v.seekable=', seekableStr());
     });
+    // bufferFullError fires constantly on high-bitrate 4K HEVC because
+    // hls.js targets a buffer length that exceeds Chrome's MSE byte
+    // quota at this bitrate. hls.js's automatic eviction handles it
+    // cleanly; logging each occurrence with a stack trace is just
+    // noise. Rate-limit to one summary line per 30s.
+    let bufferFullCount = 0;
+    let lastBufferFullLogMs = 0;
     hls.on(Hls.Events.ERROR, (_, data) => {
-      // Non-fatal errors (bufferFullError, fragLoadTimeOut on a single
-      // segment, etc.) — hls.js recovers automatically. Log as warn,
-      // one line, no stack: keeps the console scannable for real
-      // problems without losing visibility.
       if (!data.fatal) {
-        console.warn('hls.js (non-fatal):', data.details, data.reason || '');
+        if (data.details === 'bufferFullError') {
+          bufferFullCount++;
+          if (Date.now() - lastBufferFullLogMs > 30000) {
+            console.log('hls.js: bufferFullError ×' + bufferFullCount +
+                        ' in last 30s (hls.js handles via auto-eviction)');
+            lastBufferFullLogMs = Date.now();
+            bufferFullCount = 0;
+          }
+          return;
+        }
+        // Other non-fatal errors: one-line warn, no stack trace expansion.
+        console.log('hls.js non-fatal:', data.details, data.reason || '');
         return;
       }
       console.error('hls.js FATAL error', data);
