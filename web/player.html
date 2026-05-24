@@ -182,13 +182,18 @@
   }
   #scrub-hit:hover #scrub-track,
   #scrub-hit.dragging #scrub-track { height: 8px; }
-  #scrub-buffered, #scrub-fill {
+  #scrub-seekable, #scrub-buffered, #scrub-fill {
     position: absolute;
     left: 0; top: 0;
     height: 100%;
     border-radius: 2px;
     pointer-events: none;
   }
+  /* Stack: track (background, can't seek here) < seekable (can seek)
+     < buffered (already loaded) < fill (played). Layered colors are
+     subtle on purpose; the visible "available to scrub" cue is just
+     a slightly lighter band. */
+  #scrub-seekable { background: var(--rule-hi, #3a342c); width: 0; opacity: .55; }
   #scrub-buffered { background: var(--rule-hi, #3a342c); width: 0; }
   #scrub-fill     { background: var(--ember);            width: 0; }
   #scrub-thumb {
@@ -320,6 +325,7 @@
   <div id="scrub" aria-label="Playback position">
     <div id="scrub-hit">
       <div id="scrub-track">
+        <div id="scrub-seekable"></div>
         <div id="scrub-buffered"></div>
         <div id="scrub-fill"></div>
       </div>
@@ -361,6 +367,7 @@ const scrubHit      = document.getElementById('scrub-hit');
 const scrubTrack    = document.getElementById('scrub-track');
 const scrubFill     = document.getElementById('scrub-fill');
 const scrubBuffered = document.getElementById('scrub-buffered');
+const scrubSeekable = document.getElementById('scrub-seekable');
 const scrubThumb    = document.getElementById('scrub-thumb');
 const scrubTooltip  = document.getElementById('scrub-tooltip');
 const scrubTime     = document.getElementById('scrub-time');
@@ -417,11 +424,21 @@ function updateScrub() {
       const buf = v.buffered.end(v.buffered.length - 1);
       scrubBuffered.style.width = Math.min(100, (buf / dur) * 100) + '%';
     }
+    // Seekable range — for live/event playlists this lags behind the
+    // total movie duration; the lighter band shows the user the
+    // portion of the bar they can actually scrub into.
+    if (v.seekable.length > 0) {
+      const sk = v.seekable.end(v.seekable.length - 1);
+      scrubSeekable.style.width = Math.min(100, (sk / dur) * 100) + '%';
+    } else {
+      scrubSeekable.style.width = '0%';
+    }
     scrubTime.textContent = fmtTime(cur) + ' / ' + fmtTime(dur);
   } else {
     scrubHit.classList.remove('ready');
     scrubFill.style.width = '0%';
     scrubBuffered.style.width = '0%';
+    scrubSeekable.style.width = '0%';
     scrubTime.textContent = fmtTime(cur) + ' / —';
   }
 }
