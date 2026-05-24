@@ -122,6 +122,24 @@
   }
   a.back:hover { color: var(--ember-hi); }
 
+  /* Viewer mode — controls hidden, scrub bar visually disabled. */
+  body.viewer .ctrl { display: none; }
+  body.viewer #scrub-hit { cursor: default; }
+  body.viewer #scrub-hit:hover #scrub-track { height: 4px; }
+  body.viewer #scrub-thumb { opacity: .65; }
+  body.viewer #scrub-hit:hover #scrub-thumb,
+  body.viewer #scrub-hit.dragging #scrub-thumb { transform: translateY(-50%); }
+  body.viewer #scrub-tooltip { display: none; }
+  #viewer-tag {
+    font-family: var(--mono);
+    font-size: .6rem;
+    letter-spacing: .25em;
+    text-transform: uppercase;
+    color: var(--ember);
+    display: none;
+  }
+  body.viewer #viewer-tag { display: inline; }
+
   video {
     flex: 1;
     width: 100%;
@@ -290,6 +308,7 @@
     <div class="left">
       <button class="ctrl" id="play">Play</button>
       <button class="ctrl" id="pause">Pause</button>
+      <span id="viewer-tag">guest</span>
     </div>
     <span id="title" class="idle">awaiting the host…</span>
     <div class="right">
@@ -328,6 +347,16 @@ const titleEl = document.getElementById('title');
 const syncEl  = document.getElementById('sync');
 const joinEl  = document.getElementById('join');
 const bwEl    = document.getElementById('bw');
+
+// Default to host until /api/whoami answers. Viewers can't seek or
+// drive playback; their scrub-bar interactions silently no-op and
+// their buttons are hidden via the .viewer body class.
+let isHost = true;
+fetch('/api/whoami').then(r => r.ok ? r.json() : null).then(d => {
+  if (!d) return;
+  isHost = d.role === 'host';
+  if (!isHost) document.body.classList.add('viewer');
+}).catch(() => {});
 const scrubHit      = document.getElementById('scrub-hit');
 const scrubTrack    = document.getElementById('scrub-track');
 const scrubFill     = document.getElementById('scrub-fill');
@@ -413,6 +442,7 @@ scrubHit.addEventListener('mousemove', (e) => {
 // Mouse drag — listeners live on window so the cursor can leave the
 // track mid-drag and still get the seek when released.
 scrubHit.addEventListener('mousedown', (e) => {
+  if (!isHost) return;
   if (knownDuration() <= 0) return;
   e.preventDefault();
   scrubDragging = true;
@@ -441,6 +471,7 @@ window.addEventListener('mouseup', () => {
 });
 // Touch
 scrubHit.addEventListener('touchstart', (e) => {
+  if (!isHost) return;
   if (knownDuration() <= 0) return;
   e.preventDefault();
   scrubDragging = true;
@@ -654,13 +685,15 @@ es.onmessage = (e) => {
 };
 
 // --- local controls broadcast to everyone -----------------------------------
-document.getElementById('play').onclick  = () => post('play');
-document.getElementById('pause').onclick = () => post('pause');
+// Viewers can't drive playback; their event echoes don't post.
+document.getElementById('play').onclick  = () => { if (isHost) post('play'); };
+document.getElementById('pause').onclick = () => { if (isHost) post('pause'); };
 v.addEventListener('seeked', () => {
+  if (!isHost) return;
   if (!applying) post('seek', {positionSec: v.currentTime});
 });
-v.addEventListener('play',  () => { if (!applying) post('play');  });
-v.addEventListener('pause', () => { if (!applying) post('pause'); });
+v.addEventListener('play',  () => { if (isHost && !applying) post('play');  });
+v.addEventListener('pause', () => { if (isHost && !applying) post('pause'); });
 </script>
 </body>
 </html>

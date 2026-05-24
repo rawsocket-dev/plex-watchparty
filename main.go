@@ -21,6 +21,7 @@ func main() {
 	plexURL := os.Getenv("PLEX_BASE_URL")
 	plexTok := os.Getenv("PLEX_TOKEN")
 	password := os.Getenv("WATCH_PASSWORD")
+	hostPassword := os.Getenv("HOST_PASSWORD")
 	if plexURL == "" || plexTok == "" || password == "" {
 		log.Fatal("set PLEX_BASE_URL, PLEX_TOKEN and WATCH_PASSWORD")
 	}
@@ -37,8 +38,13 @@ func main() {
 	rx := NewRemuxer(workDir)
 	rx.PruneOlderThan(7 * 24 * time.Hour)
 	hub := NewHub(plex, rx)
-	auth := NewAuth(password)
+	auth := NewAuth(password, hostPassword)
 	bw := newBwTracker()
+	if auth.HostEnabled() {
+		log.Printf("auth: host role enabled — viewers cannot pick / drive playback")
+	} else {
+		log.Printf("auth: no HOST_PASSWORD configured — any authenticated viewer can drive playback")
+	}
 
 	mux := http.NewServeMux()
 
@@ -73,7 +79,17 @@ func main() {
 	})
 
 	protected.HandleFunc("/events", hub.HandleEvents)
-	protected.HandleFunc("/control", hub.HandleControl)
+	// /control is host-gated. RequireHost is a no-op when HOST_PASSWORD
+	// isn't configured (preserves "any-friend-can-drive" default).
+	protected.Handle("/control", auth.RequireHost(http.HandlerFunc(hub.HandleControl)))
+
+	protected.HandleFunc("/api/whoami", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"role":        auth.EffectiveRole(r).String(),
+			"hostEnabled": auth.HostEnabled(),
+		})
+	})
 
 	// HLS playlist + segments come from the active remux session dir.
 	// Clients only ever touch this — never Plex, never the token.

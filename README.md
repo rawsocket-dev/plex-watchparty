@@ -101,8 +101,16 @@ go run .
 | `PLEX_BASE_URL`  | yes      | —                        |
 | `PLEX_TOKEN`     | yes      | —                        |
 | `WATCH_PASSWORD` | yes      | —                        |
+| `HOST_PASSWORD`  | no       | unset (= no host role)   |
 | `LISTEN_ADDR`    | no       | `:8080`                  |
 | `WORK_DIR`       | no       | `$TMPDIR/plexwatchparty` |
+
+When `HOST_PASSWORD` is set, the person who knows it is the **host** —
+the only one who can pick a movie, play, pause, or seek. Everyone else
+logs in with `WATCH_PASSWORD` and joins as a *viewer*: they see the
+library but can't pick from it, and the player UI hides the playback
+controls. If `HOST_PASSWORD` is unset (or equals `WATCH_PASSWORD`),
+the original "any friend can drive" behaviour is preserved.
 
 [Finding your Plex token.](https://support.plex.tv/articles/204059436-finding-an-authentication-token-x-plex-token/)
 

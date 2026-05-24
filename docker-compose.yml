@@ -12,7 +12,12 @@ services:
       # Your Plex server (token stays server-side, never sent to clients).
       PLEX_BASE_URL: "http://host.docker.internal:32400"
       PLEX_TOKEN: "${PLEX_TOKEN:?set PLEX_TOKEN}"
+      # Viewer password (everyone gets this — lets them watch).
       WATCH_PASSWORD: "${WATCH_PASSWORD:?set WATCH_PASSWORD}"
+      # Optional host password — only the host knows this; lets them
+      # pick / play / pause / seek. Omit (or set blank) to keep the
+      # old "any friend can drive" behaviour.
+      HOST_PASSWORD: "${HOST_PASSWORD:-}"
       # Persist remuxed segments outside the container layer so a
       # restart doesn't throw away hours of ffmpeg work.
       WORK_DIR: /data/sessions

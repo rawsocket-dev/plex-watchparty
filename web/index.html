@@ -245,6 +245,59 @@
     animation: rise .7s cubic-bezier(.2,.7,.2,1) forwards;
   }
   @keyframes rise { to { opacity: 1; transform: none; } }
+
+  /* Guest-mode banner shown to non-host viewers. The library still
+     renders below it, but the click handlers no-op and we encourage
+     the viewer to head to /watch and wait for the host. */
+  #guest {
+    display: none;
+    padding: 1.5rem clamp(1.25rem, 4vw, 3rem) 0;
+  }
+  #guest.show { display: block; }
+  #guest .card {
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    padding: 1.4rem 1.6rem;
+    background: rgba(212, 165, 116, .05);
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+    flex-wrap: wrap;
+  }
+  #guest .label {
+    font-family: var(--mono);
+    font-size: .65rem;
+    letter-spacing: .3em;
+    text-transform: uppercase;
+    color: var(--ember);
+  }
+  #guest .body {
+    font-family: var(--serif);
+    font-style: italic;
+    font-weight: 300;
+    font-size: 1.05rem;
+    color: var(--paper);
+    flex: 1;
+    min-width: 12rem;
+  }
+  #guest a.join {
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 1rem;
+    color: var(--paper);
+    text-decoration: none;
+    border-bottom: 1px solid var(--ember);
+    padding-bottom: 2px;
+    transition: color .2s ease;
+  }
+  #guest a.join:hover { color: var(--ember-hi); }
+
+  body.guest ul.films button { cursor: not-allowed; }
+  body.guest ul.films button:hover {
+    color: var(--paper-mute);
+    padding-left: 1rem;
+  }
+  body.guest ul.films button:hover::before { transform: scaleY(0); }
 </style>
 </head>
 <body>
@@ -259,6 +312,17 @@
   <span id="count" class="count">— titles</span>
 </header>
 
+<div id="guest">
+  <div class="card">
+    <span class="label">Guest</span>
+    <span class="body">
+      Only the host can pick what we watch.
+      Stay here and you'll see the library, but join the room to be
+      ready when the movie starts.
+    </span>
+    <a class="join" href="/watch">take your seat →</a>
+  </div>
+</div>
 <div id="status">Loading the library…</div>
 <div id="groups"></div>
 <footer>· intermission · grab a drink ·</footer>
@@ -286,6 +350,8 @@ function escapeHTML(s) {
   })[c]);
 }
 
+let isHost = true; // optimistic until /api/whoami answers
+
 function makeButton(m) {
   const b = document.createElement('button');
   b.type = 'button';
@@ -293,6 +359,7 @@ function makeButton(m) {
     '<span class="title">' + escapeHTML(m.title) + '</span>' +
     (m.year ? '<span class="year">' + m.year + '</span>' : '');
   b.onclick = async () => {
+    if (!isHost) return; // viewer: no-op
     b.disabled = true;
     b.querySelector('.title').textContent = 'cueing the projector…';
     try {
@@ -384,7 +451,21 @@ async function load() {
   }
 }
 
+async function loadWhoami() {
+  try {
+    const r = await fetch('/api/whoami');
+    if (!r.ok) return;
+    const d = await r.json();
+    isHost = d.role === 'host';
+    if (!isHost) {
+      document.body.classList.add('guest');
+      document.getElementById('guest').classList.add('show');
+    }
+  } catch (_) { /* default: assume host */ }
+}
+
 searchEl.addEventListener('input', applyFilter);
+loadWhoami();
 load();
 </script>
 </body>
