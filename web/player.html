@@ -347,7 +347,7 @@
     <div id="scrub-time">0:00 / —</div>
   </div>
   <div class="stage">
-    <video id="v" playsinline controls></video>
+    <video id="v" playsinline disablepictureinpicture></video>
     <div id="join" role="button" tabindex="0" aria-label="Click to join the party">
       <div class="icon" aria-hidden="true">
         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
@@ -696,7 +696,11 @@ function attach() {
       backBufferLength: 30,
       maxBufferLength: 15,
       maxMaxBufferLength: 30,
-      maxBufferSize: 30 * 1024 * 1024, // 30 MB hard byte cap
+      // 200 MB is high but our source can be 70+ Mbps HEVC (a 6 s
+      // segment alone is 54 MB at that rate). 30 MB rejected even a
+      // single fragment. Modern desktop Chrome's MSE quota is in the
+      // 200-300 MB range so this is within the platform's headroom.
+      maxBufferSize: 200 * 1024 * 1024,
       // Be more patient before declaring a starvation/stall — the
       // playlist polls every ~6s so a 12 s tolerance lets the next
       // refresh recover us before we cry stall.

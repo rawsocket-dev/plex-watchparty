@@ -144,7 +144,14 @@ func (rx *Remuxer) Start(ratingKey string, si *StreamInfo) error {
 	}
 	args = append(args,
 		"-f", "hls",
-		"-hls_time", "6",
+		// 2 s segments rather than 6 s. The original 6 s value made
+		// each segment of a 70+ Mbps HEVC source ~54 MB — bigger than
+		// Chrome's MSE source-buffer comfort zone, leading to a
+		// bufferFullError on the very first append. 2 s × 75 Mbps =
+		// ~18 MB per segment, well within budget. Trade-off is 3× the
+		// segment files on disk, but they're cheap and the prune sweep
+		// catches them.
+		"-hls_time", "2",
 		// `event` rather than `vod`: ffmpeg's vod playlist type does
 		// NOT write index.m3u8 incrementally — confirmed by inspecting
 		// the workdir during runs. event does, and is what makes the
