@@ -377,6 +377,12 @@ func (p *Plex) Resolve(ratingKey string) (*StreamInfo, error) {
 		si.AudioChannels = 2
 		log.Printf("plex: routing ratingKey %s through Universal Transcoder → 1920x1080 h264 @ %d kbps",
 			ratingKey, p.TranscodeKbps)
+		// Pre-flight the transcode URL so we surface Plex's actual error
+		// message (which usually identifies the missing parameter or
+		// reason) instead of letting ffmpeg report a bare 400.
+		if err := p.preflightTranscode(si.URL); err != nil {
+			return nil, fmt.Errorf("plex transcoder rejected request: %w", err)
+		}
 	}
 	// Fall back to Stream entries if the top-level Media fields are empty
 	// (older Plex responses sometimes only populate one level).
@@ -398,6 +404,36 @@ func (p *Plex) Resolve(ratingKey string) (*StreamInfo, error) {
 	return si, nil
 }
 
+// preflightTranscode does a HEAD request against the built transcode
+// URL. Plex returns a body with a useful error message on 4xx; ffmpeg
+// would only show us a bare "Server returned 400 Bad Request" line.
+// Surfacing Plex's reason here saves a debugging cycle.
+func (p *Plex) preflightTranscode(transcodeURL string) error {
+	req, err := http.NewRequest(http.MethodGet, transcodeURL, nil)
+	if err != nil {
+		return err
+	}
+	// Some Plex versions don't return a body for HEAD on the transcode
+	// endpoint, so we use a Range-limited GET and read a small slice of
+	// the response body if the status is bad.
+	req.Header.Set("Range", "bytes=0-0")
+	resp, err := p.http.Do(req)
+	if err != nil {
+		return fmt.Errorf("connect: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		return nil
+	}
+	body := make([]byte, 512)
+	n, _ := resp.Body.Read(body)
+	bodyStr := strings.TrimSpace(string(body[:n]))
+	if bodyStr == "" {
+		bodyStr = "<empty body>"
+	}
+	return fmt.Errorf("status %d: %s", resp.StatusCode, bodyStr)
+}
+
 // transcodeURL builds a Plex Universal Transcoder URL that targets
 // 1920x1080 h264 at p.TranscodeKbps. Plex transcodes on demand —
 // using its own hardware acceleration if configured — and serves
@@ -412,16 +448,22 @@ func (p *Plex) transcodeURL(ratingKey string, mediaIdx, partIdx int) string {
 	q.Set("path", "/library/metadata/"+ratingKey)
 	q.Set("mediaIndex", strconv.Itoa(mediaIdx))
 	q.Set("partIndex", strconv.Itoa(partIdx))
-	q.Set("protocol", "http")           // single MKV stream, not HLS/DASH
+	q.Set("hasMDE", "1")
 	q.Set("fastSeek", "1")
-	q.Set("directPlay", "0")            // force transcode
-	q.Set("directStream", "0")          // force re-encode (not just remux)
+	q.Set("copyts", "1")
+	q.Set("directPlay", "0")    // force transcode
+	q.Set("directStream", "0")  // force re-encode (not just remux)
+	q.Set("subtitles", "none")  // burn-in / external subs would confuse ffmpeg
 	q.Set("videoResolution", "1920x1080")
 	q.Set("maxVideoBitrate", strconv.Itoa(p.TranscodeKbps))
 	q.Set("videoBitrate", strconv.Itoa(p.TranscodeKbps))
 	q.Set("videoQuality", "100")
 	q.Set("audioBoost", "100")
-	q.Set("hasMDE", "1")
+	// Plex requires the session id BOTH as a query param and as the
+	// X-Plex-Session-Identifier "header" (Plex accepts headers via query
+	// params with the same name). Without `session`, the transcoder
+	// rejects the request with a vague 400.
+	q.Set("session", sessionID)
 	q.Set("X-Plex-Session-Identifier", sessionID)
 	q.Set("X-Plex-Token", p.Token)
 	q.Set("X-Plex-Client-Identifier", "plexwatchparty")
