@@ -727,19 +727,27 @@ function setStatus(text, kind) {
 
 // Show a non-interactive overlay during a mid-session transcoder restart
 // (host seeked past Plex's transcoded edge → new SessionToken from server).
+// restartPending lets the 'playing' listener below know it's safe to
+// auto-dismiss the overlay — without it we'd accidentally hide the
+// initial join overlay the moment the browser's autoplay-after-prior-
+// gesture lets the video start.
+let restartPending = false;
 function showRestartOverlay() {
   joinEl.classList.remove('hidden', 'ready');
   const label = joinEl.querySelector('.label');
   const hint  = joinEl.querySelector('.hint');
   if (label) label.textContent = 'Reseating the audience…';
   if (hint)  hint.textContent  = 'preparing the new scene';
+  restartPending = true;
 }
 
-// When hls.js reports playback resumed after a session restart, hide the
-// overlay. lastSessionToken > 0 guards against firing on the very first
-// 'playing' event (which is part of normal initial join).
+// Auto-dismiss only when we're recovering from a restart. The normal
+// initial-join overlay must wait for the user's click — otherwise
+// returning to a movie that the browser autoplays on remembers the
+// gesture would never show the play button at all.
 v.addEventListener('playing', () => {
-  if (lastSessionToken > 0) {
+  if (restartPending) {
+    restartPending = false;
     joinEl.classList.add('hidden');
   }
 });
