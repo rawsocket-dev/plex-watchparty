@@ -102,9 +102,13 @@ func (rx *Remuxer) Start(ratingKey string, si *StreamInfo) error {
 		// source that delivers a browser-friendly variant, not to burn
 		// CPU here.
 		"-c:v", "copy",
-		// Allow non-standard MP4 boxes (dvcC/dvvC for Dolby Vision).
-		// Browsers ignore them; the HEVC base layer plays normally.
-		"-strict", "unofficial",
+		// Intentionally NOT `-strict unofficial`: without it, ffmpeg
+		// drops the Dolby Vision dvcC/dvvC container boxes (the SEI
+		// strip below cleans the bitstream-side DV RPU). With the box
+		// present, Chrome's decoder pipeline sees "I am Dolby Vision"
+		// in the sample description and refuses the stream with
+		// kUnsupportedConfig even on machines that fully support the
+		// underlying HEVC Main10 codec config we'd otherwise hand it.
 	}
 	if si.VideoCodec == "hevc" || si.VideoCodec == "h265" {
 		args = append(args, "-tag:v", "hvc1") // Safari/Chrome need hvc1 in fMP4
