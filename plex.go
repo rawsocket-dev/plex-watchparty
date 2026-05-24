@@ -377,6 +377,7 @@ func (p *Plex) Resolve(ratingKey string) (*StreamInfo, error) {
 		si.AudioChannels = 2
 		log.Printf("plex: routing ratingKey %s through Universal Transcoder → 1920x1080 h264 @ %d kbps",
 			ratingKey, p.TranscodeKbps)
+		log.Printf("plex: transcode URL = %s", redactedURL(si.URL))
 		// Pre-flight the transcode URL so we surface Plex's actual error
 		// message (which usually identifies the missing parameter or
 		// reason) instead of letting ffmpeg report a bare 400.
@@ -448,21 +449,20 @@ func (p *Plex) transcodeURL(ratingKey string, mediaIdx, partIdx int) string {
 	q.Set("path", "/library/metadata/"+ratingKey)
 	q.Set("mediaIndex", strconv.Itoa(mediaIdx))
 	q.Set("partIndex", strconv.Itoa(partIdx))
-	q.Set("hasMDE", "1")
+	// `protocol=http` IS correct for start.mkv — it picks chunked-HTTP
+	// transport for the MKV container. (start.m3u8 uses protocol=hls,
+	// start.mpd uses protocol=dash.)
+	q.Set("protocol", "http")
 	q.Set("fastSeek", "1")
-	q.Set("copyts", "1")
-	q.Set("directPlay", "0")    // force transcode
-	q.Set("directStream", "0")  // force re-encode (not just remux)
-	q.Set("subtitles", "none")  // burn-in / external subs would confuse ffmpeg
+	q.Set("directPlay", "0")
+	q.Set("directStream", "0")
 	q.Set("videoResolution", "1920x1080")
 	q.Set("maxVideoBitrate", strconv.Itoa(p.TranscodeKbps))
 	q.Set("videoBitrate", strconv.Itoa(p.TranscodeKbps))
 	q.Set("videoQuality", "100")
 	q.Set("audioBoost", "100")
-	// Plex requires the session id BOTH as a query param and as the
-	// X-Plex-Session-Identifier "header" (Plex accepts headers via query
-	// params with the same name). Without `session`, the transcoder
-	// rejects the request with a vague 400.
+	q.Set("offset", "0")
+	q.Set("location", "lan")
 	q.Set("session", sessionID)
 	q.Set("X-Plex-Session-Identifier", sessionID)
 	q.Set("X-Plex-Token", p.Token)
@@ -473,4 +473,18 @@ func (p *Plex) transcodeURL(ratingKey string, mediaIdx, partIdx int) string {
 	q.Set("X-Plex-Device-Name", "plexwatchparty")
 	q.Set("X-Plex-Platform", "Linux")
 	return p.BaseURL + "/video/:/transcode/universal/start.mkv?" + q.Encode()
+}
+
+// redactedURL returns a transcode URL with the token replaced by
+// "<redacted>" so we can safely log it.
+func redactedURL(u string) string {
+	idx := strings.Index(u, "X-Plex-Token=")
+	if idx == -1 {
+		return u
+	}
+	end := strings.Index(u[idx:], "&")
+	if end == -1 {
+		return u[:idx] + "X-Plex-Token=<redacted>"
+	}
+	return u[:idx] + "X-Plex-Token=<redacted>" + u[idx+end:]
 }
