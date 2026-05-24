@@ -16,6 +16,11 @@ type State struct {
 	Title       string  `json:"title"`
 	Playing     bool    `json:"playing"`
 	PositionSec float64 `json:"positionSec"`
+	// DurationSec is the source-of-truth length of the movie, sourced
+	// from Plex metadata at load time. We broadcast it so the player
+	// can drive its scrub bar without depending on v.duration (which
+	// is Infinity with an event-type HLS playlist).
+	DurationSec float64 `json:"durationSec"`
 	UpdatedAtMs int64   `json:"updatedAtMs"`
 }
 
@@ -195,8 +200,12 @@ func (h *Hub) HandleControl(w http.ResponseWriter, r *http.Request) {
 
 		h.mu.Lock()
 		h.state = State{
-			RatingKey: req.RatingKey, Title: title,
-			Playing: false, PositionSec: 0, UpdatedAtMs: nowMs(),
+			RatingKey:   req.RatingKey,
+			Title:       title,
+			Playing:     false,
+			PositionSec: 0,
+			DurationSec: float64(si.Duration) / 1000.0,
+			UpdatedAtMs: nowMs(),
 		}
 		h.broadcast()
 		h.mu.Unlock()

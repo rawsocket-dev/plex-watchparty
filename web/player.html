@@ -282,58 +282,6 @@
     color: var(--paper-mute);
   }
 
-  /* unobtrusive perf strip — only renders after a load round-trip. */
-  #perf {
-    position: fixed;
-    left: clamp(.8rem, 2vw, 1.5rem);
-    top: 3.5rem;
-    background: rgba(10,9,8,.85);
-    backdrop-filter: blur(6px);
-    border: 1px solid var(--rule);
-    border-radius: 4px;
-    padding: .55rem 1.8rem .55rem .8rem;
-    font-family: var(--mono);
-    font-size: .62rem;
-    letter-spacing: .12em;
-    line-height: 1.7;
-    color: var(--paper-mute);
-    opacity: 0;
-    transition: opacity .4s ease;
-    z-index: 100;
-    text-transform: uppercase;
-    min-width: 14rem;
-  }
-  #perf.visible { opacity: 1; }
-  #perf b {
-    color: var(--ember);
-    font-weight: 500;
-  }
-  #perf .row { display: flex; justify-content: space-between; gap: 1.2rem; }
-  #perf .row span:last-child { color: var(--paper); }
-  #perf .head {
-    color: var(--paper-mute);
-    border-bottom: 1px solid var(--rule);
-    padding-bottom: .25rem;
-    margin-bottom: .35rem;
-    letter-spacing: .25em;
-  }
-  #perf .close {
-    position: absolute;
-    top: .3rem; right: .4rem;
-    width: 1.2rem; height: 1.2rem;
-    display: flex; align-items: center; justify-content: center;
-    background: transparent;
-    border: 0;
-    color: var(--paper-mute);
-    cursor: pointer;
-    font-family: var(--mono);
-    font-size: 1rem;
-    line-height: 1;
-    border-radius: 2px;
-    transition: color .15s ease, background .15s ease;
-    padding: 0;
-  }
-  #perf .close:hover { color: var(--ember); background: rgba(212,165,116,.08); }
 </style>
 </head>
 <body>
@@ -372,14 +320,12 @@
     </div>
   </div>
 </div>
-<div id="perf" title="Click to dismiss"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/hls.js@1"></script>
 <script>
 const v = document.getElementById('v');
 const titleEl = document.getElementById('title');
 const syncEl  = document.getElementById('sync');
-const perfEl  = document.getElementById('perf');
 const joinEl  = document.getElementById('join');
 const bwEl    = document.getElementById('bw');
 const scrubHit      = document.getElementById('scrub-hit');
@@ -401,6 +347,14 @@ function fmtTime(s) {
   const ss = String(sec).padStart(2, '0');
   return h > 0 ? h + ':' + mm + ':' + ss : mm + ':' + ss;
 }
+// Server pushes the movie duration via SSE state. We use that in
+// preference to v.duration because our HLS playlist is `event` type
+// (incremental) and v.duration is Infinity until the playlist closes.
+let serverDuration = 0;
+function knownDuration() {
+  if (isFinite(v.duration) && v.duration > 0) return v.duration;
+  return serverDuration > 0 ? serverDuration : 0;
+}
 let scrubDragging = false;
 let scrubPendingPct = null;
 function pctFromEvent(e) {
@@ -411,15 +365,16 @@ function pctFromEvent(e) {
 function paintAt(pct) {
   scrubFill.style.width  = (pct * 100) + '%';
   scrubThumb.style.left  = (pct * 100) + '%';
-  if (isFinite(v.duration)) {
-    scrubTooltip.textContent = fmtTime(pct * v.duration);
+  const dur = knownDuration();
+  if (dur > 0) {
+    scrubTooltip.textContent = fmtTime(pct * dur);
     scrubTooltip.style.left  = (pct * 100) + '%';
   }
 }
 function updateScrub() {
-  const dur = v.duration;
+  const dur = knownDuration();
   const cur = v.currentTime || 0;
-  if (isFinite(dur) && dur > 0) {
+  if (dur > 0) {
     scrubHit.classList.add('ready');
     if (!scrubDragging) paintAt(cur / dur);
     if (v.buffered.length > 0) {
@@ -440,18 +395,18 @@ v.addEventListener('progress', updateScrub);
 
 // Hover: keep the tooltip following the cursor with the target time.
 scrubHit.addEventListener('mousemove', (e) => {
-  if (!isFinite(v.duration)) return;
+  if (knownDuration() <= 0) return;
   const pct = pctFromEvent(e);
   if (scrubDragging) { paintAt(pct); scrubPendingPct = pct; }
   else {
-    scrubTooltip.textContent = fmtTime(pct * v.duration);
+    scrubTooltip.textContent = fmtTime(pct * knownDuration());
     scrubTooltip.style.left  = (pct * 100) + '%';
   }
 });
 // Mouse drag — listeners live on window so the cursor can leave the
 // track mid-drag and still get the seek when released.
 scrubHit.addEventListener('mousedown', (e) => {
-  if (!isFinite(v.duration)) return;
+  if (knownDuration() <= 0) return;
   e.preventDefault();
   scrubDragging = true;
   scrubHit.classList.add('dragging');
@@ -460,7 +415,7 @@ scrubHit.addEventListener('mousedown', (e) => {
   scrubPendingPct = pct;
 });
 window.addEventListener('mousemove', (e) => {
-  if (!scrubDragging || !isFinite(v.duration)) return;
+  if (!scrubDragging || knownDuration() <= 0) return;
   const pct = pctFromEvent(e);
   paintAt(pct);
   scrubPendingPct = pct;
@@ -469,14 +424,15 @@ window.addEventListener('mouseup', () => {
   if (!scrubDragging) return;
   scrubDragging = false;
   scrubHit.classList.remove('dragging');
-  if (scrubPendingPct != null && isFinite(v.duration)) {
-    v.currentTime = scrubPendingPct * v.duration;
+  const dur = knownDuration();
+  if (scrubPendingPct != null && dur > 0) {
+    v.currentTime = scrubPendingPct * dur;
   }
   scrubPendingPct = null;
 });
 // Touch
 scrubHit.addEventListener('touchstart', (e) => {
-  if (!isFinite(v.duration)) return;
+  if (knownDuration() <= 0) return;
   e.preventDefault();
   scrubDragging = true;
   scrubHit.classList.add('dragging');
@@ -485,7 +441,7 @@ scrubHit.addEventListener('touchstart', (e) => {
   scrubPendingPct = pct;
 }, { passive: false });
 scrubHit.addEventListener('touchmove', (e) => {
-  if (!scrubDragging || !isFinite(v.duration)) return;
+  if (!scrubDragging || knownDuration() <= 0) return;
   e.preventDefault();
   const pct = pctFromEvent(e);
   paintAt(pct);
@@ -495,8 +451,9 @@ scrubHit.addEventListener('touchend', () => {
   if (!scrubDragging) return;
   scrubDragging = false;
   scrubHit.classList.remove('dragging');
-  if (scrubPendingPct != null && isFinite(v.duration)) {
-    v.currentTime = scrubPendingPct * v.duration;
+  const dur = knownDuration();
+  if (scrubPendingPct != null && dur > 0) {
+    v.currentTime = scrubPendingPct * dur;
   }
   scrubPendingPct = null;
 });
@@ -550,54 +507,6 @@ let loadedKey = null;     // ratingKey currently attached to the <video>
 let applying = false;     // suppress echo while we apply server state
 const DRIFT = 0.75;       // seconds of tolerable drift before a hard seek
 
-// --- timing instrumentation -------------------------------------------------
-// index.html stashes the click→/control round-trip + server phase numbers
-// in sessionStorage before navigating here. We capture nav-arrival + TTFF
-// and render a single breakdown.
-const lastLoad = (() => {
-  try { return JSON.parse(sessionStorage.getItem('lastLoad') || 'null'); }
-  catch { return null; }
-})();
-const pageArrivedAt = performance.now();
-let firstFrameLogged = false;
-let ttffMs = null;
-function renderPerf() {
-  if (!lastLoad) return;
-  const s = lastLoad.server || {};
-  const navMs = lastLoad.navAt ? Math.max(0, Date.now() - lastLoad.navAt) : null;
-  const rows = [
-    ['title',           lastLoad.title || '—'],
-    ['plex resolve',    fmt(s.plexResolveMs)],
-    ['plex list',       fmt(s.plexListMs)],
-    ['ffmpeg → playlist', fmt(s.remuxStartMs)],
-    ['server total',    fmt(s.totalMs)],
-    ['click → control', fmt(lastLoad.clickToControlMs)],
-    ['nav → /watch',    navMs == null ? '—' : fmt(navMs)],
-    ['<b>ttff</b>',     '<b>' + (ttffMs == null ? 'waiting…' : fmt(ttffMs)) + '</b>'],
-  ];
-  perfEl.innerHTML =
-    '<button class="close" type="button" aria-label="hide timings">×</button>' +
-    '<div class="head">load timings</div>' +
-    rows.map(([k, val]) =>
-      '<div class="row"><span>' + k + '</span><span>' + val + '</span></div>'
-    ).join('');
-  perfEl.classList.add('visible');
-  // Re-bind the close button each render (the innerHTML rewrite replaces it).
-  perfEl.querySelector('.close').addEventListener('click', (e) => {
-    e.stopPropagation();
-    perfEl.classList.remove('visible');
-  });
-}
-// Show server-side numbers immediately. TTFF row fills in when the
-// video's first frame paints — or stays at "waiting…" if it never does,
-// which is itself a useful signal.
-renderPerf();
-function fmt(ms) {
-  if (ms == null || isNaN(ms)) return '—';
-  if (ms < 1000) return ms + ' ms';
-  return (ms / 1000).toFixed(2) + ' s';
-}
-
 function setStatus(text, kind) {
   syncEl.textContent = text;
   syncEl.classList.remove('locked', 'drifting');
@@ -643,16 +552,6 @@ v.addEventListener('error', () => {
   if (err) setStatus('video error: ' + err.code + ' ' + (err.message || ''));
 });
 
-// First frame painted = end of TTFF. `playing` fires after the decoder
-// has output its first frame (more accurate than `loadeddata`).
-v.addEventListener('playing', () => {
-  if (firstFrameLogged) return;
-  firstFrameLogged = true;
-  ttffMs = Math.round(performance.now() - pageArrivedAt);
-  console.log('player TTFF (page-arrival → first frame):', ttffMs, 'ms');
-  renderPerf();
-});
-
 function post(action, extra) {
   fetch('/control', {
     method:'POST', headers:{'Content-Type':'application/json'},
@@ -669,10 +568,16 @@ es.onmessage = (e) => {
     titleEl.classList.add('idle');
     syncEl.textContent = 'idle';
     syncEl.classList.remove('locked', 'drifting');
+    serverDuration = 0;
+    updateScrub();
     return;
   }
   titleEl.textContent = s.title;
   titleEl.classList.remove('idle');
+  if (typeof s.durationSec === 'number' && s.durationSec > 0) {
+    serverDuration = s.durationSec;
+    updateScrub();
+  }
 
   if (s.ratingKey !== loadedKey) { loadedKey = s.ratingKey; attach(); }
 
