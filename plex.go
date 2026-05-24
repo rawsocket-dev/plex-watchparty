@@ -412,8 +412,8 @@ func (p *Plex) Resolve(ratingKey string) (*StreamInfo, error) {
 // is far more useful for debugging than /start.mkv's generic HTML 400.
 func (p *Plex) preflightTranscode(transcodeURL string) error {
 	decisionURL := strings.Replace(transcodeURL,
-		"/transcode/universal/start.mkv",
-		"/transcode/universal/decision", 1)
+		"/transcode/universal/start?",
+		"/transcode/universal/decision?", 1)
 	req, err := http.NewRequest(http.MethodGet, decisionURL, nil)
 	if err != nil {
 		return err
@@ -454,34 +454,64 @@ func truncate(s string, n int) string {
 // that don't look like they're coming from a real Plex client.
 func (p *Plex) transcodeURL(ratingKey string, mediaIdx, partIdx int) string {
 	sessionID := "watchparty-" + strconv.FormatInt(time.Now().UnixNano(), 36)
+	// X-Plex-Client-Profile-Extra defines the transcode target Plex
+	// should pick. Required for our use case — Plex's "Generic" base
+	// platform has NO preset transcode targets, so without these
+	// add-transcode-target clauses Plex returns decision code 2000
+	// ("neither direct play nor conversion is available") which surfaces
+	// as a blank HTML 400 from /start. Pattern + comma encoding
+	// (%2C inside the DSL value) mirrors plezy's reference client.
+	profileExtra := strings.Join([]string{
+		"add-settings(DirectPlayStreamSelection=true)",
+		fmt.Sprintf("add-limitation(scope=videoCodec&scopeName=*&type=upperBound&name=video.bitrate&value=%d&replace=true)",
+			p.TranscodeKbps),
+		"add-transcode-target(type=videoProfile&context=streaming&protocol=http&container=mkv" +
+			"&videoCodec=h264%2Chevc%2C*&audioCodec=opus%2Cvorbis%2Cflac%2C*" +
+			"&subtitleCodec=ass%2Cpgs%2Cvobsub%2C*)",
+		"add-transcode-target-settings(type=videoProfile&context=streaming" +
+			"&protocol=http&CopyMatroskaAttachments=true)",
+	}, "+")
+
 	q := url.Values{}
+	q.Set("hasMDE", "1")
 	q.Set("path", "/library/metadata/"+ratingKey)
 	q.Set("mediaIndex", strconv.Itoa(mediaIdx))
 	q.Set("partIndex", strconv.Itoa(partIdx))
-	// `protocol=http` IS correct for start.mkv — it picks chunked-HTTP
-	// transport for the MKV container. (start.m3u8 uses protocol=hls,
-	// start.mpd uses protocol=dash.)
-	q.Set("protocol", "http")
+	q.Set("protocol", "http") // chunked MKV from the universal start endpoint
 	q.Set("fastSeek", "1")
 	q.Set("directPlay", "0")
 	q.Set("directStream", "0")
-	q.Set("videoResolution", "1920x1080")
-	q.Set("maxVideoBitrate", strconv.Itoa(p.TranscodeKbps))
-	q.Set("videoBitrate", strconv.Itoa(p.TranscodeKbps))
-	q.Set("videoQuality", "100")
+	q.Set("subtitleSize", "100")
 	q.Set("audioBoost", "100")
-	q.Set("offset", "0")
 	q.Set("location", "lan")
+	q.Set("maxVideoBitrate", strconv.Itoa(p.TranscodeKbps))
+	q.Set("addDebugOverlay", "0")
+	q.Set("autoAdjustQuality", "0")
+	q.Set("directStreamAudio", "0")
+	q.Set("mediaBufferSize", "102400")
 	q.Set("session", sessionID)
+	q.Set("subtitles", "none")
+	q.Set("copyts", "1")
+	q.Set("Accept-Language", "en")
 	q.Set("X-Plex-Session-Identifier", sessionID)
-	q.Set("X-Plex-Token", p.Token)
-	q.Set("X-Plex-Client-Identifier", "plexwatchparty")
+	q.Set("X-Plex-Client-Profile-Extra", profileExtra)
+	q.Set("X-Plex-Chunked", "1")
+	q.Set("X-Plex-Features", "external-media,indirect-media")
+	q.Set("X-Plex-Model", "standalone")
+	q.Set("X-Plex-Language", "en")
 	q.Set("X-Plex-Product", "plexwatchparty")
 	q.Set("X-Plex-Version", "1.0")
-	q.Set("X-Plex-Device", "Linux")
-	q.Set("X-Plex-Device-Name", "plexwatchparty")
-	q.Set("X-Plex-Platform", "Linux")
-	return p.BaseURL + "/video/:/transcode/universal/start.mkv?" + q.Encode()
+	q.Set("X-Plex-Client-Identifier", "plexwatchparty")
+	// X-Plex-Platform=Linux is REJECTED by Plex's transcoder with a
+	// blank HTML 400. Plex maps known platform names ("Chrome", "Mac",
+	// etc.) to base transcode profiles; "Linux" / "MacOSX" / "Flutter"
+	// are NOT recognized. "Generic" is accepted and starts with no
+	// preset targets — which is fine because we supplied our own via
+	// X-Plex-Client-Profile-Extra above.
+	q.Set("X-Plex-Platform", "Generic")
+	q.Set("X-Plex-Device", "plexwatchparty")
+	q.Set("X-Plex-Token", p.Token)
+	return p.BaseURL + "/video/:/transcode/universal/start?" + q.Encode()
 }
 
 // redactedURL returns a transcode URL with the token replaced by
