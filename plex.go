@@ -212,18 +212,24 @@ type metadataResp struct {
 			Title    string `json:"title"`
 			Duration int64  `json:"duration"`
 			Media    []struct {
-				Container     string  `json:"container"`
-				VideoCodec    string  `json:"videoCodec"`
-				AudioCodec    string  `json:"audioCodec"`
-				VideoProfile  string  `json:"videoProfile"`
-				AudioProfile  string  `json:"audioProfile"`
-				Width         int     `json:"width"`
-				Height        int     `json:"height"`
-				Bitrate       int     `json:"bitrate"`
-				AudioChannels int     `json:"audioChannels"`
-				VideoFrameRate string `json:"videoFrameRate"`
-				Duration      int64   `json:"duration"`
-				Part          []struct {
+				Container             string `json:"container"`
+				VideoCodec            string `json:"videoCodec"`
+				AudioCodec            string `json:"audioCodec"`
+				VideoProfile          string `json:"videoProfile"`
+				AudioProfile          string `json:"audioProfile"`
+				Width                 int    `json:"width"`
+				Height                int    `json:"height"`
+				Bitrate               int    `json:"bitrate"`
+				AudioChannels         int    `json:"audioChannels"`
+				VideoFrameRate        string `json:"videoFrameRate"`
+				Duration              int64  `json:"duration"`
+				// Plex sets this to 1 on Optimized (pre-transcoded)
+				// versions and on Direct Stream-friendly originals.
+				// We treat 1 as "browser-friendly variant" and prefer
+				// it over the raw original (which can be 70+ Mbps HEVC
+				// HDR that no browser wants to deal with).
+				OptimizedForStreaming int `json:"optimizedForStreaming"`
+				Part                  []struct {
 					Key    string `json:"key"`
 					Size   int64  `json:"size"`
 					Stream []struct {
@@ -250,8 +256,36 @@ func (p *Plex) Resolve(ratingKey string) (*StreamInfo, error) {
 		return nil, fmt.Errorf("no playable part for ratingKey %s", ratingKey)
 	}
 	metadata := mr.MediaContainer.Metadata[0]
-	media := metadata.Media[0]
+
+	// Pick the best Media variant for browser playback. Plex movies
+	// often have multiple Media entries: the original Blu-ray remux
+	// (HEVC HDR @ 70+ Mbps) plus one or more Optimized versions
+	// (h264 @ 8-12 Mbps, what Plex generates via "Optimize"). The
+	// optimized version is dramatically friendlier to MSE / hls.js /
+	// VideoToolbox — fewer decoder errors, smaller buffers, broader
+	// browser compat. Always prefer it when present.
+	mediaIdx := 0
+	chosenReason := "default (only variant)"
+	if len(metadata.Media) > 1 {
+		chosenReason = "default (no optimized variant)"
+		for i, m := range metadata.Media {
+			if m.OptimizedForStreaming == 1 && len(m.Part) > 0 {
+				mediaIdx = i
+				chosenReason = "optimizedForStreaming=1"
+				break
+			}
+		}
+	}
+	media := metadata.Media[mediaIdx]
+	if len(media.Part) == 0 {
+		return nil, fmt.Errorf("chosen media variant has no Part for ratingKey %s", ratingKey)
+	}
 	part := media.Part[0]
+	if len(metadata.Media) > 1 {
+		log.Printf("plex: ratingKey %s has %d Media variants; picked #%d (%s, %dx%d %s @ %d kbps)",
+			ratingKey, len(metadata.Media), mediaIdx, chosenReason,
+			media.Width, media.Height, media.VideoCodec, media.Bitrate)
+	}
 
 	// Older Plex responses only populate Duration at the Metadata level,
 	// not inside the Media block. Prefer the inner value (it's per-version
