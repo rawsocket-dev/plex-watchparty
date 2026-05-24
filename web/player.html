@@ -194,7 +194,7 @@
   }
   #scrub-hit:hover #scrub-track,
   #scrub-hit.dragging #scrub-track { height: 8px; }
-  #scrub-seekable, #scrub-buffered, #scrub-fill {
+  #scrub-buffered, #scrub-fill {
     position: absolute;
     left: 0; top: 0;
     height: 100%;
@@ -205,7 +205,20 @@
      < buffered (already loaded) < fill (played). Layered colors are
      subtle on purpose; the visible "available to scrub" cue is just
      a slightly lighter band. */
-  #scrub-seekable { background: var(--rule-hi, #3a342c); width: 0; opacity: .55; }
+  /* Seekable container — child .cached-band elements render the actual
+     time ranges from state.cachedRanges. Multiple bands can appear if
+     the user did forward-seek-then-rewatch (cache has gaps). */
+  #scrub-seekable {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+  }
+  #scrub-seekable .cached-band {
+    position: absolute;
+    top: 0; bottom: 0;
+    background: var(--rule-hi, #3a342c);
+    opacity: .55;
+  }
   #scrub-buffered { background: var(--rule-hi, #3a342c); width: 0; }
   #scrub-fill     { background: var(--ember);            width: 0; }
   #scrub-thumb {
@@ -478,21 +491,36 @@ function updateScrub() {
       const buf = v.buffered.end(v.buffered.length - 1);
       scrubBuffered.style.width = Math.min(100, (buf / dur) * 100) + '%';
     }
-    // Seekable range — for live/event playlists this lags behind the
-    // total movie duration; the lighter band shows the user the
-    // portion of the bar they can actually scrub into.
-    if (v.seekable.length > 0) {
-      const sk = v.seekable.end(v.seekable.length - 1);
-      scrubSeekable.style.width = Math.min(100, (sk / dur) * 100) + '%';
+    // Cached ranges drive the seekable visualization. v.seekable would
+    // only show the current Plex session's range; we want the union of
+    // everything we have on disk so users can see all instant-seek spots.
+    if (lastState && lastState.cachedRanges) {
+      // Build / update child bands. Reuse existing children to avoid
+      // creating + destroying DOM every tick.
+      const ranges = lastState.cachedRanges;
+      while (scrubSeekable.children.length < ranges.length) {
+        const band = document.createElement('div');
+        band.className = 'cached-band';
+        scrubSeekable.appendChild(band);
+      }
+      while (scrubSeekable.children.length > ranges.length) {
+        scrubSeekable.removeChild(scrubSeekable.lastChild);
+      }
+      for (let i = 0; i < ranges.length; i++) {
+        const [s, e] = ranges[i];
+        const band = scrubSeekable.children[i];
+        band.style.left  = (s / dur * 100) + '%';
+        band.style.width = ((e - s) / dur * 100) + '%';
+      }
     } else {
-      scrubSeekable.style.width = '0%';
+      while (scrubSeekable.firstChild) scrubSeekable.removeChild(scrubSeekable.firstChild);
     }
     scrubTime.textContent = fmtTime(cur) + ' / ' + fmtTime(dur);
   } else {
     scrubHit.classList.remove('ready');
     scrubFill.style.width = '0%';
     scrubBuffered.style.width = '0%';
-    scrubSeekable.style.width = '0%';
+    while (scrubSeekable.firstChild) scrubSeekable.removeChild(scrubSeekable.firstChild);
     scrubTime.textContent = fmtTime(cur) + ' / —';
   }
 }
