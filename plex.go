@@ -405,28 +405,32 @@ func (p *Plex) Resolve(ratingKey string) (*StreamInfo, error) {
 	return si, nil
 }
 
-// preflightTranscode does a HEAD request against the built transcode
-// URL. Plex returns a body with a useful error message on 4xx; ffmpeg
-// would only show us a bare "Server returned 400 Bad Request" line.
-// Surfacing Plex's reason here saves a debugging cycle.
+// preflightTranscode does a plain GET against the built transcode URL,
+// reads only what's needed to confirm success or capture an error body,
+// then closes the connection. We deliberately do NOT send a Range
+// header — some Plex versions reject ranged requests on the transcode
+// endpoint with a generic HTML 400 that doesn't reflect the real
+// configuration; a plain GET matches what ffmpeg will do next.
 func (p *Plex) preflightTranscode(transcodeURL string) error {
 	req, err := http.NewRequest(http.MethodGet, transcodeURL, nil)
 	if err != nil {
 		return err
 	}
-	// Some Plex versions don't return a body for HEAD on the transcode
-	// endpoint, so we use a Range-limited GET and read a small slice of
-	// the response body if the status is bad.
-	req.Header.Set("Range", "bytes=0-0")
+	req.Header.Set("Accept", "*/*")
 	resp, err := p.http.Do(req)
 	if err != nil {
 		return fmt.Errorf("connect: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		// Drain a tiny bit of body to confirm the transcoder actually
+		// produced output (rather than 200ing the headers and stalling).
+		// 8 bytes is enough — MKV starts with the EBML magic 0x1A 0x45 0xDF 0xA3.
+		buf := make([]byte, 8)
+		_, _ = resp.Body.Read(buf)
 		return nil
 	}
-	body := make([]byte, 512)
+	body := make([]byte, 1024)
 	n, _ := resp.Body.Read(body)
 	bodyStr := strings.TrimSpace(string(body[:n]))
 	if bodyStr == "" {
