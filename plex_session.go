@@ -84,7 +84,7 @@ func (ps *PlexSession) transcodeURL(ratingKey string, offsetSec float64) string 
 	q.Set("X-Plex-Platform", "Generic")
 	q.Set("X-Plex-Device", "plexwatchparty")
 	q.Set("X-Plex-Token", ps.plex.Token)
-	return ps.plex.BaseURL + "/video/:/transcode/universal/start.m3u8?" + q.Encode()
+	return ps.plex.BaseURL + "/video/:/transcode/universal/start?" + q.Encode()
 }
 
 // redactedURL hides the X-Plex-Token query param so the URL is safe to log.
