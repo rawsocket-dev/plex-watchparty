@@ -772,14 +772,24 @@ function attach() {
       load(context, config, callbacks) {
         const origOnSuccess = callbacks.onSuccess;
         callbacks.onSuccess = (response, stats, ctx, net) => {
-          if (typeof response.data === 'string' && response.data.includes('#EXTM3U')) {
-            const before = response.data;
-            response.data = before.replace(/#EXT-X-PLAYLIST-TYPE:EVENT/g,
-                                          '#EXT-X-PLAYLIST-TYPE:VOD');
-            const rewrote = response.data !== before;
-            console.log('pLoader: playlist len=', response.data.length,
-                        ' rewrote=', rewrote,
-                        ' url=', context.url.split('/').pop());
+          try {
+            if (typeof response.data === 'string' && response.data.includes('#EXTM3U')) {
+              const before = response.data;
+              response.data = before.replace(/#EXT-X-PLAYLIST-TYPE:EVENT/g,
+                                            '#EXT-X-PLAYLIST-TYPE:VOD');
+              const rewrote = response.data !== before;
+              // context.url can be a string (normal hls.js polling) or an
+              // array (when LEVEL_LOADING is triggered manually with a
+              // url payload). Coerce safely.
+              const u = Array.isArray(context.url) ? context.url[0] : context.url;
+              const name = (typeof u === 'string') ? u.split('/').pop() : '<unknown>';
+              console.log('pLoader: playlist len=', response.data.length,
+                          ' rewrote=', rewrote,
+                          ' url=', name);
+            }
+          } catch (e) {
+            // Whatever we did in the rewrite/logging, never break hls.js.
+            console.warn('pLoader: error during rewrite (continuing):', e);
           }
           origOnSuccess(response, stats, ctx, net);
         };
