@@ -198,7 +198,8 @@ const lastLoad = (() => {
 })();
 const pageArrivedAt = performance.now();
 let firstFrameLogged = false;
-function showPerf(ttffMs) {
+let ttffMs = null;
+function renderPerf() {
   if (!lastLoad) return;
   const s = lastLoad.server || {};
   const navMs = lastLoad.navAt ? Math.max(0, Date.now() - lastLoad.navAt) : null;
@@ -210,7 +211,7 @@ function showPerf(ttffMs) {
     ['server total',    fmt(s.totalMs)],
     ['click → control', fmt(lastLoad.clickToControlMs)],
     ['nav → /watch',    navMs == null ? '—' : fmt(navMs)],
-    ['<b>ttff</b>',     '<b>' + fmt(ttffMs) + '</b>'],
+    ['<b>ttff</b>',     '<b>' + (ttffMs == null ? 'waiting…' : fmt(ttffMs)) + '</b>'],
   ];
   perfEl.innerHTML =
     '<div class="head">load timings</div>' +
@@ -219,6 +220,10 @@ function showPerf(ttffMs) {
     ).join('');
   perfEl.classList.add('visible');
 }
+// Show server-side numbers immediately. TTFF row fills in when the
+// video's first frame paints — or stays at "waiting…" if it never does,
+// which is itself a useful signal.
+renderPerf();
 function fmt(ms) {
   if (ms == null || isNaN(ms)) return '—';
   if (ms < 1000) return ms + ' ms';
@@ -276,9 +281,9 @@ v.addEventListener('error', () => {
 v.addEventListener('playing', () => {
   if (firstFrameLogged) return;
   firstFrameLogged = true;
-  const ttffMs = Math.round(performance.now() - pageArrivedAt);
+  ttffMs = Math.round(performance.now() - pageArrivedAt);
   console.log('player TTFF (page-arrival → first frame):', ttffMs, 'ms');
-  showPerf(ttffMs);
+  renderPerf();
 });
 
 function post(action, extra) {
