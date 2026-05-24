@@ -145,15 +145,15 @@ func (rx *Remuxer) Start(ratingKey string, si *StreamInfo) error {
 	args = append(args,
 		"-f", "hls",
 		"-hls_time", "6",
-		// VOD playlist type so hls.js advertises the full seekable range
-		// (event-type is treated as a live stream → tiny sliding seekable
-		// window → drag-back fails silently). The `omit_endlist` flag
-		// keeps ffmpeg from appending `#EXT-X-ENDLIST` even when it
-		// finishes, so the playlist can keep growing while we watch
-		// without ever closing.
-		"-hls_playlist_type", "vod",
+		// `event` rather than `vod`: ffmpeg's vod playlist type does
+		// NOT write index.m3u8 incrementally — confirmed by inspecting
+		// the workdir during runs. event does, and is what makes the
+		// stream playable while ffmpeg is still racing ahead. We deal
+		// with the live-seekable-range issue client-side in player.html
+		// (hls.js config tweaks below).
+		"-hls_playlist_type", "event",
 		"-hls_segment_type", "fmp4",
-		"-hls_flags", "omit_endlist+independent_segments",
+		"-hls_flags", "independent_segments",
 		"-hls_segment_filename", filepath.Join(dir, "seg_%05d.m4s"),
 		playlist,
 	)
