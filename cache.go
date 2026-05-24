@@ -91,6 +91,16 @@ func (c *SegmentCache) Put(key cacheKey, src io.Reader) (string, error) {
 	if old, ok := c.entries[key]; ok {
 		c.lru.Remove(old.elem)
 		c.totalBytes -= old.bytes
+		delete(c.entries, key)
+	}
+	// Evict LRU entries until there's headroom for the new one.
+	for c.totalBytes+n > c.maxBytes && c.lru.Len() > 0 {
+		oldest := c.lru.Back()
+		oe := oldest.Value.(*cacheEntry)
+		os.Remove(oe.path)
+		c.lru.Remove(oldest)
+		delete(c.entries, oe.key)
+		c.totalBytes -= oe.bytes
 	}
 	e := &cacheEntry{key: key, path: finalPath, bytes: n}
 	e.elem = c.lru.PushFront(e)
