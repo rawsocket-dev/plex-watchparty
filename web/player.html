@@ -424,11 +424,7 @@ window.addEventListener('mouseup', () => {
   if (!scrubDragging) return;
   scrubDragging = false;
   scrubHit.classList.remove('dragging');
-  const dur = knownDuration();
-  if (scrubPendingPct != null && dur > 0) {
-    v.currentTime = scrubPendingPct * dur;
-  }
-  scrubPendingPct = null;
+  commitScrubSeek();
 });
 // Touch
 scrubHit.addEventListener('touchstart', (e) => {
@@ -451,12 +447,33 @@ scrubHit.addEventListener('touchend', () => {
   if (!scrubDragging) return;
   scrubDragging = false;
   scrubHit.classList.remove('dragging');
-  const dur = knownDuration();
-  if (scrubPendingPct != null && dur > 0) {
-    v.currentTime = scrubPendingPct * dur;
-  }
-  scrubPendingPct = null;
+  commitScrubSeek();
 });
+
+// Wall-clock time (ms) of our last local play/pause/seek so we can
+// ignore SSE state broadcasts that pre-date it. Without this, an SSE
+// message that was in-flight when the user dragged the scrub bar can
+// arrive a moment later carrying the OLD position and yank the player
+// back. 500 ms tolerance for client↔server clock skew.
+let lastLocalActionMs = 0;
+function commitScrubSeek() {
+  const dur = knownDuration();
+  if (scrubPendingPct == null || dur <= 0) {
+    scrubPendingPct = null;
+    return;
+  }
+  const target = scrubPendingPct * dur;
+  scrubPendingPct = null;
+  console.log('scrub seek →', target.toFixed(2), 's (dur=' + dur.toFixed(0) + ')');
+  lastLocalActionMs = Date.now();
+  // Set v.currentTime so the local player actually moves. The browser
+  // will fire a `seeked` event when the move completes, which our
+  // existing handler may post — but it can also be swallowed by the
+  // `applying` echo-suppression window. Post directly here too so the
+  // server always learns about the new position. Idempotent server-side.
+  v.currentTime = target;
+  post('seek', { positionSec: target });
+}
 
 // --- bandwidth poll ---------------------------------------------------------
 async function pollBandwidth() {
@@ -563,6 +580,13 @@ function post(action, extra) {
 const es = new EventSource('/events');
 es.onmessage = (e) => {
   const s = JSON.parse(e.data);
+  // Drop broadcasts that predate our last local action — those can
+  // otherwise revert a scrub/play/pause the moment a stale in-flight
+  // message arrives. (Server clock vs client clock — 500 ms slack.)
+  if (lastLocalActionMs && s.updatedAtMs && s.updatedAtMs < lastLocalActionMs - 500) {
+    console.log('ignoring stale state @', s.updatedAtMs, '(local action @', lastLocalActionMs, ')');
+    return;
+  }
   if (!s.ratingKey) {
     titleEl.textContent = 'awaiting the host…';
     titleEl.classList.add('idle');
