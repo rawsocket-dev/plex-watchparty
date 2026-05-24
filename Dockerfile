@@ -1,9 +1,9 @@
 # syntax=docker/dockerfile:1
 
-# --- ffmpeg: latest static build, full codec support (x265/HEVC, aac, ...) ---
-# mwader/static-ffmpeg tracks upstream FFmpeg releases. Pin to a tag (e.g.
-# mwader/static-ffmpeg:7.1) for reproducible builds; :latest = newest release.
-FROM mwader/static-ffmpeg:latest AS ffmpeg
+# --- ffmpeg: pinned static build, full codec support (x265/HEVC, aac, ...) ---
+# mwader/static-ffmpeg tracks upstream FFmpeg releases. Pinned for
+# reproducible builds; bump intentionally when a new upstream release lands.
+FROM mwader/static-ffmpeg:8.1.1 AS ffmpeg
 
 # --- build the Go binary (pure Go, no cgo) ----------------------------------
 FROM golang:1.26-alpine AS build
