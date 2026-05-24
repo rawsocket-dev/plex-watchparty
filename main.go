@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -77,8 +78,6 @@ func main() {
 		len(segCache.entries), segCache.totalBytes/1024/1024, cacheGB)
 
 	plexSession := NewPlexSession(plex, transcodeKbps)
-	_ = segCache    // wired in later tasks
-	_ = plexSession // wired in later tasks
 	// Health check: confirm we can reach the configured Plex server and
 	// that the token is valid before binding the HTTP port. Non-fatal so
 	// a transient Plex outage at boot doesn't take down the watch party
@@ -162,38 +161,79 @@ func main() {
 		})
 	})
 
-	// HLS playlist + segments come from the active remux session dir.
-	// Clients only ever touch this — never Plex, never the token.
-	//
-	// countingResponseWriter now implements io.ReaderFrom too, so
-	// http.ServeFile's internal io.CopyN finds the fast-path and routes
-	// the bytes through the underlying response's ReadFrom (which uses
-	// sendfile() on Linux). We get kernel zero-copy AND accurate byte
-	// counting — both Write() and ReadFrom() on the wrapper accumulate
-	// into cw.n.
-	protected.HandleFunc("/hls/", func(w http.ResponseWriter, r *http.Request) {
-		dir := rx.SessionDir()
-		if dir == "" {
+	// /hls/index.m3u8 — fetch Plex's playlist, rewrite segment URLs to
+	// point through us, return to client. Plex's segment URLs are kept
+	// internal (never exposed to viewers); they pass through our proxy
+	// where we can cache and re-serve.
+	protected.HandleFunc("/hls/index.m3u8", func(w http.ResponseWriter, r *http.Request) {
+		ratingKey := plexSession.RatingKey()
+		if ratingKey == "" {
 			http.Error(w, "no active stream", http.StatusServiceUnavailable)
 			return
 		}
-		name := strings.TrimPrefix(r.URL.Path, "/hls/")
-		if name == "" || strings.Contains(name, "..") {
+		raw, err := plexSession.FetchPlaylist()
+		if err != nil {
+			log.Printf("playlist: fetch failed: %v", err)
+			http.Error(w, "playlist fetch: "+err.Error(), http.StatusBadGateway)
+			return
+		}
+		rewritten, segs, err := rewritePlaylist(raw, plexSession.OffsetMs(), ratingKey)
+		if err != nil {
+			log.Printf("playlist: parse failed: %v", err)
+			http.Error(w, "playlist parse: "+err.Error(), http.StatusBadGateway)
+			return
+		}
+		// Update edge tracker so seek-forward-past-edge detection is accurate.
+		if len(segs) > 0 {
+			plexSession.UpdateEdge(segs[len(segs)-1].EndMs)
+		}
+		w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
+		w.Header().Set("Cache-Control", "no-cache")
+		cw := &countingResponseWriter{ResponseWriter: w}
+		cw.Write(rewritten)
+		bw.record(clientIP(r), cw.n)
+	})
+
+	// /hls/seg/<encoded>.ts — decode the segment context, serve from
+	// cache if present, otherwise proxy from Plex while tee-writing to
+	// the cache for future requests.
+	protected.HandleFunc("/hls/seg/", func(w http.ResponseWriter, r *http.Request) {
+		name := strings.TrimPrefix(r.URL.Path, "/hls/seg/")
+		name = strings.TrimSuffix(name, ".ts")
+		ctx, err := decodeSegCtx(name)
+		if err != nil {
+			log.Printf("seg: decode failed name=%q: %v", name, err)
 			http.NotFound(w, r)
 			return
 		}
-		switch filepath.Ext(name) {
-		case ".m3u8":
-			w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
-		case ".m4s":
-			w.Header().Set("Content-Type", "video/iso.segment")
-		case ".mp4":
-			w.Header().Set("Content-Type", "video/mp4")
-		}
+		key := cacheKey{ratingKey: ctx.Rating, startMs: ctx.StartMs, endMs: ctx.EndMs}
+		w.Header().Set("Content-Type", "video/mp2t")
 		w.Header().Set("Cache-Control", "no-cache")
 		cw := &countingResponseWriter{ResponseWriter: w}
-		http.ServeFile(cw, r, filepath.Join(dir, filepath.Base(name)))
-		bw.record(clientIP(r), cw.n)
+		defer func() { bw.record(clientIP(r), cw.n) }()
+
+		// Cache hit: sendfile-fast path.
+		if path, ok := segCache.Get(key); ok {
+			http.ServeFile(cw, r, path)
+			return
+		}
+		// Cache miss: fetch from Plex, tee to cache + client.
+		body, err := plexSession.FetchSegment(ctx.PlexURL)
+		if err != nil {
+			log.Printf("seg: fetch from plex failed: %v", err)
+			http.Error(cw, "plex segment: "+err.Error(), http.StatusBadGateway)
+			return
+		}
+		defer body.Close()
+		// pipe: write into cache while streaming to client.
+		pr, pw := io.Pipe()
+		go func() {
+			defer pw.Close()
+			_, _ = io.Copy(io.MultiWriter(pw, cw), body)
+		}()
+		if _, err := segCache.Put(key, pr); err != nil {
+			log.Printf("seg: cache write failed: %v (segment still served)", err)
+		}
 	})
 
 	protected.HandleFunc("/api/bandwidth", func(w http.ResponseWriter, r *http.Request) {
