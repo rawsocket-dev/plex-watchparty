@@ -185,8 +185,15 @@ func (ps *PlexSession) stopLocked() {
 	if ps.sessionID == "" {
 		return
 	}
-	stopURL := fmt.Sprintf("%s/video/:/transcode/universal/stop?session=%s&X-Plex-Token=%s",
-		ps.plex.BaseURL, url.QueryEscape(ps.sessionID), url.QueryEscape(ps.plex.Token))
+	// /stop needs the same client identifier as the request that
+	// started the session — without it Plex's session manager doesn't
+	// recognize who's asking and the stop is a no-op (which is why a
+	// subsequent /start.m3u8 then 400s with a stale session held).
+	q := url.Values{}
+	q.Set("session", ps.sessionID)
+	q.Set("X-Plex-Client-Identifier", "plexwatchparty")
+	q.Set("X-Plex-Token", ps.plex.Token)
+	stopURL := ps.plex.BaseURL + "/video/:/transcode/universal/stop?" + q.Encode()
 	req, _ := http.NewRequest(http.MethodGet, stopURL, nil)
 	if resp, err := ps.plex.http.Do(req); err == nil {
 		resp.Body.Close()
@@ -196,6 +203,10 @@ func (ps *PlexSession) stopLocked() {
 	ps.playlistURL = ""
 	ps.offsetMs = 0
 	ps.edgeMs = 0
+	// Plex's transcoder needs a beat to tear down before it'll accept a
+	// new session under the same client identifier; without this pause
+	// the next /start.m3u8 returns a bare 400 even with valid params.
+	time.Sleep(400 * time.Millisecond)
 }
 
 // sessionIDFromURL pulls the session= param out of our transcode URL

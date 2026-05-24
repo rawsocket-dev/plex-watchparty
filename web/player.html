@@ -332,13 +332,11 @@
     width: 32px; height: 32px; margin-left: 4px;
     transition: filter .25s ease;
   }
-  #join.ready .icon {
-    border-color: var(--ember);
-    color: var(--ember);
-  }
   #join.ready:hover .icon {
     background: rgba(212, 165, 116, .18);
     transform: scale(1.08);
+    border-color: var(--ember);
+    color: var(--ember);
     /* Layered glow: tight bright core + wider soft bloom — reads as a
        warm halo rather than a single flat shadow. */
     box-shadow: 0 0 0 2px rgba(212, 165, 116, .35),
