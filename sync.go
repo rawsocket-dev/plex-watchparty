@@ -44,7 +44,27 @@ type Hub struct {
 const idleGrace = 60 * time.Second
 
 func NewHub(plex *Plex, rx *Remuxer) *Hub {
-	return &Hub{plex: plex, rx: rx, clients: make(map[chan State]struct{})}
+	h := &Hub{plex: plex, rx: rx, clients: make(map[chan State]struct{})}
+	// Periodic state re-broadcast. Two goals: (1) Safari's EventSource
+	// closes the SSE if it goes ~10–20 s without an actual data event
+	// (comment-only heartbeats don't count), and (2) every viewer
+	// gets a fresh extrapolated position on a steady cadence so the
+	// drift correction in the player has up-to-date state even
+	// between play/pause/seek changes.
+	go h.broadcastLoop()
+	return h
+}
+
+func (h *Hub) broadcastLoop() {
+	t := time.NewTicker(3 * time.Second)
+	defer t.Stop()
+	for range t.C {
+		h.mu.Lock()
+		if len(h.clients) > 0 {
+			h.broadcast()
+		}
+		h.mu.Unlock()
+	}
 }
 
 // onClientCountChange must be called with h.mu held whenever a client
