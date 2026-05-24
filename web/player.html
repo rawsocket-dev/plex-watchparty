@@ -937,15 +937,24 @@ v.addEventListener('ratechange', () => console.log('video EVENT: ratechange play
 // bufferStalledError, and we sit in the gap until the next playlist
 // poll. Solution: only allow play() once we have enough lookahead to
 // cover at least one full playlist refresh cycle.
-// 15 s of pre-roll. Plex's transcoder ramps up slowly from a cold
-// start (first few seconds are sub-realtime while threads spin up
-// and the decoder primes), then settles at ~2× realtime sustained.
-// A short pre-roll runs dry before Plex hits sustained throughput
-// and the player stalls. 15 s gives the transcoder time to catch up
-// AND leaves enough cushion that any one network hiccup doesn't
-// re-stall us. Must stay strictly below maxBufferLength so hls.js
-// will actually accumulate this much before plateauing.
-const MIN_BUFFER_BEFORE_PLAY = 15;
+// 10 s of pre-roll, matched to Plex's transcoder segment size. Plex
+// emits keyframes every ~10 s, and ffmpeg's stream-copy can't split
+// mid-GOP — so what we end up serving is 10 s HLS fragments even
+// though our -hls_time is set to 2. With this segment size:
+//
+//   - The first playlist hls.js sees has exactly one fragment
+//     (10.4 s). hls.js loads it and stops, then waits for the next
+//     playlist refresh (~3-6 s later) to see more.
+//   - A 15 s preroll would require waiting through that refresh cycle
+//     — visibly stuck on "10.4 / 15 s" for several seconds.
+//   - 10 s aligns with one segment, so as soon as the first segment
+//     downloads, we're ready. Subsequent segments are produced fast
+//     enough by Plex's HW transcoder (2-3× realtime) that we never
+//     run dry during playback.
+//
+// If your Plex outputs shorter segments (some configs do), this could
+// safely be lower. If your transcoder is slow (CPU-only), bump higher.
+const MIN_BUFFER_BEFORE_PLAY = 10;
 let playWaitTimer = null;
 function bufferedAhead() {
   if (v.buffered.length === 0) return 0;
