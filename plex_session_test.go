@@ -16,7 +16,7 @@ func TestPlexSessionStart(t *testing.T) {
 		lastPath = r.URL.Path
 		lastQuery = r.URL.Query()
 		switch r.URL.Path {
-		case "/video/:/transcode/universal/start":
+		case "/video/:/transcode/universal/start.m3u8":
 			w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
 			w.Write([]byte("#EXTM3U\n#EXT-X-TARGETDURATION:6\n"))
 		default:

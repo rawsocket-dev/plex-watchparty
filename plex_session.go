@@ -33,19 +33,20 @@ func NewPlexSession(p *Plex, transcodeKbps int) *PlexSession {
 }
 
 // transcodeURL builds the Plex Universal Transcoder URL at the given
-// movie-time offset (in seconds). Mirrors the param shape we validated
-// against plezy in commit 011d48c.
+// movie-time offset (in seconds). Targets HLS output (mpegts/h264/aac)
+// so we can proxy + cache Plex's playlist + segments directly.
 func (ps *PlexSession) transcodeURL(ratingKey string, offsetSec float64) string {
 	sessionID := "watchparty-" + strconv.FormatInt(time.Now().UnixNano(), 36)
+	// Profile-Extra teaches Plex's transcoder what we can play. For HLS
+	// browser playback that's h264 video + aac audio inside mpegts
+	// segments — matches what hls.js + MSE can decode without any
+	// further muxing on our side. The add-limitation clause caps the
+	// transcoded bitrate at our target.
 	profileExtra := strings.Join([]string{
-		"add-settings(DirectPlayStreamSelection=true)",
 		fmt.Sprintf("add-limitation(scope=videoCodec&scopeName=*&type=upperBound&name=video.bitrate&value=%d&replace=true)",
 			ps.transcodeKbps),
-		"add-transcode-target(type=videoProfile&context=streaming&protocol=http&container=mkv" +
-			"&videoCodec=h264%2Chevc%2C*&audioCodec=opus%2Cvorbis%2Cflac%2C*" +
-			"&subtitleCodec=ass%2Cpgs%2Cvobsub%2C*)",
-		"add-transcode-target-settings(type=videoProfile&context=streaming" +
-			"&protocol=http&CopyMatroskaAttachments=true)",
+		"add-transcode-target(type=videoProfile&context=streaming&protocol=hls&container=mpegts" +
+			"&videoCodec=h264&audioCodec=aac)",
 	}, "+")
 
 	q := url.Values{}
@@ -64,13 +65,10 @@ func (ps *PlexSession) transcodeURL(ratingKey string, offsetSec float64) string 
 	q.Set("addDebugOverlay", "0")
 	q.Set("autoAdjustQuality", "0")
 	q.Set("directStreamAudio", "0")
-	q.Set("mediaBufferSize", "102400")
 	q.Set("session", sessionID)
 	q.Set("subtitles", "none")
 	q.Set("copyts", "1")
-	if offsetSec > 0 {
-		q.Set("offset", strconv.FormatInt(int64(offsetSec), 10))
-	}
+	q.Set("offset", strconv.FormatInt(int64(offsetSec), 10))
 	q.Set("Accept-Language", "en")
 	q.Set("X-Plex-Session-Identifier", sessionID)
 	q.Set("X-Plex-Client-Profile-Extra", profileExtra)
@@ -84,7 +82,18 @@ func (ps *PlexSession) transcodeURL(ratingKey string, offsetSec float64) string 
 	q.Set("X-Plex-Platform", "Generic")
 	q.Set("X-Plex-Device", "plexwatchparty")
 	q.Set("X-Plex-Token", ps.plex.Token)
-	return ps.plex.BaseURL + "/video/:/transcode/universal/start?" + q.Encode()
+	return ps.plex.BaseURL + "/video/:/transcode/universal/start.m3u8?" + q.Encode()
+}
+
+// decisionURL is the same as transcodeURL but hits Plex's /decision
+// endpoint, which returns a JSON body explaining WHY a transcode was
+// rejected (codec not supported, no matching target, etc.) rather than
+// the bare HTML 400 you get from /start.m3u8. Used as a diagnostic
+// preflight when Start fails.
+func (ps *PlexSession) decisionURL(ratingKey string, offsetSec float64) string {
+	return strings.Replace(ps.transcodeURL(ratingKey, offsetSec),
+		"/transcode/universal/start.m3u8?",
+		"/transcode/universal/decision?", 1)
 }
 
 // redactedURL hides the X-Plex-Token query param so the URL is safe to log.
@@ -109,12 +118,13 @@ func (ps *PlexSession) SessionToken() int64 {
 
 // Start begins a Plex transcode session for ratingKey at the given
 // movie-time offset (seconds). On success, the playlist URL is captured
-// and sessionToken is bumped so clients can detect the new session.
+// and sessionToken is bumped so clients can detect the new session. On
+// failure, a /decision preflight is issued to surface Plex's actual
+// rejection reason (the bare /start endpoint just returns blank HTML).
 func (ps *PlexSession) Start(ratingKey string, offsetSec float64) error {
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
 	playlistURL := ps.transcodeURL(ratingKey, offsetSec)
-	// Sanity check: a GET should return 200 with an m3u8 body.
 	req, _ := http.NewRequest(http.MethodGet, playlistURL, nil)
 	req.Header.Set("Accept", "application/vnd.apple.mpegurl")
 	resp, err := ps.plex.http.Do(req)
@@ -125,7 +135,12 @@ func (ps *PlexSession) Start(ratingKey string, offsetSec float64) error {
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body := make([]byte, 1024)
 		n, _ := resp.Body.Read(body)
-		return fmt.Errorf("plex start: status %d: %s", resp.StatusCode, strings.TrimSpace(string(body[:n])))
+		startBody := strings.TrimSpace(string(body[:n]))
+		// Probe /decision to get a more informative response. Errors
+		// here are swallowed — best-effort diagnostic, not a retry.
+		decisionInfo := ps.probeDecision(ratingKey, offsetSec)
+		return fmt.Errorf("plex start: status %d (%s) — decision: %s",
+			resp.StatusCode, startBody, decisionInfo)
 	}
 	ps.ratingKey = ratingKey
 	ps.offsetMs = int64(offsetSec * 1000)
@@ -134,6 +149,24 @@ func (ps *PlexSession) Start(ratingKey string, offsetSec float64) error {
 	ps.sessionID = sessionIDFromURL(playlistURL)
 	ps.sessionToken++
 	return nil
+}
+
+// probeDecision GETs /transcode/universal/decision and returns a short
+// summary of the response. Best-effort: never returns an error — only
+// used to enrich a Start failure message.
+func (ps *PlexSession) probeDecision(ratingKey string, offsetSec float64) string {
+	req, err := http.NewRequest(http.MethodGet, ps.decisionURL(ratingKey, offsetSec), nil)
+	if err != nil {
+		return "probe build failed: " + err.Error()
+	}
+	req.Header.Set("Accept", "application/json")
+	resp, err := ps.plex.http.Do(req)
+	if err != nil {
+		return "probe failed: " + err.Error()
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
+	return fmt.Sprintf("status %d body=%s", resp.StatusCode, strings.TrimSpace(string(body)))
 }
 
 // Stop tells Plex to terminate the current transcode session. Safe to
