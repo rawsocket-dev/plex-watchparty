@@ -19,13 +19,18 @@ RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" \
 # --- minimal runtime --------------------------------------------------------
 # Mirrored from library/alpine:3.20 — same reasoning as the other FROMs.
 FROM registry.example.com:5050/example/plex-watchparty/alpine:3.20
-RUN apk add --no-cache ca-certificates \
+# su-exec lets the entry-point chown the WORK_DIR as root, then drop
+# to the unprivileged `app` user before exec-ing the server.
+RUN apk add --no-cache ca-certificates su-exec \
  && adduser -D -u 10001 app
 COPY --from=ffmpeg  /ffmpeg                 /usr/local/bin/ffmpeg
 COPY --from=ffmpeg  /ffprobe                /usr/local/bin/ffprobe
 COPY --from=build   /out/plexwatchparty     /usr/local/bin/plexwatchparty
-USER app
+COPY entrypoint.sh                          /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
 ENV LISTEN_ADDR=:8080 \
     WORK_DIR=/tmp/plexwatchparty
 EXPOSE 8080
-ENTRYPOINT ["plexwatchparty"]
+# NB: no USER directive — the entrypoint runs as root long enough to
+# chown WORK_DIR, then exec's the server as `app`.
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
