@@ -118,19 +118,22 @@ func (ps *PlexSession) SessionToken() int64 {
 }
 
 // Start begins a Plex transcode session for ratingKey at the given
-// movie-time offset (seconds). On success, the playlist URL is captured
-// and sessionToken is bumped so clients can detect the new session. On
-// failure, a /decision preflight is issued to surface Plex's actual
-// rejection reason (the bare /start endpoint just returns blank HTML).
+// movie-time offset (seconds). Any prior session is stopped first —
+// Plex's transcoder gets confused if you try to open a new session
+// while an old one is still tracked server-side (the second /start
+// returns a bare HTML 400 with no body), so cleanup is mandatory, not
+// just polite. On failure, a /decision preflight is issued to surface
+// Plex's actual rejection reason.
 func (ps *PlexSession) Start(ratingKey string, offsetSec float64) error {
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
+	ps.stopLocked()
 	playlistURL := ps.transcodeURL(ratingKey, offsetSec)
 	req, _ := http.NewRequest(http.MethodGet, playlistURL, nil)
 	req.Header.Set("Accept", "application/vnd.apple.mpegurl")
 	resp, err := ps.plex.http.Do(req)
 	if err != nil {
-		return fmt.Errorf("plex start: %w", err)
+		return fmt.Errorf("plex start (%s): %w", redactedURL(playlistURL), err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
@@ -140,8 +143,8 @@ func (ps *PlexSession) Start(ratingKey string, offsetSec float64) error {
 		// Probe /decision to get a more informative response. Errors
 		// here are swallowed — best-effort diagnostic, not a retry.
 		decisionInfo := ps.probeDecision(ratingKey, offsetSec)
-		return fmt.Errorf("plex start: status %d (%s) — decision: %s",
-			resp.StatusCode, startBody, decisionInfo)
+		return fmt.Errorf("plex start (%s): status %d (%s) — decision: %s",
+			redactedURL(playlistURL), resp.StatusCode, startBody, decisionInfo)
 	}
 	ps.ratingKey = ratingKey
 	ps.offsetMs = int64(offsetSec * 1000)
