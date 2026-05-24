@@ -612,16 +612,6 @@ function attach() {
       maxBufferLength: 60,
       maxMaxBufferLength: 600,
     });
-    // Our server rewrites the playlist as PLAYLIST-TYPE:VOD so hls.js
-    // gives us a full seekable range, but a VOD playlist doesn't get
-    // periodically refreshed — and ours actually grows as ffmpeg
-    // produces more segments. Force a manifest refresh every 10 s so
-    // new fragments get picked up. The src URL gets a cache-busting
-    // timestamp so we definitely re-fetch from the server.
-    setInterval(() => {
-      if (!hls.media) return;
-      try { hls.loadSource('/hls/index.m3u8?ts=' + Date.now()); } catch (_) {}
-    }, 10000);
     hls.on(Hls.Events.ERROR, (_, data) => {
       console.error('hls.js error', data);
       if (data.fatal) {
@@ -838,12 +828,16 @@ setInterval(() => {
 
 // --- local controls broadcast to everyone -----------------------------------
 // Viewers can't drive playback; their event echoes don't post.
+//
+// We intentionally do NOT echo `seeked` events. hls.js fires `seeked`
+// on its own internal seeks (playlist updates, buffer rewinds during
+// recovery, etc.) and treating each one as "the user wants to seek"
+// floods the server with bogus state updates. The scrub-bar path
+// (commitScrubSeek) is the only entry point that posts a seek; the
+// host-position-broadcast tick keeps the server's view aligned with
+// natural playback drift.
 document.getElementById('play').onclick  = () => { if (isHost) post('play'); };
 document.getElementById('pause').onclick = () => { if (isHost) post('pause'); };
-v.addEventListener('seeked', () => {
-  if (!isHost) return;
-  if (!applying) post('seek', {positionSec: v.currentTime});
-});
 v.addEventListener('play',  () => { if (isHost && !applying) post('play');  });
 v.addEventListener('pause', () => { if (isHost && !applying) post('pause'); });
 </script>
