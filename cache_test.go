@@ -108,3 +108,47 @@ func TestSegmentCacheLRUTouchOnGet(t *testing.T) {
 		t.Fatal("expected k1 present")
 	}
 }
+
+func TestSegmentCacheRangesForEmpty(t *testing.T) {
+	c := NewSegmentCache(t.TempDir(), 1<<30)
+	got := c.RangesFor("rk1")
+	if len(got) != 0 {
+		t.Fatalf("RangesFor empty cache: got %v, want []", got)
+	}
+}
+
+func TestSegmentCacheRangesForMergesAdjacent(t *testing.T) {
+	c := NewSegmentCache(t.TempDir(), 1<<30)
+	// Three contiguous segments and one separate.
+	for _, k := range []cacheKey{
+		{ratingKey: "rk1", startMs: 0, endMs: 6000},
+		{ratingKey: "rk1", startMs: 6000, endMs: 12000},
+		{ratingKey: "rk1", startMs: 12000, endMs: 18000},
+		{ratingKey: "rk1", startMs: 30000, endMs: 36000},
+	} {
+		if _, err := c.Put(k, strings.NewReader("x")); err != nil {
+			t.Fatalf("Put: %v", err)
+		}
+	}
+	got := c.RangesFor("rk1")
+	want := [][2]float64{{0, 18.0}, {30.0, 36.0}}
+	if len(got) != len(want) {
+		t.Fatalf("len(got) = %d, want %d (got = %v)", len(got), len(want), got)
+	}
+	for i := range got {
+		if got[i] != want[i] {
+			t.Fatalf("got[%d] = %v, want %v", i, got[i], want[i])
+		}
+	}
+}
+
+func TestSegmentCacheRangesForSeparatesMovies(t *testing.T) {
+	c := NewSegmentCache(t.TempDir(), 1<<30)
+	_, _ = c.Put(cacheKey{ratingKey: "rk1", startMs: 0, endMs: 6000}, strings.NewReader("x"))
+	_, _ = c.Put(cacheKey{ratingKey: "rk2", startMs: 0, endMs: 6000}, strings.NewReader("x"))
+	r1 := c.RangesFor("rk1")
+	r2 := c.RangesFor("rk2")
+	if len(r1) != 1 || len(r2) != 1 {
+		t.Fatalf("expected 1 range per movie, got rk1=%v rk2=%v", r1, r2)
+	}
+}

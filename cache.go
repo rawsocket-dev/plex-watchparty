@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"sync"
 )
 
@@ -107,4 +108,39 @@ func (c *SegmentCache) Put(key cacheKey, src io.Reader) (string, error) {
 	c.entries[key] = e
 	c.totalBytes += n
 	return finalPath, nil
+}
+
+// RangesFor returns the union of all cached time ranges for ratingKey,
+// merged into the minimum number of contiguous intervals. Times are in
+// seconds. Returned slice is sorted by start.
+func (c *SegmentCache) RangesFor(ratingKey string) [][2]float64 {
+	c.mu.Lock()
+	type r struct{ s, e int64 }
+	raw := make([]r, 0)
+	for k := range c.entries {
+		if k.ratingKey == ratingKey {
+			raw = append(raw, r{k.startMs, k.endMs})
+		}
+	}
+	c.mu.Unlock()
+	if len(raw) == 0 {
+		return nil
+	}
+	sort.Slice(raw, func(i, j int) bool { return raw[i].s < raw[j].s })
+	merged := raw[:1]
+	for _, x := range raw[1:] {
+		last := &merged[len(merged)-1]
+		if x.s <= last.e {
+			if x.e > last.e {
+				last.e = x.e
+			}
+			continue
+		}
+		merged = append(merged, x)
+	}
+	out := make([][2]float64, len(merged))
+	for i, m := range merged {
+		out[i] = [2]float64{float64(m.s) / 1000.0, float64(m.e) / 1000.0}
+	}
+	return out
 }
