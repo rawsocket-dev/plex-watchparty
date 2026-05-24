@@ -932,9 +932,19 @@ function applyState(s, reason) {
   setTimeout(() => { applying = false; }, 250);
 
   const drift = v.currentTime - target;
-  syncEl.textContent = 'drift ' + drift.toFixed(2) + 's';
-  syncEl.classList.toggle('drifting', Math.abs(drift) > DRIFT / 2);
-  syncEl.classList.toggle('locked',   Math.abs(drift) <= DRIFT / 2);
+  if (isHost) {
+    // The host IS the source of truth — measuring drift against the
+    // server's extrapolation of the host's own position is circular,
+    // and the small value (sub-second) just reflects browser media-
+    // pipeline latency. Show role label instead.
+    syncEl.textContent = 'host';
+    syncEl.classList.remove('drifting');
+    syncEl.classList.add('locked');
+  } else {
+    syncEl.textContent = 'drift ' + drift.toFixed(2) + 's';
+    syncEl.classList.toggle('drifting', Math.abs(drift) > DRIFT / 2);
+    syncEl.classList.toggle('locked',   Math.abs(drift) <= DRIFT / 2);
+  }
 }
 
 const es = new EventSource('/events');
@@ -964,12 +974,18 @@ setInterval(() => {
   if (!isFinite(target)) return;
   const drift = v.currentTime - target;
 
-  // Always update the visible drift indicator. Earlier this was
-  // inside the if-correction branch so a stuck-paused-then-resumed
-  // viewer would never see a fresh number.
-  syncEl.textContent = 'drift ' + drift.toFixed(2) + 's';
-  syncEl.classList.toggle('drifting', Math.abs(drift) > DRIFT / 2);
-  syncEl.classList.toggle('locked',   Math.abs(drift) <= DRIFT / 2);
+  // Always update the visible indicator. For the host this stays at
+  // "host" (drift against own extrapolation is meaningless); for
+  // viewers it's the live numeric value with locked/drifting state.
+  if (isHost) {
+    syncEl.textContent = 'host';
+    syncEl.classList.remove('drifting');
+    syncEl.classList.add('locked');
+  } else {
+    syncEl.textContent = 'drift ' + drift.toFixed(2) + 's';
+    syncEl.classList.toggle('drifting', Math.abs(drift) > DRIFT / 2);
+    syncEl.classList.toggle('locked',   Math.abs(drift) <= DRIFT / 2);
+  }
 
   // Host: never auto-correct. Host's v.currentTime is the source of
   // truth — if their 4K HEVC decoder is lagging, we DO NOT want to
