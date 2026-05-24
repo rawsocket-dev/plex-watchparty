@@ -561,9 +561,20 @@ function dismissJoin() {
   joinEl.classList.add('hidden');
 }
 joinEl.addEventListener('click', () => {
-  // Try to play immediately — this click is the user gesture, so the
-  // browser allows it even with sound.
-  v.play().catch(() => { /* state may not be ready yet; will retry from SSE */ });
+  // Re-sync to wherever the host is RIGHT NOW before we let the
+  // browser actually start playback. Otherwise the player resumes
+  // from whatever currentTime was set when we first received state,
+  // which can be many seconds behind the host by the time the user
+  // gets around to clicking.
+  if (lastState && lastState.ratingKey) {
+    const target = targetFromState(lastState);
+    if (isFinite(target) && Math.abs(v.currentTime - target) > DRIFT) {
+      applying = true;
+      v.currentTime = target;
+      setTimeout(() => { applying = false; }, 250);
+    }
+  }
+  v.play().catch(() => { /* may need more buffering; periodic tick will retry */ });
   dismissJoin();
 });
 joinEl.addEventListener('keydown', (e) => {
@@ -638,9 +649,19 @@ function post(action, extra) {
 }
 
 // --- apply authoritative server state ---------------------------------------
-const es = new EventSource('/events');
-es.onmessage = (e) => {
-  const s = JSON.parse(e.data);
+// Latest known state from the server. We hold onto it so a periodic
+// drift-correction tick (below) can extrapolate where playback SHOULD
+// be at any moment, not just on the moments SSE pushes a change.
+let lastState = null;
+
+function targetFromState(s) {
+  if (!s) return null;
+  let t = s.positionSec;
+  if (s.playing) t += (Date.now() - s.updatedAtMs) / 1000;
+  return t;
+}
+
+function applyState(s, reason) {
   // Drop broadcasts that predate our last local action — those can
   // otherwise revert a scrub/play/pause the moment a stale in-flight
   // message arrives. (Server clock vs client clock — 500 ms slack.)
@@ -648,6 +669,7 @@ es.onmessage = (e) => {
     console.log('ignoring stale state @', s.updatedAtMs, '(local action @', lastLocalActionMs, ')');
     return;
   }
+  lastState = s;
   if (!s.ratingKey) {
     titleEl.textContent = 'awaiting the host…';
     titleEl.classList.add('idle');
@@ -666,12 +688,10 @@ es.onmessage = (e) => {
 
   if (s.ratingKey !== loadedKey) { loadedKey = s.ratingKey; attach(); }
 
-  // Where should we be right now?
-  let target = s.positionSec;
-  if (s.playing) target += (Date.now() - s.updatedAtMs) / 1000;
-
+  const target = targetFromState(s);
   applying = true;
   if (Math.abs(v.currentTime - target) > DRIFT && isFinite(target)) {
+    if (reason) console.log('apply', reason, '→ seek', target.toFixed(2));
     v.currentTime = target;
   }
   if (s.playing && v.paused) v.play().catch(()=>{});
@@ -682,7 +702,32 @@ es.onmessage = (e) => {
   syncEl.textContent = 'drift ' + drift.toFixed(2) + 's';
   syncEl.classList.toggle('drifting', Math.abs(drift) > DRIFT / 2);
   syncEl.classList.toggle('locked',   Math.abs(drift) <= DRIFT / 2);
-};
+}
+
+const es = new EventSource('/events');
+es.onmessage = (e) => applyState(JSON.parse(e.data), 'sse');
+
+// Periodic drift correction. SSE only fires on state changes, so a
+// viewer who joins mid-playback and gets stuck on the autoplay
+// overlay can fall arbitrarily far behind by the time they click.
+// This tick re-applies the extrapolated state every 2 s while the
+// host is playing, hard-seeking when drift exceeds DRIFT.
+setInterval(() => {
+  if (!lastState || !lastState.playing || !lastState.ratingKey) return;
+  if (applying || v.paused) return;
+  const target = targetFromState(lastState);
+  if (!isFinite(target)) return;
+  const drift = v.currentTime - target;
+  if (Math.abs(drift) > DRIFT) {
+    console.log('drift tick: correcting', drift.toFixed(2), 's → seek', target.toFixed(2));
+    applying = true;
+    v.currentTime = target;
+    setTimeout(() => { applying = false; }, 250);
+  }
+  syncEl.textContent = 'drift ' + drift.toFixed(2) + 's';
+  syncEl.classList.toggle('drifting', Math.abs(drift) > DRIFT / 2);
+  syncEl.classList.toggle('locked',   Math.abs(drift) <= DRIFT / 2);
+}, 2000);
 
 // --- local controls broadcast to everyone -----------------------------------
 // Viewers can't drive playback; their event echoes don't post.
