@@ -619,10 +619,14 @@ function attach() {
   console.log('player: native HLS =', v.canPlayType('application/vnd.apple.mpegurl'),
               ' MSE HEVC =', hevcMaybe);
 
-  if (v.canPlayType('application/vnd.apple.mpegurl')) {
-    v.src = src;                       // Safari: native HLS (incl. HEVC)
-    return;
-  }
+  // Prefer hls.js over the browser's native HLS player whenever it's
+  // supported. Chrome on macOS reports canPlayType('...mpegurl') as
+  // 'maybe' and tries to use VideoToolbox under the hood — that path
+  // has been buggy for us: empty v.seekable on EVENT playlists, and
+  // occasional decoder bad-data errors mid-segment. hls.js gives us a
+  // predictable MSE-driven pipeline plus the playlist rewriter below.
+  // Only fall back to native HLS if hls.js isn't supported (very old
+  // browsers, or iOS Safari where MSE is restricted).
   if (window.Hls && Hls.isSupported()) {
     // Rewrite the playlist on every fetch: strip the EVENT type tag and
     // inject VOD instead. With VOD, hls.js sets MediaSource.duration to
