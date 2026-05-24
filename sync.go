@@ -321,6 +321,8 @@ func (h *Hub) HandleControl(w http.ResponseWriter, r *http.Request) {
 		t0 := time.Now()
 		si, err := h.plex.Resolve(req.RatingKey)
 		if err != nil {
+			log.Printf("control: resolve failed ip=%s ratingKey=%s err=%v",
+				clientIP(r), req.RatingKey, err)
 			http.Error(w, "resolve: "+err.Error(), http.StatusBadGateway)
 			return
 		}
