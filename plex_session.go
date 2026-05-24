@@ -1,9 +1,7 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -108,8 +106,70 @@ func (ps *PlexSession) SessionToken() int64 {
 	return ps.sessionToken
 }
 
-// Placeholder references to imports — Start/Stop/FetchPlaylist etc. (added in
-// later tasks) will use these. Without these the imports are flagged as unused.
-var _ = json.Marshal
-var _ = http.MethodGet
-var _ io.Reader = nil
+// Start begins a Plex transcode session for ratingKey at the given
+// movie-time offset (seconds). On success, the playlist URL is captured
+// and sessionToken is bumped so clients can detect the new session.
+func (ps *PlexSession) Start(ratingKey string, offsetSec float64) error {
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+	playlistURL := ps.transcodeURL(ratingKey, offsetSec)
+	// Sanity check: a GET should return 200 with an m3u8 body.
+	req, _ := http.NewRequest(http.MethodGet, playlistURL, nil)
+	req.Header.Set("Accept", "application/vnd.apple.mpegurl")
+	resp, err := ps.plex.http.Do(req)
+	if err != nil {
+		return fmt.Errorf("plex start: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body := make([]byte, 1024)
+		n, _ := resp.Body.Read(body)
+		return fmt.Errorf("plex start: status %d: %s", resp.StatusCode, strings.TrimSpace(string(body[:n])))
+	}
+	ps.ratingKey = ratingKey
+	ps.offsetMs = int64(offsetSec * 1000)
+	ps.edgeMs = ps.offsetMs
+	ps.playlistURL = playlistURL
+	ps.sessionID = sessionIDFromURL(playlistURL)
+	ps.sessionToken++
+	return nil
+}
+
+// Stop tells Plex to terminate the current transcode session. Safe to
+// call when no session is active (no-op).
+func (ps *PlexSession) Stop() {
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+	ps.stopLocked()
+}
+
+func (ps *PlexSession) stopLocked() {
+	if ps.sessionID == "" {
+		return
+	}
+	stopURL := fmt.Sprintf("%s/video/:/transcode/universal/stop?session=%s&X-Plex-Token=%s",
+		ps.plex.BaseURL, url.QueryEscape(ps.sessionID), url.QueryEscape(ps.plex.Token))
+	req, _ := http.NewRequest(http.MethodGet, stopURL, nil)
+	if resp, err := ps.plex.http.Do(req); err == nil {
+		resp.Body.Close()
+	}
+	ps.ratingKey = ""
+	ps.sessionID = ""
+	ps.playlistURL = ""
+	ps.offsetMs = 0
+	ps.edgeMs = 0
+}
+
+// sessionIDFromURL pulls the session= param out of our transcode URL
+// (we generate it on the watchparty side and pass it to Plex).
+func sessionIDFromURL(u string) string {
+	idx := strings.Index(u, "session=")
+	if idx == -1 {
+		return ""
+	}
+	rest := u[idx+len("session="):]
+	if amp := strings.IndexByte(rest, '&'); amp >= 0 {
+		rest = rest[:amp]
+	}
+	return rest
+}
