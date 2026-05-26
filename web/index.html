@@ -64,6 +64,37 @@
     color: var(--paper-mute);
     margin-top: .35rem;
   }
+  /* Identity strip under the brand: "name · ROLE". Role dot is ember
+     for host, muted for viewer; name borrows the cinematic serif so
+     it reads as the actual person, not a tag. */
+  .brand .who {
+    display: inline-flex;
+    align-items: baseline;
+    gap: .55rem;
+    margin-top: .65rem;
+    font-family: var(--mono);
+    font-size: .58rem;
+    letter-spacing: .28em;
+    text-transform: uppercase;
+    color: var(--paper-mute);
+  }
+  .brand .who .nm {
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: .95rem;
+    letter-spacing: .03em;
+    text-transform: none;
+    color: var(--paper);
+  }
+  .brand .who .dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--paper-mute);
+    display: inline-block;
+    align-self: center;
+  }
+  .brand .who.host .dot { background: var(--ember); box-shadow: 0 0 8px rgba(212,165,116,.6); }
+  .brand .who.host .role { color: var(--ember); }
 
   .search-wrap {
     display: flex;
@@ -397,6 +428,7 @@
   <div class="brand">
     <span class="one">The Library</span>
     <span class="two">Late Show · Pick a Title</span>
+    <span class="who" id="who" hidden></span>
   </div>
   <label class="search-wrap">
     <input id="search" type="search" placeholder="search titles" autofocus autocomplete="off" spellcheck="false">
@@ -652,17 +684,38 @@ async function load() {
   }
 }
 
+// Pull the display name from the wp_name cookie set at login. JS-
+// readable on purpose so the library can render "you" alongside the
+// role chip without a round-trip.
+function readNameCookie() {
+  const match = document.cookie.match(/(?:^|;\s*)wp_name=([^;]+)/);
+  if (!match) return '';
+  try { return decodeURIComponent(match[1]); } catch { return match[1]; }
+}
+
+function renderWho(role) {
+  const el = document.getElementById('who');
+  const name = readNameCookie() || 'guest';
+  el.classList.toggle('host', role === 'host');
+  el.innerHTML =
+    '<span class="nm">' + name.replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])) + '</span>' +
+    '<span class="dot"></span>' +
+    '<span class="role">' + role + '</span>';
+  el.hidden = false;
+}
+
 async function loadWhoami() {
   try {
     const r = await fetch('/api/whoami');
-    if (!r.ok) return;
+    if (!r.ok) { renderWho('viewer'); return; }
     const d = await r.json();
     isHost = d.role === 'host';
+    renderWho(d.role);
     if (!isHost) {
       document.body.classList.add('guest');
       document.getElementById('guest').classList.add('show');
     }
-  } catch (_) { /* default: assume host */ }
+  } catch (_) { renderWho('viewer'); }
 }
 
 searchEl.addEventListener('input', applyFilter);
