@@ -98,8 +98,11 @@ func main() {
 
 	mux := http.NewServeMux()
 
-	// Public: only the login page.
+	// Public: only the login + logout pages. Logout is public so
+	// clicking it from a stale page (cookie already invalid) still
+	// lands cleanly on /login instead of bouncing through the Guard.
 	mux.HandleFunc("/login", auth.HandleLogin)
+	mux.HandleFunc("/logout", auth.HandleLogout)
 
 	// Everything else is behind the shared password.
 	protected := http.NewServeMux()

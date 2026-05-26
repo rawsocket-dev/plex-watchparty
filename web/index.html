@@ -238,6 +238,9 @@
     border-top: 1px solid var(--rule);
     margin-top: 2rem;
   }
+  footer a { color: var(--paper-mute); text-decoration: none; transition: color .2s ease; }
+  footer a:hover { color: var(--ember); }
+
 
   /* staggered reveal on initial paint */
   .letter-group {
@@ -414,7 +417,7 @@
 </div>
 <div id="status">Loading the library…</div>
 <div id="groups"></div>
-<footer>· intermission · grab a drink ·</footer>
+<footer>· intermission · grab a drink · <a href="/logout">log out</a> ·</footer>
 
 <!-- Resume / Start over dialog. Hidden by default; opened when the
      user clicks a movie that's already the active session and has a

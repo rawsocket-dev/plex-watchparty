@@ -136,6 +136,10 @@
 
   /* Viewer mode — controls hidden, scrub bar visually disabled. */
   body.viewer .ctrl { display: none; }
+  /* Fullscreen is per-client and should always be available to
+     anyone, host or viewer alike. */
+  body.viewer #fullscreen { display: inline-block; }
+  #fullscreen { font-family: ui-monospace, monospace; font-size: 1.1rem; padding: 0 .2rem; }
   body.viewer #scrub-hit { cursor: default; }
   body.viewer #scrub-hit:hover #scrub-track { height: 4px; }
   body.viewer #scrub-thumb { opacity: .65; }
@@ -425,7 +429,9 @@
         <span class="count"></span>
         <span class="roster" role="tooltip"></span>
       </span>
+      <button class="ctrl" id="fullscreen" title="Fullscreen">⛶</button>
       <a class="back" href="/">← library</a>
+      <a class="back" href="/logout">log out</a>
     </div>
   </div>
   <div id="scrub" aria-label="Playback position">
@@ -1092,6 +1098,26 @@ document.getElementById('play').onclick  = () => { if (isHost) post('play'); };
 document.getElementById('pause').onclick = () => { if (isHost) post('pause'); };
 v.addEventListener('play',  () => { if (isHost && !applying) post('play');  });
 v.addEventListener('pause', () => { if (isHost && !applying) post('pause'); });
+
+// Fullscreen toggle. Fullscreens #wrap (not the bare <video>) so the
+// top bar + scrub bar stay visible — same chrome as windowed mode,
+// just bigger. The Fullscreen API is per-tab and entirely client-
+// side; nothing about it touches the host/viewer sync.
+const wrapEl = document.getElementById('wrap');
+document.getElementById('fullscreen').onclick = () => {
+  if (document.fullscreenElement) {
+    document.exitFullscreen();
+  } else {
+    wrapEl.requestFullscreen().catch(err => console.warn('fullscreen failed:', err));
+  }
+};
+// Keyboard shortcut: 'f' toggles fullscreen, matching common video players.
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'f' || e.key === 'F') {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+    document.getElementById('fullscreen').click();
+  }
+});
 </script>
 </body>
 </html>

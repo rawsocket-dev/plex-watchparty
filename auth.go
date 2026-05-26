@@ -192,3 +192,20 @@ func (a *Auth) HandleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
+
+// HandleLogout clears both the auth session cookie and the display
+// name cookie, then redirects back to /login. Safe to call when not
+// logged in — Set-Cookie with MaxAge: -1 is a no-op against missing
+// cookies and the redirect still does the right thing.
+func (a *Auth) HandleLogout(w http.ResponseWriter, r *http.Request) {
+	for _, name := range []string{sessionCookie, nameCookie} {
+		http.SetCookie(w, &http.Cookie{
+			Name:     name,
+			Value:    "",
+			Path:     "/",
+			MaxAge:   -1,
+			SameSite: http.SameSiteLaxMode,
+		})
+	}
+	http.Redirect(w, r, "/login", http.StatusSeeOther)
+}
