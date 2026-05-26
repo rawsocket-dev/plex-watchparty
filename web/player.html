@@ -432,12 +432,6 @@
 <div id="wrap">
   <div id="bar">
     <div class="left">
-      <button class="ctrl" id="play">Play</button>
-      <button class="ctrl" id="pause">Pause</button>
-      <span id="viewer-tag">guest</span>
-    </div>
-    <span id="title" class="idle">awaiting the host…</span>
-    <div class="right">
       <span id="sync">idle</span>
       <span id="bw" hidden></span>
       <span id="viewers" hidden>
@@ -448,6 +442,12 @@
       <button class="ctrl" id="fullscreen" title="Fullscreen">⛶</button>
       <a class="back" href="/">← library</a>
       <a class="back" href="/logout">log out</a>
+    </div>
+    <span id="title" class="idle">awaiting the host…</span>
+    <div class="right">
+      <button class="ctrl" id="play">Play</button>
+      <button class="ctrl" id="pause">Pause</button>
+      <span id="viewer-tag">guest</span>
     </div>
   </div>
   <div id="scrub" aria-label="Playback position">
@@ -1115,6 +1115,16 @@ document.getElementById('pause').onclick = () => { if (isHost) post('pause'); };
 v.addEventListener('play',  () => { if (isHost && !applying) post('play');  });
 v.addEventListener('pause', () => { if (isHost && !applying) post('pause'); });
 
+// Click anywhere on the video to toggle play/pause (host only) — the
+// join overlay catches the first click pre-join, so this only fires
+// once playback is actually rolling. Viewers can't drive playback,
+// so the click is a no-op for them.
+v.addEventListener('click', () => {
+  if (!isHost) return;
+  if (v.paused) post('play');
+  else          post('pause');
+});
+
 // Fullscreen toggle. Fullscreens #wrap (not the bare <video>) so the
 // top bar + scrub bar stay visible — same chrome as windowed mode,
 // just bigger. The Fullscreen API is per-tab and entirely client-
@@ -1148,10 +1158,16 @@ zoomBtn.onclick = () => {
   applyZoom(wrapEl.classList.contains('fill') ? 'fit' : 'fill');
 };
 
-// Keyboard shortcuts: 'f' = fullscreen, 'z' = zoom toggle. Both
-// ignore input fields so typing in the search box doesn't fire.
+// Keyboard shortcuts: space = play/pause (host), 'f' = fullscreen,
+// 'z' = zoom toggle. All ignore input fields so typing in the search
+// box doesn't accidentally fire them.
 window.addEventListener('keydown', (e) => {
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+  if (e.key === ' ' || e.code === 'Space') {
+    e.preventDefault(); // suppress page scroll
+    if (isHost) post(v.paused ? 'play' : 'pause');
+    return;
+  }
   if (e.key === 'f' || e.key === 'F') document.getElementById('fullscreen').click();
   if (e.key === 'z' || e.key === 'Z') zoomBtn.click();
 });
