@@ -87,7 +87,15 @@ func main() {
 	} else {
 		plex.MarkUnhealthy(err)
 	}
+	// Recent-played list shown on the waiting room. Persisted in the
+	// same dir as the library cache (one level above WORK_DIR) so a
+	// cache prune doesn't wipe it.
+	recentPath := filepath.Join(filepath.Dir(workDir), "recent.json")
+	recent := NewRecentMovies(recentPath)
+	recent.Load()
+
 	hub := NewHub(plex, plexSession, segCache)
+	hub.recent = recent
 	auth := NewAuth(password, hostPassword)
 	bw := newBwTracker()
 	if auth.HostEnabled() {
@@ -175,6 +183,15 @@ func main() {
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Cache-Control", "no-store")
 		_ = json.NewEncoder(w).Encode(hub.Snapshot())
+	})
+
+	// Recently-played list, newest first. Used by the waiting-room
+	// page so the host (or anyone) can re-pick a recent movie with
+	// one click instead of going through the full library.
+	protected.HandleFunc("/api/recent", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "no-store")
+		_ = json.NewEncoder(w).Encode(recent.List())
 	})
 
 	// /hls/index.m3u8 — fetch Plex's playlist, rewrite segment URLs to

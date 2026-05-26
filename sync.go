@@ -59,6 +59,7 @@ type Hub struct {
 	plex    *Plex
 	session *PlexSession
 	cache   *SegmentCache
+	recent  *RecentMovies // optional; nil-safe — main wires it in after NewHub
 
 	mu    sync.Mutex
 	state State
@@ -501,6 +502,18 @@ func (h *Hub) HandleControl(w http.ResponseWriter, r *http.Request) {
 		}
 		h.broadcast()
 		h.mu.Unlock()
+		if h.recent != nil {
+			// Look up the year by walking the (cached) movie list so the
+			// waiting-room card can show "Top Gun: Maverick · 2022".
+			year := 0
+			for _, m := range movies {
+				if m.RatingKey == req.RatingKey {
+					year = m.Year
+					break
+				}
+			}
+			h.recent.Touch(req.RatingKey, title, year)
+		}
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]int64{

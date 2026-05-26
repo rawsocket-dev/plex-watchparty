@@ -196,6 +196,66 @@
     from { filter: brightness(1); }
     to   { filter: brightness(1.6); }
   }
+
+  /* Recently-screened reel. Empty by default; populated from
+     /api/recent on load. Hidden entirely if the list is empty so the
+     center column doesn't get a lone label hanging in space. */
+  .reel {
+    margin-top: 3rem;
+    text-align: left;
+    display: none;
+  }
+  .reel.show { display: block; }
+  .reel-title {
+    font-family: var(--mono);
+    font-size: .58rem;
+    letter-spacing: .32em;
+    text-transform: uppercase;
+    color: var(--paper-mute);
+    text-align: center;
+    margin-bottom: 1.2rem;
+  }
+  .reel-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: .65rem;
+  }
+  .reel-item {
+    appearance: none;
+    background: rgba(255,255,255,0.02);
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    padding: .85rem .95rem;
+    color: var(--paper);
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: .95rem;
+    text-align: left;
+    cursor: default;
+    transition: border-color .25s ease, background .25s ease, transform .25s ease;
+    display: flex;
+    flex-direction: column;
+    gap: .35rem;
+    line-height: 1.25;
+  }
+  .reel-item .yr {
+    font-family: var(--mono);
+    font-style: normal;
+    font-size: .58rem;
+    letter-spacing: .28em;
+    text-transform: uppercase;
+    color: var(--paper-mute);
+  }
+  body.host .reel-item {
+    cursor: pointer;
+  }
+  body.host .reel-item:hover {
+    border-color: var(--ember);
+    background: rgba(212,165,116,0.06);
+    transform: translateY(-1px);
+  }
+  body.host .reel-item:hover .yr { color: var(--ember); }
+  .reel-item:disabled { opacity: .55; cursor: default; }
 </style>
 </head>
 <body>
@@ -218,6 +278,11 @@
   </div>
 
   <div class="role">↪ you are the projectionist</div>
+
+  <div class="reel" id="reel">
+    <div class="reel-title">previously screened</div>
+    <div class="reel-list" id="reel-list"></div>
+  </div>
 
   <div class="footer">
     <span>Late Show</span>
@@ -253,6 +318,52 @@
       setTimeout(() => { window.location.href = '/watch'; }, 350);
     }
   };
+
+  // Recently-screened reel. Render last-5 movies; hosts get clickable
+  // cards that POST a /control load and redirect to /watch (waiting
+  // there gets the live player via SSE). Viewers see them as
+  // passive cards — the host's pick is what counts.
+  function escapeHTML(s) {
+    return String(s).replace(/[&<>"']/g, c => ({
+      '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;',
+    })[c]);
+  }
+  function loadReel() {
+    fetch('/api/recent').then(r => r.ok ? r.json() : []).then(list => {
+      if (!Array.isArray(list) || list.length === 0) return;
+      const reel = document.getElementById('reel');
+      const ul   = document.getElementById('reel-list');
+      ul.innerHTML = list.map(m => {
+        const yr = m.year ? ' · ' + m.year : '';
+        return '<button type="button" class="reel-item" data-key="' + escapeHTML(m.ratingKey) + '" data-title="' + escapeHTML(m.title) + '">' +
+                 '<span class="ttl">' + escapeHTML(m.title) + '</span>' +
+                 '<span class="yr">last screened' + yr + '</span>' +
+               '</button>';
+      }).join('');
+      ul.querySelectorAll('.reel-item').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          if (!document.body.classList.contains('host')) return; // viewers can't pick
+          btn.disabled = true;
+          btn.querySelector('.yr').textContent = 'cueing the projector…';
+          try {
+            const r = await fetch('/control', {
+              method: 'POST',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify({action: 'load', ratingKey: btn.dataset.key}),
+            });
+            if (!r.ok) throw new Error(await r.text());
+            window.location.href = '/watch';
+          } catch (err) {
+            btn.disabled = false;
+            btn.querySelector('.yr').textContent = 'retry';
+            console.error(err);
+          }
+        });
+      });
+      reel.classList.add('show');
+    }).catch(() => {});
+  }
+  loadReel();
 </script>
 </body>
 </html>
