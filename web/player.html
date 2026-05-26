@@ -24,12 +24,19 @@
   html, body {
     margin: 0; height: 100%; background: var(--ink); color: var(--paper);
     font-family: var(--serif);
-    /* This is a movie player — text selection is never the goal. Stops
-       errant double-clicks anywhere on the page from highlighting
-       random copy. */
-    user-select: none;
-    -webkit-user-select: none;
   }
+  /* This is a movie player — text selection is never the goal. Apply
+     to everything, with !important, so no later rule (or :fullscreen
+     pseudo-class reset) can re-enable it. ::selection paints the
+     selection background transparent as a belt-and-suspenders in
+     case the browser still tries. */
+  *, *::before, *::after {
+    user-select: none !important;
+    -webkit-user-select: none !important;
+    -webkit-touch-callout: none !important;
+  }
+  ::selection { background: transparent; }
+  ::-moz-selection { background: transparent; }
   #wrap { height: 100%; display: flex; flex-direction: column; }
 
   /* top bar — thin so the picture owns the screen */
