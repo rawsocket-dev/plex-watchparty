@@ -34,6 +34,20 @@ authoritative position with sub-second tolerance.
 - `sync.go` — authoritative playback state, SSE broadcast to viewers, host control endpoint
 - `web/` — login, movie list, drift-correcting hls.js player
 
+The long-form design lives in
+[`docs/superpowers/specs/2026-05-24-plex-hls-proxy-design.md`](docs/superpowers/specs/2026-05-24-plex-hls-proxy-design.md).
+Read that first if you're modifying the playlist / segment / cache
+pipeline; high-level project notes for contributors are in
+[`local.md`](local.md).
+
+**A note on Plex TLS:** Plex Media Server's certificate is signed for
+`*.<machine-id>.plex.direct` (Plex.tv's auto-issued cert). Any operator
+who fronts Plex with their own DNS name fails standard verification, so
+watchparty uses an HTTP client with `InsecureSkipVerify` enabled for
+**Plex calls only** (browser-facing TLS is unaffected). Traffic is
+LAN-side and the X-Plex-Token query param is the real authentication
+surface — the cert check would add no security in practice.
+
 ## Run with Docker (recommended)
 
 Two flavors, depending on whether you want to pull the CI-built image
