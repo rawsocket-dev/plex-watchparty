@@ -114,14 +114,27 @@ func (h *Hub) broadcastLoop() {
 	for range t.C {
 		h.mu.Lock()
 		if len(h.clients) > 0 {
-			if h.state.RatingKey != "" {
-				h.state.CachedRanges = h.cache.RangesFor(h.state.RatingKey)
-			}
 			h.broadcast()
 		}
 		h.mu.Unlock()
 	}
 }
+
+// Lock ordering — touching this invariant breaks the room.
+//
+// The three mutexes in play are Hub.mu, PlexSession.mu, and
+// SegmentCache.mu. They MUST be acquired in that order if any two
+// are held simultaneously:
+//
+//	Hub.mu → PlexSession.mu (HandleControl seek/restart, idleShutdown)
+//	Hub.mu → SegmentCache.mu (broadcast → cache.RangesFor)
+//
+// Neither PlexSession nor SegmentCache ever calls back into Hub, so
+// the reverse direction is impossible by construction. The cache
+// methods also never call into PlexSession and vice versa, so those
+// two are never held together. If any future refactor introduces a
+// cache or session callback that needs hub state, take it OUT of
+// the lock and pass values, don't add an acquire.
 
 // hostCount returns the number of currently-connected hosts. Must be
 // called with h.mu held.
@@ -579,6 +592,15 @@ func (h *Hub) HandleControl(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if needRestart {
+			// We must drop h.mu before calling session.Restart — it
+			// holds PlexSession.mu internally for the duration of the
+			// HTTP round-trip to Plex (decision + start, ~hundreds of
+			// ms). Holding Hub.mu through that would stall every
+			// connected viewer's SSE writes. Re-snapshot state after
+			// reacquiring since other handlers (play/pause echoes)
+			// can have mutated h.state during the gap; the seek
+			// target overrides whatever PositionSec they wrote, but
+			// the rest of the state must be current.
 			h.mu.Unlock()
 			log.Printf("seek: restart needed (target=%.2f > edge=%.2f, no cache hit)",
 				target, h.session.EdgeSec())
