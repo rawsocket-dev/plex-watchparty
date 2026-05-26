@@ -95,8 +95,17 @@ func (r *RecentMovies) Touch(ratingKey, title string, year int) {
 		log.Printf("recent: marshal: %v", err)
 		return
 	}
-	if err := os.WriteFile(r.path, b, 0o644); err != nil {
-		log.Printf("recent: write %s: %v", r.path, err)
+	// Atomic write: stage into a sibling .tmp file and rename. Without
+	// this an interrupted write would leave a truncated JSON file on
+	// disk and the next Load would discard everything as malformed.
+	tmp := r.path + ".tmp"
+	if err := os.WriteFile(tmp, b, 0o644); err != nil {
+		log.Printf("recent: write %s: %v", tmp, err)
+		return
+	}
+	if err := os.Rename(tmp, r.path); err != nil {
+		log.Printf("recent: rename %s -> %s: %v", tmp, r.path, err)
+		_ = os.Remove(tmp)
 	}
 }
 

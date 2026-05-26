@@ -154,6 +154,9 @@ func (a *Auth) HandleLogin(w http.ResponseWriter, r *http.Request) {
 		w.Write(loginHTML)
 		return
 	}
+	// Cap the form body — /login takes two short strings (name +
+	// password), no need to read megabytes.
+	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
 	pw := []byte(r.FormValue("password"))
 	ip := clientIP(r)
 	var role Role

@@ -424,6 +424,9 @@ type controlReq struct {
 
 // HandleControl applies an action from any authenticated friend and rebroadcasts.
 func (h *Hub) HandleControl(w http.ResponseWriter, r *http.Request) {
+	// Cap the request body — /control is the host's command channel,
+	// not a file upload. 4 KiB is generous for the JSON we accept.
+	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
 	var req controlReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		log.Printf("control: bad request ip=%s err=%v", clientIP(r), err)
