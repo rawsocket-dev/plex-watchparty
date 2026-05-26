@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -33,11 +34,18 @@ func NewPlexSession(p *Plex, transcodeKbps int) *PlexSession {
 	return &PlexSession{plex: p, transcodeKbps: transcodeKbps}
 }
 
+// newSessionID mints a unique Plex transcode session id.
+func newSessionID() string {
+	return "watchparty-" + strconv.FormatInt(time.Now().UnixNano(), 36)
+}
+
 // transcodeURL builds the Plex Universal Transcoder URL at the given
 // movie-time offset (in seconds). Targets HLS output (mpegts/h264/aac)
-// so we can proxy + cache Plex's playlist + segments directly.
-func (ps *PlexSession) transcodeURL(ratingKey string, offsetSec float64) string {
-	sessionID := "watchparty-" + strconv.FormatInt(time.Now().UnixNano(), 36)
+// so we can proxy + cache Plex's playlist + segments directly. The
+// caller passes a sessionID so /decision and /start.m3u8 can share
+// the same one — Plex expects the negotiation + actual start to be
+// stitched together by session.
+func (ps *PlexSession) transcodeURL(ratingKey, sessionID string, offsetSec float64) string {
 	// Profile-Extra teaches Plex's transcoder what we can play. For HLS
 	// browser playback that's h264 video + aac audio inside mpegts
 	// segments — matches what hls.js + MSE can decode without any
@@ -88,11 +96,13 @@ func (ps *PlexSession) transcodeURL(ratingKey string, offsetSec float64) string 
 
 // decisionURL is the same as transcodeURL but hits Plex's /decision
 // endpoint, which returns a JSON body explaining WHY a transcode was
-// rejected (codec not supported, no matching target, etc.) rather than
-// the bare HTML 400 you get from /start.m3u8. Used as a diagnostic
-// preflight when Start fails.
-func (ps *PlexSession) decisionURL(ratingKey string, offsetSec float64) string {
-	return strings.Replace(ps.transcodeURL(ratingKey, offsetSec),
+// rejected (codec not supported, no matching target, etc.). Real Plex
+// clients negotiate via /decision before issuing /start.m3u8 and
+// share the same session ID across both calls — Plex's session
+// bookkeeping expects that order. Used both as a preflight and (with
+// the old fall-through path) as a post-mortem.
+func (ps *PlexSession) decisionURL(ratingKey, sessionID string, offsetSec float64) string {
+	return strings.Replace(ps.transcodeURL(ratingKey, sessionID, offsetSec),
 		"/transcode/universal/start.m3u8?",
 		"/transcode/universal/decision?", 1)
 }
@@ -118,59 +128,88 @@ func (ps *PlexSession) SessionToken() int64 {
 }
 
 // Start begins a Plex transcode session for ratingKey at the given
-// movie-time offset (seconds). Any prior session is stopped first —
-// Plex's transcoder gets confused if you try to open a new session
-// while an old one is still tracked server-side (the second /start
-// returns a bare HTML 400 with no body), so cleanup is mandatory, not
-// just polite. On failure, a /decision preflight is issued to surface
-// Plex's actual rejection reason.
+// movie-time offset (seconds). Real Plex clients negotiate via
+// /decision before issuing /start.m3u8 and use the same session id
+// across both — without the decision call, Plex sometimes returns a
+// bare 400 from /start.m3u8 (even though the params would succeed
+// after a brief warm-up). We mirror that pattern AND retry once
+// after a short delay if the first /start still 400s, since Plex's
+// /stop endpoint is unreliable and a freshly-stopped prior session
+// can stay tracked for a few seconds.
 func (ps *PlexSession) Start(ratingKey string, offsetSec float64) error {
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
 	ps.stopLocked()
-	playlistURL := ps.transcodeURL(ratingKey, offsetSec)
-	req, _ := http.NewRequest(http.MethodGet, playlistURL, nil)
-	req.Header.Set("Accept", "application/vnd.apple.mpegurl")
-	resp, err := ps.plex.Do(req)
-	if err != nil {
-		return fmt.Errorf("plex start (%s): %w", redactedURL(playlistURL), err)
+
+	sessionID := newSessionID()
+
+	// /decision first. Plex returns 200 + a JSON body describing
+	// "Direct play not available; Conversion OK." when our transcode
+	// target is acceptable — and that response also primes Plex's
+	// session bookkeeping for the upcoming /start.m3u8 call. Failures
+	// here are surfaced but not retried; if Plex can't even decide,
+	// /start won't fare better.
+	if err := ps.callDecision(ratingKey, sessionID, offsetSec); err != nil {
+		return fmt.Errorf("plex decision: %w", err)
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+
+	// /start.m3u8. Retry once after a 1.5s pause if Plex returns 4xx
+	// — empirically that covers the "/stop ack but slot still held"
+	// race that's plagued us in testing.
+	var (
+		playlistURL = ps.transcodeURL(ratingKey, sessionID, offsetSec)
+		lastErr     error
+	)
+	for attempt := 1; attempt <= 2; attempt++ {
+		req, _ := http.NewRequest(http.MethodGet, playlistURL, nil)
+		req.Header.Set("Accept", "application/vnd.apple.mpegurl")
+		resp, err := ps.plex.Do(req)
+		if err != nil {
+			return fmt.Errorf("plex start (%s): %w", redactedURL(playlistURL), err)
+		}
+		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+			resp.Body.Close()
+			ps.ratingKey = ratingKey
+			ps.offsetMs = int64(offsetSec * 1000)
+			ps.edgeMs = ps.offsetMs
+			ps.playlistURL = playlistURL
+			ps.sessionID = sessionID
+			ps.sessionToken++
+			if attempt > 1 {
+				log.Printf("plex start: succeeded on attempt %d", attempt)
+			}
+			return nil
+		}
 		body := make([]byte, 1024)
 		n, _ := resp.Body.Read(body)
-		startBody := strings.TrimSpace(string(body[:n]))
-		// Probe /decision to get a more informative response. Errors
-		// here are swallowed — best-effort diagnostic, not a retry.
-		decisionInfo := ps.probeDecision(ratingKey, offsetSec)
-		return fmt.Errorf("plex start (%s): status %d (%s) — decision: %s",
-			redactedURL(playlistURL), resp.StatusCode, startBody, decisionInfo)
+		resp.Body.Close()
+		lastErr = fmt.Errorf("status %d (%s)", resp.StatusCode, strings.TrimSpace(string(body[:n])))
+		if attempt == 1 {
+			log.Printf("plex start: attempt 1 failed (%v); retrying after 1.5s", lastErr)
+			time.Sleep(1500 * time.Millisecond)
+		}
 	}
-	ps.ratingKey = ratingKey
-	ps.offsetMs = int64(offsetSec * 1000)
-	ps.edgeMs = ps.offsetMs
-	ps.playlistURL = playlistURL
-	ps.sessionID = sessionIDFromURL(playlistURL)
-	ps.sessionToken++
-	return nil
+	return fmt.Errorf("plex start (%s): %v", redactedURL(playlistURL), lastErr)
 }
 
-// probeDecision GETs /transcode/universal/decision and returns a short
-// summary of the response. Best-effort: never returns an error — only
-// used to enrich a Start failure message.
-func (ps *PlexSession) probeDecision(ratingKey string, offsetSec float64) string {
-	req, err := http.NewRequest(http.MethodGet, ps.decisionURL(ratingKey, offsetSec), nil)
-	if err != nil {
-		return "probe build failed: " + err.Error()
-	}
+// callDecision GETs /transcode/universal/decision and returns nil if
+// Plex acknowledges the request (any 2xx). The body isn't read — we
+// only care that Plex registered the negotiation. Errors are kept
+// because a failed decision predicts a failed start.
+func (ps *PlexSession) callDecision(ratingKey, sessionID string, offsetSec float64) error {
+	u := ps.decisionURL(ratingKey, sessionID, offsetSec)
+	req, _ := http.NewRequest(http.MethodGet, u, nil)
 	req.Header.Set("Accept", "application/json")
 	resp, err := ps.plex.Do(req)
 	if err != nil {
-		return "probe failed: " + err.Error()
+		return err
 	}
 	defer resp.Body.Close()
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
-	return fmt.Sprintf("status %d body=%s", resp.StatusCode, strings.TrimSpace(string(body)))
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		return fmt.Errorf("status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	return nil
 }
 
 // Stop tells Plex to terminate the current transcode session. Safe to
