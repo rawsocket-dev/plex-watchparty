@@ -59,7 +59,7 @@ type Hub struct {
 	plex    *Plex
 	session *PlexSession
 	cache   *SegmentCache
-	recent  *RecentMovies // optional; nil-safe — main wires it in after NewHub
+	recent  *RecentMovies
 
 	mu    sync.Mutex
 	state State
@@ -90,8 +90,14 @@ const idleGrace = 60 * time.Second
 // just "host clicks play again," not "plex session killed."
 const hostExitGrace = 10 * time.Second
 
-func NewHub(plex *Plex, session *PlexSession, cache *SegmentCache) *Hub {
-	h := &Hub{plex: plex, session: session, cache: cache, clients: make(map[chan State]*clientEntry)}
+func NewHub(plex *Plex, session *PlexSession, cache *SegmentCache, recent *RecentMovies) *Hub {
+	h := &Hub{
+		plex:    plex,
+		session: session,
+		cache:   cache,
+		recent:  recent,
+		clients: make(map[chan State]*clientEntry),
+	}
 	// Periodic state re-broadcast. Two goals: (1) Safari's EventSource
 	// closes the SSE if it goes ~10–20 s without an actual data event
 	// (comment-only heartbeats don't count), and (2) every viewer
@@ -464,9 +470,11 @@ func (h *Hub) HandleControl(w http.ResponseWriter, r *http.Request) {
 		tList := time.Now()
 		movies, _ := h.plex.ListMovies()
 		title := req.RatingKey
+		year := 0
 		for _, m := range movies {
 			if m.RatingKey == req.RatingKey {
 				title = m.Title
+				year = m.Year
 				break
 			}
 		}
@@ -503,15 +511,6 @@ func (h *Hub) HandleControl(w http.ResponseWriter, r *http.Request) {
 		h.broadcast()
 		h.mu.Unlock()
 		if h.recent != nil {
-			// Look up the year by walking the (cached) movie list so the
-			// waiting-room card can show "Top Gun: Maverick · 2022".
-			year := 0
-			for _, m := range movies {
-				if m.RatingKey == req.RatingKey {
-					year = m.Year
-					break
-				}
-			}
 			h.recent.Touch(req.RatingKey, title, year)
 		}
 

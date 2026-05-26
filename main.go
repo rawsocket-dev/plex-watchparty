@@ -35,23 +35,19 @@ func main() {
 	// Persist the library cache next to (not inside) the sessions dir so
 	// the prune sweep never touches it.
 	libraryCache := filepath.Join(filepath.Dir(workDir), "library-cache.json")
-	// Optional on-the-fly transcode through Plex's Universal Transcoder.
-	// Empty / 0 keeps the legacy direct-stream behavior; any positive
-	// integer targets 1080p h264 at that kbps (12000 is a sensible value
-	// for high-quality watch-party streaming).
-	transcodeKbps := 0
+	// Plex Universal Transcoder target bitrate, in kbps. There's no
+	// "direct stream" mode any more — every play goes through Plex's
+	// transcoder (we proxy + cache its HLS output). 12000 is a
+	// reasonable default for h264 1080p at high quality.
+	transcodeKbps := 12000
 	if v := os.Getenv("PLEX_TRANSCODE_BITRATE_KBPS"); v != "" {
 		n, err := strconv.Atoi(v)
-		if err != nil || n < 0 {
-			log.Fatalf("PLEX_TRANSCODE_BITRATE_KBPS must be a non-negative integer, got %q", v)
+		if err != nil || n <= 0 {
+			log.Fatalf("PLEX_TRANSCODE_BITRATE_KBPS must be a positive integer, got %q", v)
 		}
 		transcodeKbps = n
 	}
-	if transcodeKbps > 0 {
-		log.Printf("plex: on-the-fly transcode enabled → 1920x1080 h264 @ %d kbps", transcodeKbps)
-	} else {
-		log.Printf("plex: direct-stream mode (no transcode); set PLEX_TRANSCODE_BITRATE_KBPS to enable")
-	}
+	log.Printf("plex: transcode target → 1920x1080 h264 @ %d kbps", transcodeKbps)
 	plex := NewPlex(plexURL, plexTok, libraryCache)
 
 	// Disk cache for HLS segments. Sized by CACHE_MAX_GB (default 20 GB).
@@ -94,8 +90,7 @@ func main() {
 	recent := NewRecentMovies(recentPath)
 	recent.Load()
 
-	hub := NewHub(plex, plexSession, segCache)
-	hub.recent = recent
+	hub := NewHub(plex, plexSession, segCache, recent)
 	auth := NewAuth(password, hostPassword)
 	bw := newBwTracker()
 	if auth.HostEnabled() {
@@ -241,7 +236,11 @@ func main() {
 		}
 		key := cacheKey{ratingKey: ctx.Rating, startMs: ctx.StartMs, endMs: ctx.EndMs}
 		w.Header().Set("Content-Type", "video/mp2t")
-		w.Header().Set("Cache-Control", "no-cache")
+		// Segment URLs are content-addressed via the base64 segCtx in
+		// the path, so the bytes for a given URL never change. Let the
+		// browser cache them aggressively — backward seek into a
+		// previously-fetched range skips a server round-trip entirely.
+		w.Header().Set("Cache-Control", "public, max-age=86400, immutable")
 		cw := &countingResponseWriter{ResponseWriter: w}
 		defer func() { bw.record(clientIP(r), cw.n) }()
 
