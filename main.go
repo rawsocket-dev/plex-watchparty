@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 )
 
 func env(key, def string) string {
@@ -78,17 +79,39 @@ func main() {
 
 	plexSession := NewPlexSession(plex, transcodeKbps)
 	// Health check: confirm we can reach the configured Plex server and
-	// that the token is valid before binding the HTTP port. Non-fatal so
-	// a transient Plex outage at boot doesn't take down the watch party
-	// — the user will see a clear warning and library calls will retry
-	// when Plex comes back.
-	if id, err := plex.Ping(); err != nil {
-		log.Printf("plex: WARNING — health check failed: %v", err)
-		log.Printf("plex: check PLEX_BASE_URL / PLEX_TOKEN; library calls will keep retrying")
-	} else {
-		log.Printf("plex: connected to %q (version %s, %s %s, machine %s)",
-			id.FriendlyName, id.Version, id.Platform, id.PlatformVersion, id.MachineIdentifier)
-	}
+	// that the token is valid. Non-fatal — the HTTP server starts
+	// regardless so the container is up while Plex is still booting.
+	// Retries in the background with exponential backoff (5s → 60s cap)
+	// until the first successful identity, then exits the goroutine.
+	go func() {
+		delay := 5 * time.Second
+		const maxDelay = 60 * time.Second
+		for attempt := 1; ; attempt++ {
+			id, err := plex.Ping()
+			if err == nil {
+				if attempt == 1 {
+					log.Printf("plex: connected to %q (version %s, %s %s, machine %s)",
+						id.FriendlyName, id.Version, id.Platform, id.PlatformVersion, id.MachineIdentifier)
+				} else {
+					log.Printf("plex: connected on attempt %d to %q (version %s, machine %s)",
+						attempt, id.FriendlyName, id.Version, id.MachineIdentifier)
+				}
+				return
+			}
+			if attempt == 1 {
+				log.Printf("plex: WARNING — health check failed: %v", err)
+				log.Printf("plex: check PLEX_BASE_URL / PLEX_TOKEN; will keep retrying every %s (capped at %s)",
+					delay, maxDelay)
+			} else {
+				log.Printf("plex: retry %d failed (%v); next attempt in %s", attempt, err, delay)
+			}
+			time.Sleep(delay)
+			delay *= 2
+			if delay > maxDelay {
+				delay = maxDelay
+			}
+		}
+	}()
 	hub := NewHub(plex, plexSession, segCache)
 	auth := NewAuth(password, hostPassword)
 	bw := newBwTracker()
