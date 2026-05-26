@@ -128,15 +128,6 @@ func main() {
 		w.Write(indexHTML)
 	})
 
-	// Top-bar mockup gallery. Standalone page showing four design
-	// directions side-by-side so the host can pick one before we
-	// commit to refactoring the real chrome.
-	protected.HandleFunc("/mockups", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.Header().Set("Cache-Control", "no-store")
-		w.Write(mockupsHTML)
-	})
-
 	protected.HandleFunc("/watch", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		// Disable bfcache + cached responses so a back-button arrival

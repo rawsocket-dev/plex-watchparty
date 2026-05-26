@@ -13,6 +13,3 @@ var playerHTML []byte
 
 //go:embed web/waiting.html
 var waitingHTML []byte
-
-//go:embed web/mockups.html
-var mockupsHTML []byte
