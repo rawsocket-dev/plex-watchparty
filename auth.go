@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"log"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -167,7 +168,10 @@ func (a *Auth) HandleLogin(w http.ResponseWriter, r *http.Request) {
 		w.Write(loginHTML)
 		return
 	}
-	log.Printf("login: OK ip=%s role=%s ua=%q", ip, role, r.UserAgent())
+	// Display name is optional. sanitizeName trims, drops anything
+	// outside printable ASCII, and caps at maxViewerName.
+	name := sanitizeName(r.FormValue("name"))
+	log.Printf("login: OK ip=%s role=%s name=%q ua=%q", ip, role, name, r.UserAgent())
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookie,
 		Value:    a.token(role),
@@ -176,5 +180,15 @@ func (a *Auth) HandleLogin(w http.ResponseWriter, r *http.Request) {
 		SameSite: http.SameSiteLaxMode,
 		Expires:  time.Now().Add(30 * 24 * time.Hour),
 	})
+	if name != "" {
+		http.SetCookie(w, &http.Cookie{
+			Name:     nameCookie,
+			Value:    url.QueryEscape(name),
+			Path:     "/",
+			HttpOnly: false, // viewable by JS so the player can show "you" in the roster
+			SameSite: http.SameSiteLaxMode,
+			Expires:  time.Now().Add(365 * 24 * time.Hour),
+		})
+	}
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }

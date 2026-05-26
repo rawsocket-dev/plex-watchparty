@@ -106,7 +106,7 @@
     font-size: .95rem;
     opacity: .85;
   }
-  input[type="password"] {
+  input[type="text"], input[type="password"] {
     flex: 1;
     background: transparent;
     border: 0;
@@ -118,12 +118,13 @@
     padding: 0;
     caret-color: var(--ember);
   }
-  input[type="password"]::placeholder {
+  input::placeholder {
     color: var(--paper-mute);
     letter-spacing: .2em;
     text-transform: lowercase;
     opacity: .55;
   }
+  .field + .field { margin-top: .35rem; }
 
   .row {
     margin-top: 1.6rem;
@@ -176,7 +177,10 @@
   <p class="sub">a private screening — password required</p>
   <form method="post" action="/login">
     <label class="field">
-      <input type="password" name="password" placeholder="passphrase" autofocus autocomplete="current-password">
+      <input type="text" name="name" placeholder="your name" autofocus autocomplete="nickname" maxlength="16" pattern="[\x20-\x7e]+" title="16 chars max, printable ASCII only">
+    </label>
+    <label class="field">
+      <input type="password" name="password" placeholder="passphrase" autocomplete="current-password">
     </label>
     <div class="row">
       <span class="hint">shared with the party</span>

@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 )
@@ -32,6 +35,24 @@ type State struct {
 	// these as the "lighter band" so users can see which scrub targets
 	// are instant vs which will trigger a Plex restart.
 	CachedRanges [][2]float64 `json:"cachedRanges,omitempty"`
+	// Viewers is the current connected-viewer list (name + role).
+	// Refreshed on every broadcast so the player's "who's here" tooltip
+	// can update as people join / leave.
+	Viewers []ViewerInfo `json:"viewers,omitempty"`
+}
+
+// ViewerInfo is the per-connection identity surfaced to clients in
+// the SSE state stream. Name comes from the wp_name cookie set at
+// login; Host mirrors the connection's effective role.
+type ViewerInfo struct {
+	Name string `json:"name"`
+	Host bool   `json:"host"`
+}
+
+// clientEntry is the per-connection record we keep on Hub.clients.
+type clientEntry struct {
+	host bool
+	name string
 }
 
 type Hub struct {
@@ -41,10 +62,10 @@ type Hub struct {
 
 	mu    sync.Mutex
 	state State
-	// clients map[chan]→isHost. Tracking role per-connection so we can
-	// pause the room when the last host leaves (viewers should never
-	// see the movie keep playing without the host present).
-	clients map[chan State]bool
+	// clients map[chan]→clientEntry. Tracking role per-connection so we
+	// can pause the room when the last host leaves; tracking name so
+	// the broadcast state includes a "who's here" roster for the UI.
+	clients map[chan State]*clientEntry
 
 	// Idle shutdown: when the last SSE viewer disconnects, start a
 	// grace timer; if no one rejoins by the time it fires, stop plex session
@@ -69,7 +90,7 @@ const idleGrace = 60 * time.Second
 const hostExitGrace = 10 * time.Second
 
 func NewHub(plex *Plex, session *PlexSession, cache *SegmentCache) *Hub {
-	h := &Hub{plex: plex, session: session, cache: cache, clients: make(map[chan State]bool)}
+	h := &Hub{plex: plex, session: session, cache: cache, clients: make(map[chan State]*clientEntry)}
 	// Periodic state re-broadcast. Two goals: (1) Safari's EventSource
 	// closes the SSE if it goes ~10–20 s without an actual data event
 	// (comment-only heartbeats don't count), and (2) every viewer
@@ -99,12 +120,28 @@ func (h *Hub) broadcastLoop() {
 // called with h.mu held.
 func (h *Hub) hostCount() int {
 	n := 0
-	for _, isHost := range h.clients {
-		if isHost {
+	for _, c := range h.clients {
+		if c.host {
 			n++
 		}
 	}
 	return n
+}
+
+// viewerList returns the current connected-viewer roster sorted host-
+// first then alphabetical. Must be called with h.mu held.
+func (h *Hub) viewerList() []ViewerInfo {
+	out := make([]ViewerInfo, 0, len(h.clients))
+	for _, c := range h.clients {
+		out = append(out, ViewerInfo{Name: c.name, Host: c.host})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Host != out[j].Host {
+			return out[i].Host
+		}
+		return strings.ToLower(out[i].Name) < strings.ToLower(out[j].Name)
+	})
+	return out
 }
 
 // onClientCountChange must be called with h.mu held whenever a client
@@ -192,6 +229,53 @@ func (h *Hub) idleShutdown(forRatingKey string) {
 
 func nowMs() int64 { return time.Now().UnixMilli() }
 
+// nameCookie is the cookie that carries the viewer's chosen display
+// name. Separate from sessionCookie so the name can be JS-readable
+// without exposing the auth credential.
+const nameCookie = "wp_name"
+
+// maxViewerName is the trim length applied to viewer names. Short
+// enough to keep the top-bar tooltip readable, long enough for real
+// nicknames.
+const maxViewerName = 16
+
+// sanitizeName trims, drops anything outside printable ASCII (so
+// emoji, control chars, and non-Latin scripts don't sneak in), and
+// caps the result at maxViewerName runes. Returns "" if nothing
+// usable remains.
+func sanitizeName(s string) string {
+	clean := strings.Map(func(r rune) rune {
+		if r >= 0x20 && r <= 0x7e {
+			return r
+		}
+		return -1
+	}, s)
+	clean = strings.TrimSpace(clean)
+	if len(clean) > maxViewerName {
+		clean = clean[:maxViewerName]
+	}
+	return clean
+}
+
+// viewerNameFromRequest pulls the display name out of the wp_name
+// cookie, percent-decodes it, then runs it through sanitizeName.
+// Empty or missing cookies fall back to "guest" so the UI always has
+// something to render.
+func viewerNameFromRequest(r *http.Request) string {
+	c, err := r.Cookie(nameCookie)
+	if err != nil {
+		return "guest"
+	}
+	v, err := url.QueryUnescape(c.Value)
+	if err != nil {
+		v = c.Value
+	}
+	if clean := sanitizeName(v); clean != "" {
+		return clean
+	}
+	return "guest"
+}
+
 func orDash(s string) string {
 	if s == "" {
 		return "—"
@@ -235,6 +319,7 @@ func (h *Hub) broadcast() {
 	if h.state.RatingKey != "" && h.cache != nil {
 		h.state.CachedRanges = h.cache.RangesFor(h.state.RatingKey)
 	}
+	h.state.Viewers = h.viewerList()
 	s := h.snapshot()
 	for ch := range h.clients {
 		select {
@@ -249,6 +334,7 @@ func (h *Hub) broadcast() {
 // isHost is the connection's effective role — needed so the hub can pause
 // the room when the last host leaves.
 func (h *Hub) HandleEvents(w http.ResponseWriter, r *http.Request, isHost bool) {
+	name := viewerNameFromRequest(r)
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
@@ -268,7 +354,7 @@ func (h *Hub) HandleEvents(w http.ResponseWriter, r *http.Request, isHost bool) 
 	ip := clientIP(r)
 	connectedAt := time.Now()
 	h.mu.Lock()
-	h.clients[ch] = isHost
+	h.clients[ch] = &clientEntry{host: isHost, name: name}
 	n := len(h.clients)
 	hosts := h.hostCount()
 	h.onClientCountChange()

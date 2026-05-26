@@ -152,6 +152,43 @@
   }
   body.viewer #viewer-tag { display: inline; }
 
+  /* Viewer-count pill with hover roster. Stays inline with the
+     bandwidth display when both are visible; the roster pops below
+     when the user hovers / focuses the count. */
+  #viewers {
+    position: relative;
+    font-family: var(--mono);
+    font-size: .65rem;
+    letter-spacing: .15em;
+    text-transform: uppercase;
+    color: var(--paper-mute);
+    cursor: default;
+  }
+  #viewers .count { color: var(--paper); }
+  #viewers .roster {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    min-width: 10rem;
+    background: var(--ink-2);
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    padding: .6rem .8rem;
+    box-shadow: 0 10px 30px rgba(0,0,0,.5);
+    display: none;
+    z-index: 60;
+    text-align: left;
+    letter-spacing: .12em;
+  }
+  #viewers:hover .roster, #viewers:focus-within .roster { display: block; }
+  #viewers .roster .row {
+    display: flex; align-items: baseline; gap: .5rem;
+    padding: .15rem 0;
+  }
+  #viewers .roster .row .nm { color: var(--paper); text-transform: none; letter-spacing: .03em; font-family: var(--serif); font-style: italic; font-size: .85rem; }
+  #viewers .roster .row .role { font-size: .55rem; letter-spacing: .2em; color: var(--paper-mute); }
+  #viewers .roster .row.host .role { color: var(--ember); }
+
   video {
     flex: 1;
     width: 100%;
@@ -384,6 +421,10 @@
     <div class="right">
       <span id="sync">idle</span>
       <span id="bw" hidden></span>
+      <span id="viewers" hidden>
+        <span class="count"></span>
+        <span class="roster" role="tooltip"></span>
+      </span>
       <a class="back" href="/">← library</a>
     </div>
   </div>
@@ -651,10 +692,35 @@ async function pollBandwidth() {
     bwEl.innerHTML =
       '<span>you</span> <span class="you">' + fmtRate(d.mineKbps) + '</span>' +
       '<span class="sep">·</span>' +
-      '<span>room</span> <span class="room">' + fmtRate(d.totalKbps) + '</span>' +
-      '<span class="sep">·</span>' +
-      '<span>' + d.viewers + ' viewer' + (d.viewers === 1 ? '' : 's') + '</span>';
+      '<span>room</span> <span class="room">' + fmtRate(d.totalKbps) + '</span>';
   } catch (_) { /* network blip — try again next tick */ }
+}
+
+// Render the viewer count + roster tooltip from the SSE state's
+// .viewers field. Source of truth is the SSE connection list, not
+// bandwidth tracking — names come from the wp_name cookie set at
+// login, with "guest" as the fallback for anyone who skipped it.
+const viewersEl = document.getElementById('viewers');
+const viewersCountEl = viewersEl.querySelector('.count');
+const viewersRosterEl = viewersEl.querySelector('.roster');
+function escapeHTML(s) {
+  return String(s).replace(/[&<>"']/g, c => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;',
+  })[c]);
+}
+function renderViewers(list) {
+  if (!Array.isArray(list) || list.length === 0) {
+    viewersEl.hidden = true;
+    return;
+  }
+  viewersEl.hidden = false;
+  viewersCountEl.textContent = list.length + ' viewer' + (list.length === 1 ? '' : 's');
+  viewersRosterEl.innerHTML = list.map(v =>
+    '<div class="row' + (v.host ? ' host' : '') + '">' +
+      '<span class="nm">' + escapeHTML(v.name || 'guest') + '</span>' +
+      '<span class="role">' + (v.host ? 'host' : 'viewer') + '</span>' +
+    '</div>'
+  ).join('');
 }
 function fmtRate(kbps) {
   if (kbps >= 1000) return (kbps / 1000).toFixed(1) + ' Mbps';
@@ -861,6 +927,7 @@ function applyState(s, reason) {
     serverDuration = s.durationSec;
     updateScrub();
   }
+  renderViewers(s.viewers);
 
   const ratingKeyChanged   = s.ratingKey !== loadedKey;
   const sessionTokenChanged = s.sessionToken && s.sessionToken !== lastSessionToken;
