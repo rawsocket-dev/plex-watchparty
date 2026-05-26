@@ -131,7 +131,7 @@ func (ps *PlexSession) Start(ratingKey string, offsetSec float64) error {
 	playlistURL := ps.transcodeURL(ratingKey, offsetSec)
 	req, _ := http.NewRequest(http.MethodGet, playlistURL, nil)
 	req.Header.Set("Accept", "application/vnd.apple.mpegurl")
-	resp, err := ps.plex.http.Do(req)
+	resp, err := ps.plex.Do(req)
 	if err != nil {
 		return fmt.Errorf("plex start (%s): %w", redactedURL(playlistURL), err)
 	}
@@ -164,7 +164,7 @@ func (ps *PlexSession) probeDecision(ratingKey string, offsetSec float64) string
 		return "probe build failed: " + err.Error()
 	}
 	req.Header.Set("Accept", "application/json")
-	resp, err := ps.plex.http.Do(req)
+	resp, err := ps.plex.Do(req)
 	if err != nil {
 		return "probe failed: " + err.Error()
 	}
@@ -195,7 +195,7 @@ func (ps *PlexSession) stopLocked() {
 	q.Set("X-Plex-Token", ps.plex.Token)
 	stopURL := ps.plex.BaseURL + "/video/:/transcode/universal/stop?" + q.Encode()
 	req, _ := http.NewRequest(http.MethodGet, stopURL, nil)
-	if resp, err := ps.plex.http.Do(req); err == nil {
+	if resp, err := ps.plex.Do(req); err == nil {
 		resp.Body.Close()
 	}
 	ps.ratingKey = ""
@@ -314,7 +314,7 @@ func (ps *PlexSession) FetchPlaylist() (body []byte, baseURL string, err error) 
 
 func (ps *PlexSession) fetchPlaylistBody(u string) ([]byte, error) {
 	req, _ := http.NewRequest(http.MethodGet, u, nil)
-	resp, err := ps.plex.http.Do(req)
+	resp, err := ps.plex.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -362,7 +362,7 @@ func resolveFirstVariantURL(master []byte, masterURL string) (string, error) {
 // X-Plex-Token; Plex's segment endpoint authenticates from that.
 func (ps *PlexSession) FetchSegment(segURL string) (io.ReadCloser, error) {
 	req, _ := http.NewRequest(http.MethodGet, segURL, nil)
-	resp, err := ps.plex.http.Do(req)
+	resp, err := ps.plex.Do(req)
 	if err != nil {
 		return nil, err
 	}

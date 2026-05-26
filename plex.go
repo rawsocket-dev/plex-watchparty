@@ -29,6 +29,16 @@ type Plex struct {
 	moviesAt  time.Time
 	moviesVal []Movie
 	cacheFile string
+
+	// Health state. healthy is the latest known reachability; if any
+	// call into Plex returns a transport error we flip it false and
+	// kick off a background recovery loop that pings with exponential
+	// backoff until Plex answers again. pingerActive prevents a flood
+	// of concurrent recovery goroutines when many calls fail in quick
+	// succession.
+	healthMu     sync.Mutex
+	healthy      bool
+	pingerActive bool
 }
 
 // 30 minutes is long enough that a typical watch-party session (browsing
@@ -53,9 +63,77 @@ func NewPlex(baseURL, token, cacheFile string) *Plex {
 		Token:     token,
 		http:      &http.Client{Timeout: 15 * time.Second, Transport: tr},
 		cacheFile: cacheFile,
+		healthy:   true, // optimistic; startup Ping in main flips this if Plex is down
 	}
 	p.loadCacheFromDisk()
 	return p
+}
+
+// Do is the canonical way to issue a Plex HTTP request. It runs the
+// request through Plex's own http.Client and, if the call fails at
+// the transport level (DNS, connection refused, timeout, TLS handshake,
+// etc.), trips the health-recovery loop. Status-code failures don't
+// count — those are application errors, not connectivity errors.
+func (p *Plex) Do(req *http.Request) (*http.Response, error) {
+	resp, err := p.http.Do(req)
+	if err != nil {
+		p.MarkUnhealthy(err)
+	}
+	return resp, err
+}
+
+// IsHealthy reports the most recent reachability state.
+func (p *Plex) IsHealthy() bool {
+	p.healthMu.Lock()
+	defer p.healthMu.Unlock()
+	return p.healthy
+}
+
+// MarkUnhealthy flips Plex into the unhealthy state and ensures the
+// recovery loop is running. Safe to call from anywhere — duplicate
+// calls while a pinger is already running are a no-op.
+func (p *Plex) MarkUnhealthy(err error) {
+	p.healthMu.Lock()
+	wasHealthy := p.healthy
+	p.healthy = false
+	startPinger := !p.pingerActive
+	if startPinger {
+		p.pingerActive = true
+	}
+	p.healthMu.Unlock()
+	if wasHealthy {
+		log.Printf("plex: marking unhealthy: %v", err)
+	}
+	if startPinger {
+		go p.healthRecoveryLoop()
+	}
+}
+
+// healthRecoveryLoop pings Plex with exponential backoff (5s → 60s
+// cap) until it answers, then flips healthy true and exits. Always
+// runs in a goroutine and at most one is active at a time, gated by
+// pingerActive.
+func (p *Plex) healthRecoveryLoop() {
+	delay := 5 * time.Second
+	const maxDelay = 60 * time.Second
+	for attempt := 1; ; attempt++ {
+		id, err := p.Ping()
+		if err == nil {
+			p.healthMu.Lock()
+			p.healthy = true
+			p.pingerActive = false
+			p.healthMu.Unlock()
+			log.Printf("plex: recovered on attempt %d — connected to %q (version %s, machine %s)",
+				attempt, id.FriendlyName, id.Version, id.MachineIdentifier)
+			return
+		}
+		log.Printf("plex: recovery attempt %d failed (%v); retry in %s", attempt, err, delay)
+		time.Sleep(delay)
+		delay *= 2
+		if delay > maxDelay {
+			delay = maxDelay
+		}
+	}
 }
 
 type Movie struct {
@@ -118,7 +196,7 @@ func (p *Plex) get(path string, v any) error {
 		return err
 	}
 	req.Header.Set("Accept", "application/json")
-	resp, err := p.http.Do(req)
+	resp, err := p.Do(req)
 	if err != nil {
 		return err
 	}

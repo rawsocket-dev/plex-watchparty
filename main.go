@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"time"
 )
 
 func env(key, def string) string {
@@ -78,40 +77,16 @@ func main() {
 		len(segCache.entries), segCache.totalBytes/1024/1024, cacheGB)
 
 	plexSession := NewPlexSession(plex, transcodeKbps)
-	// Health check: confirm we can reach the configured Plex server and
-	// that the token is valid. Non-fatal — the HTTP server starts
-	// regardless so the container is up while Plex is still booting.
-	// Retries in the background with exponential backoff (5s → 60s cap)
-	// until the first successful identity, then exits the goroutine.
-	go func() {
-		delay := 5 * time.Second
-		const maxDelay = 60 * time.Second
-		for attempt := 1; ; attempt++ {
-			id, err := plex.Ping()
-			if err == nil {
-				if attempt == 1 {
-					log.Printf("plex: connected to %q (version %s, %s %s, machine %s)",
-						id.FriendlyName, id.Version, id.Platform, id.PlatformVersion, id.MachineIdentifier)
-				} else {
-					log.Printf("plex: connected on attempt %d to %q (version %s, machine %s)",
-						attempt, id.FriendlyName, id.Version, id.MachineIdentifier)
-				}
-				return
-			}
-			if attempt == 1 {
-				log.Printf("plex: WARNING — health check failed: %v", err)
-				log.Printf("plex: check PLEX_BASE_URL / PLEX_TOKEN; will keep retrying every %s (capped at %s)",
-					delay, maxDelay)
-			} else {
-				log.Printf("plex: retry %d failed (%v); next attempt in %s", attempt, err, delay)
-			}
-			time.Sleep(delay)
-			delay *= 2
-			if delay > maxDelay {
-				delay = maxDelay
-			}
-		}
-	}()
+	// Startup health check. On success we log the friendly identity;
+	// on failure we hand off to Plex's own recovery loop, which polls
+	// in the background until reachability returns. Mid-run drops use
+	// the same loop — any failing call inside Plex.Do trips it.
+	if id, err := plex.Ping(); err == nil {
+		log.Printf("plex: connected to %q (version %s, %s %s, machine %s)",
+			id.FriendlyName, id.Version, id.Platform, id.PlatformVersion, id.MachineIdentifier)
+	} else {
+		plex.MarkUnhealthy(err)
+	}
 	hub := NewHub(plex, plexSession, segCache)
 	auth := NewAuth(password, hostPassword)
 	bw := newBwTracker()
