@@ -138,8 +138,17 @@
   body.viewer .ctrl { display: none; }
   /* Fullscreen is per-client and should always be available to
      anyone, host or viewer alike. */
-  body.viewer #fullscreen { display: inline-block; }
+  body.viewer #fullscreen, body.viewer #zoom { display: inline-block; }
   #fullscreen { font-family: ui-monospace, monospace; font-size: 1.1rem; padding: 0 .2rem; }
+  #zoom {
+    font-family: var(--mono);
+    font-size: .6rem;
+    letter-spacing: .25em;
+    text-transform: uppercase;
+    padding: 0 .3rem;
+    min-width: 2.5rem;
+  }
+  #wrap.fill #zoom { color: var(--ember); }
   body.viewer #scrub-hit { cursor: default; }
   body.viewer #scrub-hit:hover #scrub-track { height: 4px; }
   body.viewer #scrub-thumb { opacity: .65; }
@@ -199,7 +208,13 @@
     background: #000;
     min-height: 0;
     display: block;
+    /* Default 'contain' preserves aspect ratio (letterboxes cinematic
+       content). The .fill modifier on #wrap switches to 'cover' which
+       zooms the picture so the bars push off-screen — the trade is
+       that the extreme edges of the frame get cropped. */
+    object-fit: contain;
   }
+  #wrap.fill video { object-fit: cover; }
 
   /* Scrub bar — always visible, generous hit target, drag-to-seek.
      The visible track is a thin line, but the entire row height is
@@ -429,6 +444,7 @@
         <span class="count"></span>
         <span class="roster" role="tooltip"></span>
       </span>
+      <button class="ctrl" id="zoom" title="Zoom (fit / fill)">fit</button>
       <button class="ctrl" id="fullscreen" title="Fullscreen">⛶</button>
       <a class="back" href="/">← library</a>
       <a class="back" href="/logout">log out</a>
@@ -1111,12 +1127,33 @@ document.getElementById('fullscreen').onclick = () => {
     wrapEl.requestFullscreen().catch(err => console.warn('fullscreen failed:', err));
   }
 };
-// Keyboard shortcut: 'f' toggles fullscreen, matching common video players.
-window.addEventListener('keydown', (e) => {
-  if (e.key === 'f' || e.key === 'F') {
-    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-    document.getElementById('fullscreen').click();
+
+// Zoom toggle: 'fit' (object-fit: contain, preserves aspect, may
+// letterbox) ↔ 'fill' (object-fit: cover, zooms to crop the bars off
+// at the cost of a sliver of frame edges). Preference persists in
+// localStorage so it survives reloads and tab restarts.
+const zoomBtn = document.getElementById('zoom');
+function applyZoom(mode) {
+  if (mode === 'fill') {
+    wrapEl.classList.add('fill');
+    zoomBtn.textContent = 'fill';
+  } else {
+    wrapEl.classList.remove('fill');
+    zoomBtn.textContent = 'fit';
   }
+  try { localStorage.setItem('zoom', mode); } catch {}
+}
+applyZoom((() => { try { return localStorage.getItem('zoom') || 'fit'; } catch { return 'fit'; } })());
+zoomBtn.onclick = () => {
+  applyZoom(wrapEl.classList.contains('fill') ? 'fit' : 'fill');
+};
+
+// Keyboard shortcuts: 'f' = fullscreen, 'z' = zoom toggle. Both
+// ignore input fields so typing in the search box doesn't fire.
+window.addEventListener('keydown', (e) => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+  if (e.key === 'f' || e.key === 'F') document.getElementById('fullscreen').click();
+  if (e.key === 'z' || e.key === 'Z') zoomBtn.click();
 });
 </script>
 </body>
