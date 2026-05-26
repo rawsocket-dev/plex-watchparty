@@ -168,6 +168,10 @@ func main() {
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"role":        auth.EffectiveRole(r).String(),
 			"hostEnabled": auth.HostEnabled(),
+			// Server-side name resolution (cookie → sanitize → "guest"
+			// fallback) so the client never has to duplicate the
+			// guest-fallback logic across player/library/waiting pages.
+			"name": viewerNameFromRequest(r),
 		})
 	})
 

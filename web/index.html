@@ -735,21 +735,11 @@ async function load() {
   }
 }
 
-// Pull the display name from the wp_name cookie set at login. JS-
-// readable on purpose so the library can render "you" alongside the
-// role chip without a round-trip.
-function readNameCookie() {
-  const match = document.cookie.match(/(?:^|;\s*)wp_name=([^;]+)/);
-  if (!match) return '';
-  try { return decodeURIComponent(match[1]); } catch { return match[1]; }
-}
-
-function renderWho(role) {
+function renderWho(role, name) {
   const el = document.getElementById('who');
-  const name = readNameCookie() || 'guest';
   el.classList.toggle('host', role === 'host');
   el.innerHTML =
-    '<span class="nm">' + name.replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])) + '</span>' +
+    '<span class="nm">' + (name || 'guest').replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])) + '</span>' +
     '<span class="dot"></span>' +
     '<span class="role">' + role + '</span>';
   el.hidden = false;
@@ -758,15 +748,15 @@ function renderWho(role) {
 async function loadWhoami() {
   try {
     const r = await fetch('/api/whoami');
-    if (!r.ok) { renderWho('viewer'); return; }
+    if (!r.ok) { renderWho('viewer', 'guest'); return; }
     const d = await r.json();
     isHost = d.role === 'host';
-    renderWho(d.role);
+    renderWho(d.role, d.name);
     if (!isHost) {
       document.body.classList.add('guest');
       document.getElementById('guest').classList.add('show');
     }
-  } catch (_) { renderWho('viewer'); }
+  } catch (_) { renderWho('viewer', 'guest'); }
 }
 
 searchEl.addEventListener('input', applyFilter);
