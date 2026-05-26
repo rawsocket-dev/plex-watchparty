@@ -36,6 +36,11 @@
     padding: .65rem clamp(.8rem, 2vw, 1.5rem);
     background: var(--ink-2);
     border-bottom: 1px solid var(--rule);
+    /* Rapid clicks on the fullscreen / zoom buttons (or anywhere in
+       the chrome) shouldn't get interpreted as a double-click that
+       selects adjacent text. UI chrome is never copy-target. */
+    user-select: none;
+    -webkit-user-select: none;
   }
   .left  { display: flex; align-items: center; gap: .9rem; justify-self: start; }
   .right { display: flex; align-items: center; gap: 1.2rem; justify-self: end; }
