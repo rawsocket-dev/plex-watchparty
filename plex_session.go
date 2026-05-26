@@ -399,15 +399,35 @@ func resolveFirstVariantURL(master []byte, masterURL string) (string, error) {
 // FetchSegment GETs the given Plex segment URL and returns the body as
 // a ReadCloser the caller MUST close. The URL already contains the
 // X-Plex-Token; Plex's segment endpoint authenticates from that.
+//
+// Retries once on a non-2xx status after a 500 ms pause. Plex's
+// transcoder produces segments on-the-fly; hls.js can race ahead of
+// production and pull a segment number that doesn't exist *yet* — a
+// fresh GET a half-second later typically succeeds. Without the
+// retry, hls.js sees our 502 and has to recover via its own gap
+// handling, which is jankier and sometimes drops audio sync.
 func (ps *PlexSession) FetchSegment(segURL string) (io.ReadCloser, error) {
-	req, _ := http.NewRequest(http.MethodGet, segURL, nil)
-	resp, err := ps.plex.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	if resp.StatusCode != http.StatusOK {
+	var lastStatus int
+	for attempt := 1; attempt <= 2; attempt++ {
+		req, _ := http.NewRequest(http.MethodGet, segURL, nil)
+		resp, err := ps.plex.Do(req)
+		if err != nil {
+			return nil, err
+		}
+		if resp.StatusCode == http.StatusOK {
+			if attempt > 1 {
+				log.Printf("seg: recovered on attempt %d (%s)", attempt, redactedURL(segURL))
+			}
+			return resp.Body, nil
+		}
 		resp.Body.Close()
-		return nil, fmt.Errorf("plex segment %s: status %d", redactedURL(segURL), resp.StatusCode)
+		lastStatus = resp.StatusCode
+		if attempt == 1 {
+			log.Printf("seg: attempt 1 returned %d (%s); retrying in 500ms",
+				lastStatus, redactedURL(segURL))
+			time.Sleep(500 * time.Millisecond)
+		}
 	}
-	return resp.Body, nil
+	return nil, fmt.Errorf("plex segment %s: status %d (after retry)",
+		redactedURL(segURL), lastStatus)
 }
