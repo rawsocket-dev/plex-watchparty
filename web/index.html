@@ -96,6 +96,53 @@
   .brand .who.host .dot { background: var(--ember); box-shadow: 0 0 8px rgba(212,165,116,.6); }
   .brand .who.host .role { color: var(--ember); }
 
+  /* "Who's in the room" chip — count visible, full roster on hover.
+     Sits below the identity line so the brand grows downward, not
+     across, on narrow screens. */
+  .brand .here {
+    position: relative;
+    display: inline-flex;
+    align-items: baseline;
+    gap: .55rem;
+    margin-top: .45rem;
+    font-family: var(--mono);
+    font-size: .58rem;
+    letter-spacing: .28em;
+    text-transform: uppercase;
+    color: var(--paper-mute);
+    cursor: default;
+  }
+  .brand .here .here-label { color: var(--paper); }
+  .brand .here .here-roster {
+    position: absolute;
+    top: calc(100% + 8px);
+    left: 0;
+    min-width: 11rem;
+    background: var(--ink-2);
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    padding: .6rem .8rem;
+    box-shadow: 0 10px 30px rgba(0,0,0,.5);
+    display: none;
+    z-index: 80;
+    text-align: left;
+    letter-spacing: .12em;
+  }
+  .brand .here:hover .here-roster,
+  .brand .here:focus-within .here-roster { display: block; }
+  .brand .here .here-roster .row {
+    display: flex; align-items: baseline; gap: .5rem;
+    padding: .15rem 0;
+  }
+  .brand .here .here-roster .nm {
+    font-family: var(--serif); font-style: italic; font-size: .85rem;
+    letter-spacing: .03em; text-transform: none; color: var(--paper);
+  }
+  .brand .here .here-roster .role {
+    font-size: .55rem; letter-spacing: .2em; color: var(--paper-mute);
+  }
+  .brand .here .here-roster .row.host .role { color: var(--ember); }
+
   .search-wrap {
     display: flex;
     align-items: baseline;
@@ -429,6 +476,10 @@
     <span class="one">The Library</span>
     <span class="two">Late Show · Pick a Title</span>
     <span class="who" id="who" hidden></span>
+    <span class="here" id="here" hidden>
+      <span class="here-label"></span>
+      <span class="here-roster" role="tooltip"></span>
+    </span>
   </div>
   <label class="search-wrap">
     <input id="search" type="search" placeholder="search titles" autofocus autocomplete="off" spellcheck="false">
@@ -721,6 +772,37 @@ async function loadWhoami() {
 searchEl.addEventListener('input', applyFilter);
 loadWhoami();
 load();
+
+// Live "who's here" chip. Opens the same SSE stream the player uses
+// so the library shows the room's real-time roster — the user
+// browsing the library counts as connected too, so the host can see
+// "3 in the room" before picking a movie. Closed on pagehide so a
+// bfcache stash doesn't leak an extra phantom viewer for ~1 minute.
+const hereEl       = document.getElementById('here');
+const hereLabelEl  = hereEl.querySelector('.here-label');
+const hereRosterEl = hereEl.querySelector('.here-roster');
+function renderHere(viewers) {
+  if (!Array.isArray(viewers) || viewers.length === 0) {
+    hereEl.hidden = true;
+    return;
+  }
+  hereEl.hidden = false;
+  hereLabelEl.textContent = viewers.length + ' in the room';
+  hereRosterEl.innerHTML = viewers.map(v =>
+    '<div class="row' + (v.host ? ' host' : '') + '">' +
+      '<span class="nm">' + escapeHTML(v.name || 'guest') + '</span>' +
+      '<span class="role">' + (v.host ? 'host' : 'viewer') + '</span>' +
+    '</div>'
+  ).join('');
+}
+const lobbyEs = new EventSource('/events');
+lobbyEs.onmessage = (e) => {
+  try {
+    const s = JSON.parse(e.data);
+    if (s && s.viewers) renderHere(s.viewers);
+  } catch (_) {}
+};
+window.addEventListener('pagehide', () => { try { lobbyEs.close(); } catch {} });
 </script>
 </body>
 </html>
