@@ -257,6 +257,12 @@ func (h *Hub) HandleEvents(w http.ResponseWriter, r *http.Request, isHost bool) 
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
+	// nginx buffers proxied responses by default and that breaks SSE
+	// (events get held back instead of flushed event-by-event). This
+	// header tells nginx + GCP HTTPS LB to bypass response buffering
+	// for this stream without requiring per-location config on the
+	// proxy side. Other proxies (Caddy, Traefik) ignore it harmlessly.
+	w.Header().Set("X-Accel-Buffering", "no")
 
 	ch := make(chan State, 8)
 	ip := clientIP(r)
