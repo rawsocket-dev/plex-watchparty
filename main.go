@@ -256,6 +256,19 @@ func main() {
 		// Cache miss: fetch from Plex, tee to cache + client.
 		body, err := plexSession.FetchSegment(ctx.PlexURL)
 		if err != nil {
+			// Last-resort: Plex sometimes 404s a segment it already
+			// produced (in-session cache eviction), and segment
+			// boundaries can drift by a few ms across sessions so
+			// the exact (startMs, endMs) key misses while a near-
+			// identical segment is on disk. Check for any cached
+			// segment whose window overlaps the requested range and
+			// serve that instead of forwarding the 404.
+			if fallback, fs, fe, ok := segCache.FindOverlapping(ctx.Rating, ctx.StartMs, ctx.EndMs); ok {
+				log.Printf("seg: plex failed (%v); serving overlapping cache entry [%d,%d] for request [%d,%d]",
+					err, fs, fe, ctx.StartMs, ctx.EndMs)
+				http.ServeFile(cw, r, fallback)
+				return
+			}
 			log.Printf("seg: fetch from plex failed: %v", err)
 			http.Error(cw, "plex segment: "+err.Error(), http.StatusBadGateway)
 			return
