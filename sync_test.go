@@ -1,0 +1,219 @@
+package main
+
+import (
+	"bytes"
+	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"path/filepath"
+	"testing"
+	"time"
+)
+
+// hubTestFixture spins up a Hub backed by a mock Plex server, an in-
+// memory SegmentCache, and a tempdir RecentMovies. The mock answers
+// /decision + /start.m3u8 + /library/* with the minimum we need to
+// drive a load → play → seek → stop cycle.
+type hubTestFixture struct {
+	hub   *Hub
+	mock  *httptest.Server
+	cache *SegmentCache
+	dir   string
+}
+
+func newHubTestFixture(t *testing.T) *hubTestFixture {
+	t.Helper()
+	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/video/:/transcode/universal/decision":
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`{"MediaContainer":{}}`))
+		case r.URL.Path == "/video/:/transcode/universal/start.m3u8":
+			w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
+			w.Write([]byte("#EXTM3U\n#EXTINF:6,\nseg-0.ts\n"))
+		case r.URL.Path == "/video/:/transcode/universal/stop":
+			w.WriteHeader(http.StatusOK)
+		case r.URL.Path == "/library/metadata/rk1":
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`{"MediaContainer":{"Metadata":[{"title":"Test Movie","duration":600000,"Media":[{"videoCodec":"h264","width":1920,"height":1080,"bitrate":12000,"Part":[{"key":"/p"}]}]}]}}`))
+		case r.URL.Path == "/library/sections":
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`{"MediaContainer":{"Directory":[{"key":"1","type":"movie"}]}}`))
+		case r.URL.Path == "/library/sections/1/all":
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`{"MediaContainer":{"Metadata":[{"ratingKey":"rk1","title":"Test Movie","year":2024}]}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(mock.Close)
+	dir := t.TempDir()
+	plex := NewPlex(mock.URL, "tok", filepath.Join(dir, "lib.json"))
+	cache := NewSegmentCache(filepath.Join(dir, "cache"), 1<<30)
+	recent := NewRecentMovies(filepath.Join(dir, "recent.json"))
+	session := NewPlexSession(plex, 12000)
+	hub := NewHub(plex, session, cache, recent)
+	return &hubTestFixture{hub: hub, mock: mock, cache: cache, dir: dir}
+}
+
+func (f *hubTestFixture) post(t *testing.T, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	r := httptest.NewRequest("POST", "/control", bytes.NewBufferString(body))
+	w := httptest.NewRecorder()
+	f.hub.HandleControl(w, r)
+	return w
+}
+
+func TestHubLoadSetsState(t *testing.T) {
+	f := newHubTestFixture(t)
+	w := f.post(t, `{"action":"load","ratingKey":"rk1"}`)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", w.Code, w.Body.String())
+	}
+	s := f.hub.Snapshot()
+	if s.RatingKey != "rk1" {
+		t.Errorf("RatingKey = %q, want rk1", s.RatingKey)
+	}
+	if s.Title != "Test Movie" {
+		t.Errorf("Title = %q, want Test Movie", s.Title)
+	}
+	if s.DurationSec != 600 {
+		t.Errorf("DurationSec = %v, want 600", s.DurationSec)
+	}
+	if s.SessionToken == 0 {
+		t.Error("SessionToken not bumped after load")
+	}
+}
+
+func TestHubLoadSameMovieReusesSession(t *testing.T) {
+	f := newHubTestFixture(t)
+	f.post(t, `{"action":"load","ratingKey":"rk1"}`)
+	tok1 := f.hub.Snapshot().SessionToken
+
+	// Second load of the same ratingKey should NOT bump the token —
+	// the session-reuse short-circuit kicks in.
+	w := f.post(t, `{"action":"load","ratingKey":"rk1"}`)
+	if w.Code != http.StatusOK {
+		t.Fatalf("second load: status = %d", w.Code)
+	}
+	var resp map[string]any
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
+	if reused, _ := resp["reused"].(bool); !reused {
+		t.Errorf("response.reused = %v, want true", resp["reused"])
+	}
+	if got := f.hub.Snapshot().SessionToken; got != tok1 {
+		t.Errorf("SessionToken bumped on same-movie reuse: %d -> %d", tok1, got)
+	}
+}
+
+func TestHubLoadSameMovieWithRestartForcesStart(t *testing.T) {
+	f := newHubTestFixture(t)
+	f.post(t, `{"action":"load","ratingKey":"rk1"}`)
+	tok1 := f.hub.Snapshot().SessionToken
+	w := f.post(t, `{"action":"load","ratingKey":"rk1","restart":true}`)
+	if w.Code != http.StatusOK {
+		t.Fatalf("restart load: status = %d", w.Code)
+	}
+	if got := f.hub.Snapshot().SessionToken; got <= tok1 {
+		t.Errorf("SessionToken did not bump with restart=true: %d -> %d", tok1, got)
+	}
+}
+
+func TestHubPlayPauseFlipsState(t *testing.T) {
+	f := newHubTestFixture(t)
+	f.post(t, `{"action":"load","ratingKey":"rk1"}`)
+	f.post(t, `{"action":"play"}`)
+	if !f.hub.Snapshot().Playing {
+		t.Error("after play: Playing = false, want true")
+	}
+	f.post(t, `{"action":"pause"}`)
+	if f.hub.Snapshot().Playing {
+		t.Error("after pause: Playing = true, want false")
+	}
+}
+
+func TestHubStopClearsState(t *testing.T) {
+	f := newHubTestFixture(t)
+	f.post(t, `{"action":"load","ratingKey":"rk1"}`)
+	w := f.post(t, `{"action":"stop"}`)
+	if w.Code != http.StatusNoContent {
+		t.Errorf("stop status = %d, want 204", w.Code)
+	}
+	s := f.hub.Snapshot()
+	if s.RatingKey != "" || s.Title != "" {
+		t.Errorf("after stop: RatingKey=%q Title=%q, want empty", s.RatingKey, s.Title)
+	}
+}
+
+func TestHubControlRejectsOversizedBody(t *testing.T) {
+	f := newHubTestFixture(t)
+	// 5 KiB of garbage, just over the 4 KiB cap.
+	big := bytes.Repeat([]byte("x"), 5<<10)
+	r := httptest.NewRequest("POST", "/control", bytes.NewReader(big))
+	w := httptest.NewRecorder()
+	f.hub.HandleControl(w, r)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("oversized body: status = %d, want 400", w.Code)
+	}
+}
+
+func TestHubControlRejectsUnknownAction(t *testing.T) {
+	f := newHubTestFixture(t)
+	w := f.post(t, `{"action":"explode"}`)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("unknown action: status = %d, want 400", w.Code)
+	}
+}
+
+func TestHubLoadPopulatesRecent(t *testing.T) {
+	f := newHubTestFixture(t)
+	f.post(t, `{"action":"load","ratingKey":"rk1"}`)
+	got := f.hub.recent.List()
+	if len(got) != 1 {
+		t.Fatalf("recent.List len = %d, want 1", len(got))
+	}
+	if got[0].RatingKey != "rk1" || got[0].Title != "Test Movie" || got[0].Year != 2024 {
+		t.Errorf("recent[0] = %+v, want rk1/Test Movie/2024", got[0])
+	}
+}
+
+func TestHubHandleEventsReportsViewer(t *testing.T) {
+	f := newHubTestFixture(t)
+	f.post(t, `{"action":"load","ratingKey":"rk1"}`)
+
+	// Spin a goroutine that connects, reads the initial state, and
+	// exits. The main goroutine inspects the viewer list afterwards.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		f.hub.HandleEvents(w, r, true)
+	}))
+	defer srv.Close()
+
+	req, _ := http.NewRequest("GET", srv.URL, nil)
+	req.AddCookie(&http.Cookie{Name: nameCookie, Value: "Alice"})
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	defer resp.Body.Close()
+
+	// Read just the initial "data: { ... }\n\n" frame so we can
+	// observe the registered viewer; then bail.
+	buf := make([]byte, 4096)
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		s := f.hub.Snapshot()
+		if len(s.Viewers) > 0 {
+			if s.Viewers[0].Name != "Alice" {
+				t.Errorf("viewer name = %q, want Alice", s.Viewers[0].Name)
+			}
+			if !s.Viewers[0].Host {
+				t.Errorf("viewer.Host = false, want true (passed isHost=true)")
+			}
+			_, _ = io.ReadFull(resp.Body, buf[:0])
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal("no viewer registered within deadline")
+}

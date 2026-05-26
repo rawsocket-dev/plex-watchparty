@@ -329,10 +329,14 @@ func (h *Hub) snapshot() State {
 // Snapshot is the locked, public counterpart of snapshot(). Used by
 // HTTP handlers that need a one-shot view of current state (e.g. the
 // /api/state endpoint that drives the library's "Resume?" prompt).
+// Includes the current viewer roster so callers don't see a stale
+// list between broadcast ticks.
 func (h *Hub) Snapshot() State {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	return h.snapshot()
+	s := h.snapshot()
+	s.Viewers = h.viewerList()
+	return s
 }
 
 func (h *Hub) broadcast() {
@@ -379,6 +383,12 @@ func (h *Hub) HandleEvents(w http.ResponseWriter, r *http.Request, isHost bool) 
 	hosts := h.hostCount()
 	h.onClientCountChange()
 	init := h.snapshot()
+	// snapshot() doesn't refresh Viewers — that only happens in
+	// broadcast(). For a freshly-connected client this matters:
+	// without this, the new viewer would see a stale (or empty)
+	// roster on join and have to wait up to 3 s for the next
+	// broadcastLoop tick. Stamp the current roster onto the init.
+	init.Viewers = h.viewerList()
 	h.mu.Unlock()
 	role := "viewer"
 	if isHost {
