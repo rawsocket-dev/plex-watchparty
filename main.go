@@ -112,6 +112,15 @@ func main() {
 			http.NotFound(w, r)
 			return
 		}
+		// If a viewer (non-host) lands here while a movie is already
+		// loaded, skip the library — they can't pick anything from it
+		// anyway — and route them straight to /watch where they get
+		// the player (or the "take your seat" waiting room if the
+		// session has since cleared).
+		if auth.EffectiveRole(r) != RoleHost && plexSession.RatingKey() != "" {
+			http.Redirect(w, r, "/watch", http.StatusSeeOther)
+			return
+		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Write(indexHTML)
 	})
