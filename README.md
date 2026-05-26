@@ -129,6 +129,84 @@ behaviour is preserved.
 
 [Finding your Plex token.](https://support.plex.tv/articles/204059436-finding-an-authentication-token-x-plex-token/)
 
+## Reverse proxy
+
+The app speaks plain HTTP and is designed to sit behind your existing TLS
+terminator. It honors `X-Forwarded-For` / `X-Real-IP` for bandwidth + viewer
+attribution, and the SSE handler ships `X-Accel-Buffering: no` so nginx-family
+proxies don't buffer events. Mount it at the root of a hostname — paths
+like `/hls/`, `/events`, `/control` are absolute, so a `/watchparty/` subpath
+won't work without a path-stripping rewrite.
+
+Two knobs matter on every proxy: keep `proxy_read_timeout` generous (the first
+HLS segment can take 1–6 s while Plex spins up its transcoder), and use
+HTTP/1.1 with an empty `Connection` header for the SSE stream.
+
+### nginx
+
+```nginx
+server {
+    listen 443 ssl http2;
+    server_name watchparty.example.com;
+    # ssl_certificate / ssl_certificate_key ...
+
+    location / {
+        proxy_pass http://buildhost.example.com:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Connection        "";
+
+        # First-segment Plex transcodes can take several seconds.
+        proxy_read_timeout 300s;
+        # Belt-and-suspenders with X-Accel-Buffering: no on /events.
+        proxy_buffering off;
+    }
+}
+```
+
+### Caddy
+
+```caddy
+watchparty.example.com {
+    reverse_proxy buildhost.example.com:8080 {
+        transport http {
+            read_timeout 5m
+        }
+    }
+}
+```
+
+Caddy auto-provisions TLS, sets the X-Forwarded-* headers, and handles HTTP/1.1
++ `Connection` correctly out of the box — no extra configuration needed for
+SSE or HLS streaming.
+
+### Traefik (Docker labels)
+
+Add these labels to the `watchparty` service in `docker-compose.yml`:
+
+```yaml
+labels:
+  - "traefik.enable=true"
+  - "traefik.http.routers.watchparty.rule=Host(`watchparty.example.com`)"
+  - "traefik.http.routers.watchparty.entrypoints=websecure"
+  - "traefik.http.routers.watchparty.tls.certresolver=letsencrypt"
+  - "traefik.http.services.watchparty.loadbalancer.server.port=8080"
+  # Long-running responses (HLS + SSE) need generous timeouts.
+  - "traefik.http.services.watchparty.loadbalancer.responseforwarding.flushinterval=100ms"
+```
+
+And in your Traefik static config (`traefik.yml`):
+
+```yaml
+serversTransport:
+  forwardingTimeouts:
+    responseHeaderTimeout: 300s
+    idleConnTimeout: 300s
+```
+
 ## Known limitations
 
 - Seeking far ahead before Plex has transcoded to that position will pause for
