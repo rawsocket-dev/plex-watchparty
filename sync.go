@@ -512,6 +512,23 @@ func (h *Hub) HandleControl(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if req.Action == "stop" {
+		// Host requested an explicit end of the watch session. Tear
+		// down the Plex transcoder, clear our state, and broadcast
+		// the empty State so every connected client navigates to the
+		// waiting room or the library. Used by the player's "←
+		// library" link so navigating away kills playback instead of
+		// leaving the transcoder running until the idle timer fires.
+		log.Printf("control: stop ip=%s title=%q", clientIP(r), h.state.Title)
+		h.session.Stop()
+		h.mu.Lock()
+		h.state = State{UpdatedAtMs: nowMs()}
+		h.broadcast()
+		h.mu.Unlock()
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
 	if req.Action != "play" && req.Action != "pause" && req.Action != "seek" {
 		log.Printf("control: unknown action ip=%s action=%q", clientIP(r), req.Action)
 		http.Error(w, "unknown action", http.StatusBadRequest)

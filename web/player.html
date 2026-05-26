@@ -452,7 +452,7 @@
       </span>
       <button class="ctrl" id="zoom" title="Zoom (fit / fill)">fit</button>
       <button class="ctrl" id="fullscreen" title="Fullscreen">⛶</button>
-      <a class="back" href="/">← library</a>
+      <a class="back" id="library-link" href="/">← library</a>
       <a class="back" href="/logout">log out</a>
     </div>
     <span id="title" class="idle">awaiting the host…</span>
@@ -1135,6 +1135,21 @@ v.addEventListener('click', () => {
   if (!isHost) return;
   if (v.paused) post('play');
   else          post('pause');
+});
+
+// Library link: hosts get a synchronous /control stop first so the
+// Plex transcoder shuts down before the page changes — otherwise it
+// would keep running until the idle timer fires (or someone reloads
+// /watch on an empty session). Viewers fall through to the plain
+// navigation; the session belongs to the host.
+document.getElementById('library-link').addEventListener('click', (e) => {
+  if (!isHost) return;
+  e.preventDefault();
+  fetch('/control', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({action: 'stop'}),
+  }).finally(() => { window.location.href = '/'; });
 });
 
 // Fullscreen toggle. Fullscreens #wrap (not the bare <video>) so the
