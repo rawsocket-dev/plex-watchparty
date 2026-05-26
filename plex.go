@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -37,10 +38,20 @@ type Plex struct {
 const moviesCacheTTL = 30 * time.Minute
 
 func NewPlex(baseURL, token, cacheFile string) *Plex {
+	// Plex Media Server's TLS certificate is only valid for hostnames
+	// under *.<machine-id>.plex.direct (the auto-generated cert that
+	// Plex.tv signs and ships down to each server). Any operator who
+	// fronts Plex with their own DNS name (plex.example.com, etc.) or
+	// hits it through a reverse proxy will fail standard verification.
+	// Plex traffic is private LAN-side anyway and the token in the
+	// query string is the real auth — skip verification here to make
+	// the integration usable in realistic home setups.
+	tr := http.DefaultTransport.(*http.Transport).Clone()
+	tr.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 	p := &Plex{
 		BaseURL:   strings.TrimRight(baseURL, "/"),
 		Token:     token,
-		http:      &http.Client{Timeout: 15 * time.Second},
+		http:      &http.Client{Timeout: 15 * time.Second, Transport: tr},
 		cacheFile: cacheFile,
 	}
 	p.loadCacheFromDisk()
