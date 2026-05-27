@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"io"
 	"log"
@@ -16,6 +17,19 @@ func env(key, def string) string {
 		return v
 	}
 	return def
+}
+
+// writeJSON is the standard one-shot JSON response: application/json
+// + no-store cache header + Encode. Used by every /api/* and the
+// inline JSON responses from /control. Encode errors are logged but
+// not propagated — by the time Encode runs, the client has already
+// seen 200 OK so there's nothing to surface.
+func writeJSON(w http.ResponseWriter, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	if err := json.NewEncoder(w).Encode(v); err != nil {
+		log.Printf("writeJSON: encode failed: %v", err)
+	}
 }
 
 func main() {
@@ -146,14 +160,47 @@ func main() {
 		w.Write(playerHTML)
 	})
 
+	protected.HandleFunc("/mockups", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Write(mockupsHTML)
+	})
+
+	// Static assets are content-addressed via their embedded bytes —
+	// versions only change at build time, so a far-future immutable
+	// cache header is safe and avoids re-fetches on every page load.
+	protected.HandleFunc("/static/common.js", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+		w.Header().Set("Cache-Control", "public, max-age=86400, immutable")
+		w.Write(commonJS)
+	})
+	protected.HandleFunc("/static/player.css", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/css; charset=utf-8")
+		w.Header().Set("Cache-Control", "public, max-age=86400, immutable")
+		w.Write(playerCSS)
+	})
+	protected.HandleFunc("/static/player.js", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+		w.Header().Set("Cache-Control", "public, max-age=86400, immutable")
+		w.Write(playerJS)
+	})
+	protected.HandleFunc("/static/index.css", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/css; charset=utf-8")
+		w.Header().Set("Cache-Control", "public, max-age=86400, immutable")
+		w.Write(indexCSS)
+	})
+	protected.HandleFunc("/static/index.js", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+		w.Header().Set("Cache-Control", "public, max-age=86400, immutable")
+		w.Write(indexJS)
+	})
+
 	protected.HandleFunc("/api/movies", func(w http.ResponseWriter, r *http.Request) {
 		movies, err := plex.ListMovies()
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadGateway)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(movies)
+		writeJSON(w, movies)
 	})
 
 	protected.HandleFunc("/events", func(w http.ResponseWriter, r *http.Request) {
@@ -164,8 +211,7 @@ func main() {
 	protected.Handle("/control", auth.RequireHost(http.HandlerFunc(hub.HandleControl)))
 
 	protected.HandleFunc("/api/whoami", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{
+		writeJSON(w, map[string]any{
 			"role":        auth.EffectiveRole(r).String(),
 			"hostEnabled": auth.HostEnabled(),
 			// Server-side name resolution (cookie → sanitize → "guest"
@@ -179,18 +225,14 @@ func main() {
 	// it can detect "the movie you just clicked is already loaded" and
 	// offer Resume / Start over before issuing the /control load.
 	protected.HandleFunc("/api/state", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.Header().Set("Cache-Control", "no-store")
-		_ = json.NewEncoder(w).Encode(hub.Snapshot())
+		writeJSON(w, hub.Snapshot())
 	})
 
 	// Recently-played list, newest first. Used by the waiting-room
 	// page so the host (or anyone) can re-pick a recent movie with
 	// one click instead of going through the full library.
 	protected.HandleFunc("/api/recent", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.Header().Set("Cache-Control", "no-store")
-		_ = json.NewEncoder(w).Encode(recent.List())
+		writeJSON(w, recent.List())
 	})
 
 	// /hls/index.m3u8 — fetch Plex's playlist, rewrite segment URLs to
@@ -279,6 +321,13 @@ func main() {
 			if plexSession.RecordSegmentFailure() {
 				go func() {
 					defer plexSession.ClearAutoRestart()
+					// A host seek-with-restart can flip autoRestart
+					// inactive between RecordSegmentFailure and us
+					// running. If so, bail — the host's intent wins.
+					if !plexSession.AutoRestartShouldProceed() {
+						log.Printf("auto-restart: superseded by host action, skipping")
+						return
+					}
 					if err := hub.AutoRestartAtCurrentPosition(); err != nil {
 						log.Printf("auto-restart failed: %v", err)
 					}
@@ -287,23 +336,47 @@ func main() {
 			http.Error(cw, "plex segment: "+err.Error(), http.StatusBadGateway)
 			return
 		}
-		plexSession.RecordSegmentSuccess()
 		defer body.Close()
-		// pipe: write into cache while streaming to client.
-		pr, pw := io.Pipe()
-		go func() {
-			defer pw.Close()
-			_, _ = io.Copy(io.MultiWriter(pw, cw), body)
-		}()
-		if _, err := segCache.Put(key, pr); err != nil {
+		// Read the full Plex segment into memory before serving OR
+		// caching. The previous tee-via-pipe pattern would commit a
+		// truncated cache entry whenever the client TCP-closed mid-
+		// stream: io.MultiWriter halts on the first writer error, the
+		// pipe goroutine closes the pipe early, and Put renamed a
+		// partial .tmp into the cache forever. Buffering ~1-3 MB per
+		// segment on a LAN is cheap (sub-100ms on gigabit) and gives
+		// us an atomic "I have all the bytes" decision point.
+		data, err := io.ReadAll(body)
+		if err != nil {
+			log.Printf("seg: read from plex aborted: %v", err)
+			if plexSession.RecordSegmentFailure() {
+				go func() {
+					defer plexSession.ClearAutoRestart()
+					if !plexSession.AutoRestartShouldProceed() {
+						log.Printf("auto-restart: superseded by host action, skipping")
+						return
+					}
+					if err := hub.AutoRestartAtCurrentPosition(); err != nil {
+						log.Printf("auto-restart failed: %v", err)
+					}
+				}()
+			}
+			http.Error(cw, "plex segment read: "+err.Error(), http.StatusBadGateway)
+			return
+		}
+		plexSession.RecordSegmentSuccess()
+		// Cache first — quick local disk write — so a slow client
+		// disconnect during cw.Write can't keep the entry out of
+		// cache. The cache is the value here; serving the byte to
+		// THIS client is incidental.
+		if _, err := segCache.Put(key, bytes.NewReader(data)); err != nil {
 			log.Printf("seg: cache write failed: %v (segment still served)", err)
 		}
+		_, _ = cw.Write(data)
 	})
 
 	protected.HandleFunc("/api/bandwidth", func(w http.ResponseWriter, r *http.Request) {
 		mine, total, viewers := bw.snapshot(clientIP(r))
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]int64{
+		writeJSON(w, map[string]int64{
 			"mineKbps":  mine,
 			"totalKbps": total,
 			"viewers":   int64(viewers),

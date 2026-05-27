@@ -25,10 +25,11 @@ type Plex struct {
 	// on a large library. The cache is held in memory for the TTL below,
 	// and (when cacheFile is non-empty) also persisted to disk so a
 	// container restart doesn't pay the cold-start cost.
-	moviesMu  sync.Mutex
-	moviesAt  time.Time
-	moviesVal []Movie
-	cacheFile string
+	moviesMu    sync.Mutex
+	moviesAt    time.Time
+	moviesVal   []Movie
+	moviesByKey map[string]Movie // O(1) ratingKey lookup, refreshed alongside moviesVal
+	cacheFile   string
 
 	// Health state. healthy is the latest known reachability; if any
 	// call into Plex returns a transport error we flip it false and
@@ -248,6 +249,7 @@ func (p *Plex) loadCacheFromDisk() {
 	p.moviesMu.Lock()
 	p.moviesVal = entry.Movies
 	p.moviesAt = entry.At
+	p.moviesByKey = buildMoviesIndex(entry.Movies)
 	p.moviesMu.Unlock()
 	log.Printf("library cache: loaded %d titles from %s (saved %s)",
 		len(entry.Movies), p.cacheFile,
@@ -311,9 +313,28 @@ func (p *Plex) ListMovies() ([]Movie, error) {
 	p.moviesMu.Lock()
 	p.moviesVal = out
 	p.moviesAt = time.Now()
+	p.moviesByKey = buildMoviesIndex(out)
 	p.moviesMu.Unlock()
 	p.saveCacheToDisk()
 	return out, nil
+}
+
+// MovieByKey returns the movie metadata for ratingKey from the in-memory
+// index, or (Movie{}, false) if absent. O(1) — avoids the linear scan
+// over ListMovies() at /control load time.
+func (p *Plex) MovieByKey(ratingKey string) (Movie, bool) {
+	p.moviesMu.Lock()
+	defer p.moviesMu.Unlock()
+	m, ok := p.moviesByKey[ratingKey]
+	return m, ok
+}
+
+func buildMoviesIndex(movies []Movie) map[string]Movie {
+	idx := make(map[string]Movie, len(movies))
+	for _, m := range movies {
+		idx[m.RatingKey] = m
+	}
+	return idx
 }
 
 type metadataResp struct {

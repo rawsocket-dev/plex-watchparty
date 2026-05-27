@@ -1,0 +1,559 @@
+:root {
+  color-scheme: dark;
+  --ink:        #050403;
+  --ink-2:      #0a0908;
+  --paper:      #e8e2d4;
+  --paper-mute: #8a8478;
+  --rule:       #2a2620;
+  --ember:      #d4a574;
+  --ember-hi:   #f0c089;
+  --serif: "Fraunces", "Times New Roman", Georgia, serif;
+  --mono:  "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+* { box-sizing: border-box; }
+html, body {
+  margin: 0; height: 100%; background: var(--ink); color: var(--paper);
+  font-family: var(--serif);
+}
+/* This is a movie player — text selection is never the goal. Apply
+   to everything, with !important, so no later rule (or :fullscreen
+   pseudo-class reset) can re-enable it. ::selection paints the
+   selection background transparent as a belt-and-suspenders in
+   case the browser still tries. */
+*, *::before, *::after {
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  -webkit-touch-callout: none !important;
+}
+::selection { background: transparent; }
+::-moz-selection { background: transparent; }
+#wrap { height: 100%; display: flex; flex-direction: column; }
+
+/* Top bar — film-set clapperboard. Each piece of metadata sits in
+   its own bordered cell with a tiny caption above its value;
+   controls live in matching cells on the right edge. Ember
+   bookends the title cell so the headline reads as the focus. */
+#bar {
+  display: grid;
+  grid-template-columns: minmax(0, auto) minmax(0, 1fr) minmax(0, auto);
+  align-items: stretch;
+  background: var(--ink-2);
+  border-bottom: 2px solid var(--ember);
+  --rule-hi: #3a342c;
+}
+.cell-group { display: flex; align-items: stretch; }
+.cell {
+  border-right: 1px solid var(--rule);
+  padding: .5rem .9rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: .15rem;
+  min-height: 50px;
+}
+.cell .lbl {
+  font-family: var(--mono);
+  font-size: .62rem;
+  font-weight: 500;
+  letter-spacing: .22em;
+  text-transform: uppercase;
+  color: var(--paper-mute);
+}
+.cell .v {
+  font-family: var(--mono);
+  font-weight: 500;
+  font-size: .8rem;
+  letter-spacing: .15em;
+  color: var(--paper);
+  text-transform: uppercase;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Role cell: ember square + ember text. Host/Viewer switched via
+   CSS based on the body class set by /api/whoami. */
+.role-cell .v { color: var(--ember); display: inline-flex; align-items: center; gap: .55rem; }
+.role-cell .v::before {
+  content: '';
+  display: inline-block;
+  width: 8px; height: 8px;
+  background: var(--ember);
+  box-shadow: 0 0 6px rgba(212,165,116,.55);
+}
+.role-cell .r-viewer { display: none; }
+body.viewer .role-cell .r-host { display: none; }
+body.viewer .role-cell .r-viewer { display: inline; }
+
+/* Bandwidth cell — "you / room" so the ratio reads at a glance.
+   Slash and unit are muted; the numbers carry the eye. */
+.bw-cell .v .slash {
+  color: var(--paper-dim, #5a5448);
+  margin: 0 .25em;
+  font-weight: 300;
+}
+.bw-cell .v .unit {
+  font-size: .6rem;
+  color: var(--paper-mute);
+  margin-left: .35em;
+  letter-spacing: .15em;
+}
+
+/* Sync cell — 'listening / locked / drifting' with a small dot
+   indicator. Lives next to the role cell so the title cell can be
+   a clean centered marquee. */
+.sync-cell .v {
+  display: inline-flex;
+  align-items: center;
+  gap: .45rem;
+  font-variant-numeric: tabular-nums;
+}
+.sync-cell .v::before {
+  content: '';
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--paper-mute);
+  transition: background .3s ease, box-shadow .3s ease;
+}
+.sync-cell .v.locked::before {
+  background: var(--ember);
+  box-shadow: 0 0 6px rgba(212,165,116,.6);
+}
+.sync-cell .v.drifting::before { background: #c47d4a; }
+
+/* Title cell — the marquee. Bigger than every other cell, upright
+   serif at display opsz, ember side-borders so the focal point
+   reads as such even mid-glance. No caption above — the title
+   speaks for itself; sync moved to its own cell on the left. */
+.title-cell {
+  border-left: 1px solid var(--ember-deep, #a87f4a);
+  border-right: 1px solid var(--ember-deep, #a87f4a);
+  background: linear-gradient(180deg, rgba(212,165,116,.04) 0%, transparent 100%);
+  padding: .45rem 1.2rem;
+  min-width: 0;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+}
+.title-cell .v {
+  font-family: var(--serif);
+  font-style: normal;
+  font-weight: 400;
+  font-size: clamp(1.1rem, 1.9vw, 1.6rem);
+  letter-spacing: -.005em;
+  color: var(--paper);
+  text-transform: none;
+  line-height: 1.05;
+  font-variation-settings: "opsz" 144, "SOFT" 30;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+.title-cell .v.idle { color: var(--paper-mute); font-style: italic; }
+
+/* Viewers cell with hover roster popup, anchored under the cell. */
+.viewers-cell { position: relative; cursor: default; }
+.viewers-cell .roster {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  min-width: 10rem;
+  background: var(--ink-2);
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  padding: .6rem .8rem;
+  box-shadow: 0 10px 30px rgba(0,0,0,.5);
+  display: none;
+  z-index: 60;
+  text-align: left;
+  letter-spacing: .12em;
+}
+.viewers-cell:hover .roster,
+.viewers-cell:focus-within .roster { display: block; }
+.viewers-cell .roster .row {
+  display: flex; align-items: baseline; gap: .5rem;
+  padding: .15rem 0;
+}
+.viewers-cell .roster .row .nm {
+  color: var(--paper); text-transform: none;
+  letter-spacing: .03em; font-family: var(--serif);
+  font-style: italic; font-size: .85rem;
+}
+.viewers-cell .roster .row .role {
+  font-size: .55rem; letter-spacing: .2em; color: var(--paper-mute);
+}
+.viewers-cell .roster .row.host .role { color: var(--ember); }
+
+/* Right-side action buttons — same cell footprint, hover inverts
+   to ember-on-ink so the actionable cells visually pop. Primary
+   (Play) ships ember-on-ink by default to mark it as the action. */
+.cell-btn {
+  background: none;
+  border: 0;
+  border-right: 1px solid var(--rule);
+  color: var(--paper);
+  font-family: var(--mono);
+  font-size: .62rem;
+  letter-spacing: .3em;
+  text-transform: uppercase;
+  cursor: pointer;
+  padding: 0 1.1rem;
+  min-width: 3rem;
+  min-height: 50px;
+  transition: background .2s ease, color .2s ease;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.cell-btn:last-child { border-right: 0; }
+.cell-btn:hover { background: var(--ember); color: var(--ink); }
+.cell-btn.primary { background: var(--ember); color: var(--ink); }
+.cell-btn.primary:hover { background: var(--ember-hi); }
+#fullscreen { font-family: ui-monospace, monospace; font-size: 1.05rem; letter-spacing: 0; }
+#wrap.fill #zoom { color: var(--ember); }
+#wrap.fill #zoom:hover { color: var(--ink); }
+
+/* Volume control — cell-btn footprint with SVG speaker icon and a
+   hover/focus-revealed slider popover. The icon swaps between 4
+   states via JS toggling classes on .vol-icon. */
+.vol-cell {
+  position: relative;
+  padding: 0 .85rem;
+}
+.vol-icon {
+  width: 18px;
+  height: 18px;
+  color: var(--paper);
+  transition: color .2s ease;
+}
+.vol-cell:hover .vol-icon,
+.vol-cell:focus-within .vol-icon { color: var(--ink); }
+/* Show only the relevant path segments for each volume state.
+   Default: high (all bars). Mid: drop the outer arc. Low: only
+   the base + cone. Muted: only base + X. */
+.vol-icon .vol-base { display: block; }
+.vol-icon .vol-mid  { display: none; }
+.vol-icon .vol-hi   { display: none; }
+.vol-icon .vol-x    { display: none; }
+.vol-icon.vol-state-hi  .vol-mid,
+.vol-icon.vol-state-hi  .vol-hi  { display: block; }
+.vol-icon.vol-state-mid .vol-mid { display: block; }
+.vol-icon.vol-state-muted .vol-x { display: block; }
+
+.vol-popover {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--ink-2);
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  padding: 1rem .85rem .7rem;
+  box-shadow: 0 10px 30px rgba(0,0,0,.5);
+  display: none;
+  z-index: 60;
+  flex-direction: column;
+  align-items: center;
+  gap: .55rem;
+  min-width: 9.5rem;
+}
+.vol-cell:hover .vol-popover,
+.vol-cell:focus-within .vol-popover { display: flex; }
+
+/* Range input restyle. WebKit/Blink + Firefox both need their own
+   thumb/track selectors; keep them in lock-step so it looks the
+   same in every browser the host's friends might use. */
+#vol-slider {
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+  width: 100%;
+  height: 18px;
+  cursor: pointer;
+  margin: 0;
+}
+#vol-slider:focus { outline: none; }
+#vol-slider::-webkit-slider-runnable-track {
+  height: 3px;
+  background: var(--rule);
+  border-radius: 2px;
+}
+#vol-slider::-moz-range-track {
+  height: 3px;
+  background: var(--rule);
+  border-radius: 2px;
+}
+#vol-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px; height: 12px;
+  background: var(--ember);
+  border-radius: 50%;
+  border: 0;
+  margin-top: -4.5px;
+  box-shadow: 0 0 6px rgba(212,165,116,.5);
+  transition: transform .15s ease;
+}
+#vol-slider::-moz-range-thumb {
+  width: 12px; height: 12px;
+  background: var(--ember);
+  border: 0;
+  border-radius: 50%;
+  box-shadow: 0 0 6px rgba(212,165,116,.5);
+}
+#vol-slider:hover::-webkit-slider-thumb,
+#vol-slider:focus::-webkit-slider-thumb { transform: scale(1.2); }
+/* Filled portion of the track, drawn via background-image so the
+   percentage updates from the JS — both pseudo-selectors share the
+   same gradient stop. */
+#vol-slider {
+  background-image: linear-gradient(to right,
+    var(--ember) 0%, var(--ember) var(--vol, 100%),
+    var(--rule) var(--vol, 100%), var(--rule) 100%);
+  background-size: 100% 3px;
+  background-repeat: no-repeat;
+  background-position: 0 center;
+}
+.vol-value {
+  font-family: var(--mono);
+  font-size: .65rem;
+  letter-spacing: .12em;
+  color: var(--paper-mute);
+  font-variant-numeric: tabular-nums;
+}
+.vol-value .vol-unit { color: var(--paper-dim, #5a5448); margin-left: .15em; }
+.vol-cell.muted .vol-value { color: var(--paper-dim, #5a5448); }
+
+/* Viewer mode hides host-only controls. Fullscreen + zoom + exit
+   are per-client and always available. */
+body.viewer #play, body.viewer #pause { display: none; }
+body.viewer #scrub-hit { cursor: default; }
+body.viewer #scrub-hit:hover #scrub-track { height: 4px; }
+body.viewer #scrub-thumb { opacity: .65; }
+body.viewer #scrub-hit:hover #scrub-thumb,
+body.viewer #scrub-hit.dragging #scrub-thumb { transform: translateY(-50%); }
+body.viewer #scrub-tooltip { display: none; }
+
+video {
+  flex: 1;
+  width: 100%;
+  background: #000;
+  min-height: 0;
+  display: block;
+  /* Default 'contain' preserves aspect ratio (letterboxes cinematic
+     content). The .fill modifier on #wrap switches to 'cover' which
+     zooms the picture so the bars push off-screen — the trade is
+     that the extreme edges of the frame get cropped. */
+  object-fit: contain;
+}
+#wrap.fill video { object-fit: cover; }
+
+/* Scrub bar — always visible, generous hit target, drag-to-seek.
+   The visible track is a thin line, but the entire row height is
+   clickable so it's easy to grab. Thumb stays visible whenever a
+   duration is known. */
+#scrub {
+  display: flex;
+  align-items: stretch;
+  gap: 1rem;
+  padding: 0 clamp(.8rem, 2vw, 1.5rem);
+  background: var(--ink-2);
+  border-bottom: 1px solid var(--rule);
+  min-height: 2.6rem;
+}
+#scrub-hit {
+  flex: 1;
+  position: relative;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+}
+#scrub-hit.dragging { cursor: grabbing; }
+#scrub-track {
+  position: relative;
+  width: 100%;
+  height: 4px;
+  background: var(--rule);
+  border-radius: 2px;
+  transition: height .15s ease;
+}
+#scrub-hit:hover #scrub-track,
+#scrub-hit.dragging #scrub-track { height: 8px; }
+#scrub-buffered, #scrub-fill {
+  position: absolute;
+  left: 0; top: 0;
+  height: 100%;
+  border-radius: 2px;
+  pointer-events: none;
+}
+/* Stack: track (background, can't seek here) < seekable (can seek)
+   < buffered (already loaded) < fill (played). Layered colors are
+   subtle on purpose; the visible "available to scrub" cue is just
+   a slightly lighter band. */
+/* Seekable container — child .cached-band elements render the actual
+   time ranges from state.cachedRanges. Multiple bands can appear if
+   the user did forward-seek-then-rewatch (cache has gaps). */
+#scrub-seekable {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+#scrub-seekable .cached-band {
+  position: absolute;
+  top: 0; bottom: 0;
+  background: var(--ember);
+  opacity: .22;
+}
+#scrub-buffered { background: var(--rule-hi, #3a342c); width: 0; }
+#scrub-fill     { background: var(--ember);            width: 0; }
+#scrub-thumb {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 14px; height: 14px;
+  margin-left: -7px;
+  border-radius: 50%;
+  background: var(--ember);
+  pointer-events: none;
+  transform: translateY(-50%);
+  transition: transform .12s ease, box-shadow .12s ease, opacity .15s ease;
+  box-shadow: 0 0 8px rgba(212, 165, 116, .45);
+  opacity: 0;
+}
+#scrub-hit.ready #scrub-thumb { opacity: 1; }
+#scrub-hit:hover #scrub-thumb,
+#scrub-hit.dragging #scrub-thumb {
+  transform: translateY(-50%) scale(1.25);
+  box-shadow: 0 0 14px rgba(212, 165, 116, .65);
+}
+#scrub-tooltip {
+  position: absolute;
+  bottom: calc(100% - .5rem);
+  transform: translateX(-50%);
+  background: var(--ink);
+  border: 1px solid var(--rule);
+  padding: .25rem .55rem;
+  border-radius: 3px;
+  font-family: var(--mono);
+  font-size: .68rem;
+  letter-spacing: .08em;
+  color: var(--paper);
+  pointer-events: none;
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity .12s ease;
+  z-index: 60;
+}
+#scrub-hit:hover #scrub-tooltip,
+#scrub-hit.dragging #scrub-tooltip { opacity: 1; }
+#scrub-time {
+  font-family: var(--mono);
+  font-size: .65rem;
+  letter-spacing: .15em;
+  color: var(--paper-mute);
+  white-space: nowrap;
+  min-width: 9em;
+  text-align: right;
+  align-self: center;
+}
+
+/* Stage area wraps the <video> so the join overlay can sit absolutely
+   over it without escaping the player layout. */
+.stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+.stage video { flex: 1; }
+
+/* Browser autoplay policy blocks v.play() until a user gesture on the
+   page. Without this overlay the video element just sits silently
+   paused and viewers don't realise they need to click. The overlay
+   also doubles as a buffer-fill progress indicator at startup so
+   viewers see the transcoder + buffer accumulating instead of
+   wondering why the play icon isn't responsive. */
+#join {
+  position: absolute; inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  background: rgba(5, 4, 3, .65);
+  backdrop-filter: blur(4px);
+  cursor: default;
+  z-index: 50;
+  transition: opacity .4s ease;
+}
+#join.hidden { opacity: 0; pointer-events: none; }
+#join.ready { cursor: pointer; }
+
+#join .icon {
+  position: relative;
+  width: 84px; height: 84px;
+  border-radius: 50%;
+  border: 1.5px solid var(--rule);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--paper-mute);
+  transition: transform .25s ease, background .25s ease,
+              box-shadow .25s ease, border-color .25s ease, color .25s ease;
+}
+/* Soft halo behind the icon — invisible at rest, fades in on hover
+   to seal the edge of the bloom. */
+#join .icon::before {
+  content: "";
+  position: absolute;
+  inset: -18px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(212, 165, 116, .35) 0%,
+                                      rgba(212, 165, 116, 0) 70%);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .25s ease;
+  z-index: -1;
+}
+#join .icon svg {
+  width: 32px; height: 32px; margin-left: 4px;
+  transition: filter .25s ease;
+}
+/* Gate the hover glow on devices that actually have hover — without
+   this, tapping on a touch screen latches the :hover state on and
+   the button looks permanently lit. */
+@media (hover: hover) and (pointer: fine) {
+  #join.ready:hover .icon {
+    background: rgba(212, 165, 116, .18);
+    transform: scale(1.08);
+    border-color: var(--ember);
+    color: var(--ember);
+    /* Layered glow: tight bright core + wider soft bloom — reads as
+       a warm halo rather than a single flat shadow. */
+    box-shadow: 0 0 0 2px rgba(212, 165, 116, .35),
+                0 0 28px rgba(212, 165, 116, .55),
+                0 0 64px rgba(212, 165, 116, .35);
+  }
+  #join.ready:hover .icon svg {
+    filter: drop-shadow(0 0 8px rgba(212, 165, 116, .8));
+  }
+  #join.ready:hover .icon::before { opacity: .85; }
+}
+#join .label {
+  font-family: var(--serif);
+  font-style: italic;
+  font-weight: 300;
+  font-size: clamp(1.4rem, 3.5vw, 2rem);
+  letter-spacing: .005em;
+  color: var(--paper);
+  font-variation-settings: "opsz" 96, "SOFT" 60;
+}
+#join .hint {
+  font-family: var(--mono);
+  font-size: .65rem;
+  letter-spacing: .25em;
+  text-transform: uppercase;
+  color: var(--paper-mute);
+  font-variant-numeric: tabular-nums;
+}

@@ -68,21 +68,24 @@ func (r *RecentMovies) Touch(ratingKey, title string, year int) {
 		return
 	}
 	r.mu.Lock()
-	// Remove any existing entry for this ratingKey.
-	kept := r.entries[:0]
-	for _, e := range r.entries {
-		if e.RatingKey != ratingKey {
-			kept = append(kept, e)
-		}
-	}
-	// Insert fresh entry at the front.
+	// Build a fresh slice so we never alias r.entries while iterating
+	// — the prior pattern (kept := r.entries[:0]) was correct only
+	// because of the surrounding lock, and the foot-gun isn't worth
+	// the saved allocation on a list that maxes out at recentCap.
 	entry := RecentMovie{
 		RatingKey:    ratingKey,
 		Title:        title,
 		Year:         year,
 		LastPlayedAt: time.Now().Unix(),
 	}
-	r.entries = append([]RecentMovie{entry}, kept...)
+	updated := make([]RecentMovie, 0, len(r.entries)+1)
+	updated = append(updated, entry)
+	for _, e := range r.entries {
+		if e.RatingKey != ratingKey {
+			updated = append(updated, e)
+		}
+	}
+	r.entries = updated
 	if len(r.entries) > r.cap {
 		r.entries = r.entries[:r.cap]
 	}

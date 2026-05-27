@@ -46,6 +46,12 @@ type PlexSession struct {
 const segFailureThreshold = 3
 const autoRestartCooldown = 10 * time.Second
 
+// plexClientID identifies this app to Plex's session manager. The same
+// string is sent as X-Plex-Client-Identifier on every request — Plex
+// uses it to group /decision, /start.m3u8, and /stop into a single
+// transcode session. Changing this would orphan any in-flight session.
+const plexClientID = "plexwatchparty"
+
 func NewPlexSession(p *Plex, transcodeKbps int) *PlexSession {
 	return &PlexSession{plex: p, transcodeKbps: transcodeKbps}
 }
@@ -55,13 +61,11 @@ func newSessionID() string {
 	return "watchparty-" + strconv.FormatInt(time.Now().UnixNano(), 36)
 }
 
-// transcodeURL builds the Plex Universal Transcoder URL at the given
-// movie-time offset (in seconds). Targets HLS output (mpegts/h264/aac)
-// so we can proxy + cache Plex's playlist + segments directly. The
-// caller passes a sessionID so /decision and /start.m3u8 can share
-// the same one — Plex expects the negotiation + actual start to be
-// stitched together by session.
-func (ps *PlexSession) transcodeURL(ratingKey, sessionID string, offsetSec float64) string {
+// transcodeParams builds the shared query string used by both
+// /decision and /start.m3u8. Plex expects identical params across the
+// two calls — only the path differs. Returns url.Values so callers
+// can mutate (e.g. encode + attach to a different base path).
+func (ps *PlexSession) transcodeParams(ratingKey, sessionID string, offsetSec float64) url.Values {
 	// Profile-Extra teaches Plex's transcoder what we can play. For HLS
 	// browser playback that's h264 video + aac audio inside mpegts
 	// segments — matches what hls.js + MSE can decode without any
@@ -101,26 +105,28 @@ func (ps *PlexSession) transcodeURL(ratingKey, sessionID string, offsetSec float
 	q.Set("X-Plex-Features", "external-media,indirect-media")
 	q.Set("X-Plex-Model", "standalone")
 	q.Set("X-Plex-Language", "en")
-	q.Set("X-Plex-Product", "plexwatchparty")
+	q.Set("X-Plex-Product", plexClientID)
 	q.Set("X-Plex-Version", "1.0")
-	q.Set("X-Plex-Client-Identifier", "plexwatchparty")
+	q.Set("X-Plex-Client-Identifier", plexClientID)
 	q.Set("X-Plex-Platform", "Generic")
-	q.Set("X-Plex-Device", "plexwatchparty")
+	q.Set("X-Plex-Device", plexClientID)
 	q.Set("X-Plex-Token", ps.plex.Token)
-	return ps.plex.BaseURL + "/video/:/transcode/universal/start.m3u8?" + q.Encode()
+	return q
 }
 
-// decisionURL is the same as transcodeURL but hits Plex's /decision
-// endpoint, which returns a JSON body explaining WHY a transcode was
-// rejected (codec not supported, no matching target, etc.). Real Plex
-// clients negotiate via /decision before issuing /start.m3u8 and
-// share the same session ID across both calls — Plex's session
-// bookkeeping expects that order. Used both as a preflight and (with
-// the old fall-through path) as a post-mortem.
+// transcodeURL is the /start.m3u8 form — the URL the playlist proxy fetches.
+func (ps *PlexSession) transcodeURL(ratingKey, sessionID string, offsetSec float64) string {
+	return ps.plex.BaseURL + "/video/:/transcode/universal/start.m3u8?" +
+		ps.transcodeParams(ratingKey, sessionID, offsetSec).Encode()
+}
+
+// decisionURL is the /decision form — preflight handshake that primes
+// Plex's session bookkeeping for the upcoming /start.m3u8. Plex
+// expects the negotiation + actual start to be stitched together by
+// session ID, so both calls share the same params.
 func (ps *PlexSession) decisionURL(ratingKey, sessionID string, offsetSec float64) string {
-	return strings.Replace(ps.transcodeURL(ratingKey, sessionID, offsetSec),
-		"/transcode/universal/start.m3u8?",
-		"/transcode/universal/decision?", 1)
+	return ps.plex.BaseURL + "/video/:/transcode/universal/decision?" +
+		ps.transcodeParams(ratingKey, sessionID, offsetSec).Encode()
 }
 
 // redactedURL hides the X-Plex-Token query param so the URL is safe to log.
@@ -154,8 +160,19 @@ func (ps *PlexSession) SessionToken() int64 {
 // can stay tracked for a few seconds.
 func (ps *PlexSession) Start(ratingKey string, offsetSec float64) error {
 	ps.mu.Lock()
-	defer ps.mu.Unlock()
+	hadSession := ps.sessionID != ""
 	ps.stopLocked()
+	ps.mu.Unlock()
+	// If a prior session was just stopped, give Plex's transcoder a
+	// beat to tear down before we ask it to spin up a new one under
+	// the same client identifier. Done OUTSIDE the lock so readers
+	// (RatingKey / SessionToken / PlaylistURL) aren't stalled. When
+	// there was no prior session, skip the cooldown entirely.
+	if hadSession {
+		time.Sleep(400 * time.Millisecond)
+	}
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
 
 	sessionID := newSessionID()
 
@@ -232,10 +249,21 @@ func (ps *PlexSession) callDecision(ratingKey, sessionID string, offsetSec float
 // call when no session is active (no-op).
 func (ps *PlexSession) Stop() {
 	ps.mu.Lock()
-	defer ps.mu.Unlock()
 	ps.stopLocked()
+	ps.mu.Unlock()
+	// Plex's transcoder needs a beat to tear down before it'll accept
+	// a new session under the same client identifier; without this
+	// pause the next /start.m3u8 returns a bare 400 even with valid
+	// params. Done OUTSIDE the lock so reader methods (RatingKey,
+	// SessionToken, PlaylistURL) aren't stalled — the session-cleared
+	// invariant is already true the moment stopLocked returns.
+	time.Sleep(400 * time.Millisecond)
 }
 
+// stopLocked clears in-memory session state and asynchronously notifies
+// Plex to terminate the transcode session. Must be called with ps.mu
+// held. Does NOT sleep — that's left to the caller so the cooldown
+// can happen with the lock released.
 func (ps *PlexSession) stopLocked() {
 	if ps.sessionID == "" {
 		return
@@ -246,7 +274,7 @@ func (ps *PlexSession) stopLocked() {
 	// subsequent /start.m3u8 then 400s with a stale session held).
 	q := url.Values{}
 	q.Set("session", ps.sessionID)
-	q.Set("X-Plex-Client-Identifier", "plexwatchparty")
+	q.Set("X-Plex-Client-Identifier", plexClientID)
 	q.Set("X-Plex-Token", ps.plex.Token)
 	stopURL := ps.plex.BaseURL + "/video/:/transcode/universal/stop?" + q.Encode()
 	req, _ := http.NewRequest(http.MethodGet, stopURL, nil)
@@ -258,24 +286,6 @@ func (ps *PlexSession) stopLocked() {
 	ps.playlistURL = ""
 	ps.offsetMs = 0
 	ps.edgeMs = 0
-	// Plex's transcoder needs a beat to tear down before it'll accept a
-	// new session under the same client identifier; without this pause
-	// the next /start.m3u8 returns a bare 400 even with valid params.
-	time.Sleep(400 * time.Millisecond)
-}
-
-// sessionIDFromURL pulls the session= param out of our transcode URL
-// (we generate it on the watchparty side and pass it to Plex).
-func sessionIDFromURL(u string) string {
-	idx := strings.Index(u, "session=")
-	if idx == -1 {
-		return ""
-	}
-	rest := u[idx+len("session="):]
-	if amp := strings.IndexByte(rest, '&'); amp >= 0 {
-		rest = rest[:amp]
-	}
-	return rest
 }
 
 // Restart stops the current Plex session and starts a new one at the
@@ -284,13 +294,15 @@ func sessionIDFromURL(u string) string {
 func (ps *PlexSession) Restart(offsetSec float64) error {
 	ps.mu.Lock()
 	ratingKey := ps.ratingKey
-	ps.mu.Unlock()
 	if ratingKey == "" {
+		ps.mu.Unlock()
 		return fmt.Errorf("Restart with no active session")
 	}
-	ps.mu.Lock()
 	ps.stopLocked()
 	ps.mu.Unlock()
+	// Same teardown cooldown as Stop() — outside the lock so reader
+	// methods aren't blocked while Plex catches up.
+	time.Sleep(400 * time.Millisecond)
 	return ps.Start(ratingKey, offsetSec)
 }
 
@@ -356,6 +368,31 @@ func (ps *PlexSession) RecordSegmentFailure() bool {
 	}
 	ps.autoRestartActive = true
 	return true
+}
+
+// AutoRestartShouldProceed is checked by the auto-restart goroutine
+// just before it calls Restart. Returns false if a host-initiated
+// restart (seek-with-restart, manual reload) raced in via
+// SuppressAutoRestart and grabbed the slot first — in that case the
+// auto-restart aborts and lets the host's intent win.
+func (ps *PlexSession) AutoRestartShouldProceed() bool {
+	ps.failMu.Lock()
+	defer ps.failMu.Unlock()
+	return ps.autoRestartActive
+}
+
+// SuppressAutoRestart is called by HandleControl seek-with-restart
+// (and any other code path that's about to call session.Restart on
+// purpose) so a racing auto-restart goroutine sees autoRestartActive
+// flip back to false and aborts before issuing a second /start.
+// Also stamps the cooldown so the post-restart re-attach window
+// doesn't immediately re-trigger.
+func (ps *PlexSession) SuppressAutoRestart() {
+	ps.failMu.Lock()
+	defer ps.failMu.Unlock()
+	ps.autoRestartActive = false
+	ps.consecutiveSegFails = 0
+	ps.lastAutoRestartAt = time.Now()
 }
 
 // RecordSegmentSuccess resets the consecutive-failure counter — any

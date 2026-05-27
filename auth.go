@@ -51,6 +51,13 @@ func (r Role) String() string {
 type Auth struct {
 	watch, host string
 	secret      []byte
+	// Precomputed cookie values for each role. Computed once in
+	// NewAuth so Role() can skip the per-request HMAC — every
+	// protected request (segments, SSE, control) reaches Guard, and
+	// at 4 viewers × 1 segment / 4s × 90 min that's thousands of
+	// HMACs per movie. Now it's a single constant-time string compare.
+	hostToken   string
+	viewerToken string
 }
 
 func NewAuth(watch, host string) *Auth {
@@ -58,7 +65,10 @@ func NewAuth(watch, host string) *Auth {
 	mac.Write([]byte(watch))
 	mac.Write([]byte{0})
 	mac.Write([]byte(host))
-	return &Auth{watch: watch, host: host, secret: mac.Sum(nil)}
+	a := &Auth{watch: watch, host: host, secret: mac.Sum(nil)}
+	a.hostToken = a.token(RoleHost)
+	a.viewerToken = a.token(RoleViewer)
+	return a
 }
 
 // HostEnabled reports whether HOST_PASSWORD was configured (and the
@@ -78,7 +88,8 @@ func (a *Auth) token(role Role) string {
 }
 
 // Role returns the request's authenticated role, or RoleAnon if the
-// cookie is missing or invalid.
+// cookie is missing or invalid. Compares against precomputed tokens
+// so the hot path is a single constant-time compare per request.
 func (a *Auth) Role(r *http.Request) Role {
 	c, err := r.Cookie(sessionCookie)
 	if err != nil {
@@ -88,16 +99,18 @@ func (a *Auth) Role(r *http.Request) Role {
 	if !ok {
 		return RoleAnon
 	}
+	var want string
 	var role Role
 	switch roleName {
 	case "host":
+		want = a.hostToken
 		role = RoleHost
 	case "viewer":
+		want = a.viewerToken
 		role = RoleViewer
 	default:
 		return RoleAnon
 	}
-	want := a.token(role)
 	if subtle.ConstantTimeCompare([]byte(c.Value), []byte(want)) != 1 {
 		return RoleAnon
 	}

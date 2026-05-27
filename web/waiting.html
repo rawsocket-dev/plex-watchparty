@@ -290,6 +290,7 @@
   </div>
 </main>
 
+<script src="/static/common.js"></script>
 <script>
   // JS-driven ellipsis so we don't have to fight cross-browser quirks
   // around animating CSS `content`.
@@ -302,32 +303,25 @@
 
   // Subtle role detection so the copy reads right depending on whether
   // the visitor can do anything about the empty screen.
-  fetch('/api/whoami').then(r => r.ok ? r.json() : null).then(d => {
+  fetchWhoami().then(d => {
     if (d && d.role === 'host') document.body.classList.add('host');
-  }).catch(() => {});
+  });
 
   // The waiting room is a live page: when a movie loads, we reload /watch
-  // which then serves the actual player. EventSource auto-reconnects.
-  const es = new EventSource('/events');
-  es.onmessage = (e) => {
-    let s;
-    try { s = JSON.parse(e.data); } catch { return; }
+  // which then serves the actual player.
+  openLiveEvents((s) => {
     if (s && s.ratingKey) {
       // Tiny visual handoff so it feels intentional, not a hard cut.
       document.body.classList.add('opening');
       setTimeout(() => { window.location.href = '/watch'; }, 350);
     }
-  };
+  });
 
   // Recently-screened reel. Render last-5 movies; hosts get clickable
   // cards that POST a /control load and redirect to /watch (waiting
   // there gets the live player via SSE). Viewers see them as
   // passive cards — the host's pick is what counts.
-  function escapeHTML(s) {
-    return String(s).replace(/[&<>"']/g, c => ({
-      '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;',
-    })[c]);
-  }
+  // escapeHTML provided by /static/common.js
   function loadReel() {
     fetch('/api/recent').then(r => r.ok ? r.json() : []).then(list => {
       if (!Array.isArray(list) || list.length === 0) return;

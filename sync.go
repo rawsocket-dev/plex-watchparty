@@ -50,9 +50,13 @@ type ViewerInfo struct {
 }
 
 // clientEntry is the per-connection record we keep on Hub.clients.
+// The channel carries pre-marshaled JSON so broadcast can serialize
+// State once and fan it out byte-identical to every connected viewer
+// — at 8 viewers that's ~7 fewer json.Marshal calls per tick.
 type clientEntry struct {
 	host bool
 	name string
+	send chan []byte
 }
 
 type Hub struct {
@@ -63,10 +67,16 @@ type Hub struct {
 
 	mu    sync.Mutex
 	state State
-	// clients map[chan]→clientEntry. Tracking role per-connection so we
-	// can pause the room when the last host leaves; tracking name so
-	// the broadcast state includes a "who's here" roster for the UI.
-	clients map[chan State]*clientEntry
+	// clients keyed by the per-connection send channel so disconnect
+	// lookups stay O(1). Role tracking pauses the room when the last
+	// host leaves; name tracking populates the "who's here" roster.
+	clients map[*clientEntry]struct{}
+
+	// broadcastWake fires whenever the broadcast loop should re-tick:
+	// first viewer joins, state changes, idle threshold crossed. The
+	// loop pauses (blocks on this channel) when there are no clients
+	// so an empty room doesn't burn cycles broadcasting to nobody.
+	broadcastWake chan struct{}
 
 	// Idle shutdown: when the last SSE viewer disconnects, start a
 	// grace timer; if no one rejoins by the time it fires, stop plex session
@@ -92,11 +102,12 @@ const hostExitGrace = 10 * time.Second
 
 func NewHub(plex *Plex, session *PlexSession, cache *SegmentCache, recent *RecentMovies) *Hub {
 	h := &Hub{
-		plex:    plex,
-		session: session,
-		cache:   cache,
-		recent:  recent,
-		clients: make(map[chan State]*clientEntry),
+		plex:          plex,
+		session:       session,
+		cache:         cache,
+		recent:        recent,
+		clients:       make(map[*clientEntry]struct{}),
+		broadcastWake: make(chan struct{}, 1),
 	}
 	// Periodic state re-broadcast. Two goals: (1) Safari's EventSource
 	// closes the SSE if it goes ~10–20 s without an actual data event
@@ -109,9 +120,20 @@ func NewHub(plex *Plex, session *PlexSession, cache *SegmentCache, recent *Recen
 }
 
 func (h *Hub) broadcastLoop() {
-	t := time.NewTicker(3 * time.Second)
-	defer t.Stop()
-	for range t.C {
+	for {
+		h.mu.Lock()
+		hasClients := len(h.clients) > 0
+		h.mu.Unlock()
+		if !hasClients {
+			// Empty room — block until someone joins. No point
+			// re-broadcasting state to nobody every 3s.
+			<-h.broadcastWake
+			continue
+		}
+		select {
+		case <-time.After(3 * time.Second):
+		case <-h.broadcastWake:
+		}
 		h.mu.Lock()
 		// Auto-pause at the end of the movie. Without this, a host
 		// who leaves a tab open in 'playing' state past the credits
@@ -138,6 +160,18 @@ func (h *Hub) broadcastLoop() {
 	}
 }
 
+// wakeBroadcast is a non-blocking nudge to the broadcast loop. Used
+// when a client joins (so the loop unblocks from its idle wait) and
+// when state changes between ticks. The single-slot buffered channel
+// coalesces — if multiple wakes arrive before the loop reads, only
+// one fires.
+func (h *Hub) wakeBroadcast() {
+	select {
+	case h.broadcastWake <- struct{}{}:
+	default:
+	}
+}
+
 // Lock ordering — touching this invariant breaks the room.
 //
 // The three mutexes in play are Hub.mu, PlexSession.mu, and
@@ -158,7 +192,7 @@ func (h *Hub) broadcastLoop() {
 // called with h.mu held.
 func (h *Hub) hostCount() int {
 	n := 0
-	for _, c := range h.clients {
+	for c := range h.clients {
 		if c.host {
 			n++
 		}
@@ -170,7 +204,7 @@ func (h *Hub) hostCount() int {
 // first then alphabetical. Must be called with h.mu held.
 func (h *Hub) viewerList() []ViewerInfo {
 	out := make([]ViewerInfo, 0, len(h.clients))
-	for _, c := range h.clients {
+	for c := range h.clients {
 		out = append(out, ViewerInfo{Name: c.name, Host: c.host})
 	}
 	sort.Slice(out, func(i, j int) bool {
@@ -394,15 +428,24 @@ func (h *Hub) Snapshot() State {
 	return s
 }
 
+// broadcast marshals the current snapshot once and fans the bytes out
+// to every connected viewer. Stays out of h.state (CachedRanges and
+// Viewers are computed per-broadcast and stamped onto the snapshot
+// only — the authoritative h.state is unchanged).
 func (h *Hub) broadcast() {
-	if h.state.RatingKey != "" && h.cache != nil {
-		h.state.CachedRanges = h.cache.RangesFor(h.state.RatingKey)
-	}
-	h.state.Viewers = h.viewerList()
 	s := h.snapshot()
-	for ch := range h.clients {
+	if s.RatingKey != "" && h.cache != nil {
+		s.CachedRanges = h.cache.RangesFor(s.RatingKey)
+	}
+	s.Viewers = h.viewerList()
+	b, err := json.Marshal(s)
+	if err != nil {
+		log.Printf("broadcast: marshal: %v", err)
+		return
+	}
+	for c := range h.clients {
 		select {
-		case ch <- s:
+		case c.send <- b:
 		default: // drop for slow clients; next event re-syncs them
 		}
 	}
@@ -429,21 +472,30 @@ func (h *Hub) HandleEvents(w http.ResponseWriter, r *http.Request, isHost bool) 
 	// proxy side. Other proxies (Caddy, Traefik) ignore it harmlessly.
 	w.Header().Set("X-Accel-Buffering", "no")
 
-	ch := make(chan State, 8)
+	entry := &clientEntry{host: isHost, name: name, send: make(chan []byte, 8)}
 	ip := clientIP(r)
 	connectedAt := time.Now()
 	h.mu.Lock()
-	h.clients[ch] = &clientEntry{host: isHost, name: name}
+	wasEmpty := len(h.clients) == 0
+	h.clients[entry] = struct{}{}
 	n := len(h.clients)
 	hosts := h.hostCount()
 	h.onClientCountChange()
+	if wasEmpty {
+		// First viewer in an idle room — unblock the broadcast loop.
+		h.wakeBroadcast()
+	}
 	init := h.snapshot()
+	if init.RatingKey != "" && h.cache != nil {
+		init.CachedRanges = h.cache.RangesFor(init.RatingKey)
+	}
 	// snapshot() doesn't refresh Viewers — that only happens in
 	// broadcast(). For a freshly-connected client this matters:
 	// without this, the new viewer would see a stale (or empty)
 	// roster on join and have to wait up to 3 s for the next
 	// broadcastLoop tick. Stamp the current roster onto the init.
 	init.Viewers = h.viewerList()
+	initBytes, _ := json.Marshal(init)
 	h.mu.Unlock()
 	role := "viewer"
 	if isHost {
@@ -452,7 +504,7 @@ func (h *Hub) HandleEvents(w http.ResponseWriter, r *http.Request, isHost bool) 
 	log.Printf("sse: connect ip=%s role=%s viewers=%d hosts=%d", ip, role, n, hosts)
 	defer func() {
 		h.mu.Lock()
-		delete(h.clients, ch)
+		delete(h.clients, entry)
 		left := len(h.clients)
 		leftHosts := h.hostCount()
 		h.onClientCountChange()
@@ -461,14 +513,13 @@ func (h *Hub) HandleEvents(w http.ResponseWriter, r *http.Request, isHost bool) 
 			ip, role, left, leftHosts, time.Since(connectedAt).Round(time.Second))
 	}()
 
-	write := func(s State) {
-		b, _ := json.Marshal(s)
+	writeBytes := func(b []byte) {
 		w.Write([]byte("data: "))
 		w.Write(b)
 		w.Write([]byte("\n\n"))
 		flusher.Flush()
 	}
-	write(init)
+	writeBytes(initBytes)
 
 	// 5 s heartbeat: also doubles as our "is the client still there?"
 	// probe. The write fails on a closed TCP connection, which is how
@@ -480,8 +531,8 @@ func (h *Hub) HandleEvents(w http.ResponseWriter, r *http.Request, isHost bool) 
 		select {
 		case <-r.Context().Done():
 			return
-		case s := <-ch:
-			write(s)
+		case b := <-entry.send:
+			writeBytes(b)
 		case <-heartbeat.C:
 			w.Write([]byte(": ping\n\n"))
 			flusher.Flush()
@@ -549,19 +600,24 @@ func (h *Hub) HandleControl(w http.ResponseWriter, r *http.Request) {
 		resolveMs := time.Since(t0).Milliseconds()
 
 		tList := time.Now()
-		movies, _ := h.plex.ListMovies()
+		// Ensure the library cache is warm so MovieByKey can resolve
+		// the title without a Plex round-trip. ListMovies is cheap on
+		// a warm cache; on cold start it populates the index for us.
+		_, _ = h.plex.ListMovies()
 		title := req.RatingKey
 		year := 0
-		for _, m := range movies {
-			if m.RatingKey == req.RatingKey {
-				title = m.Title
-				year = m.Year
-				break
-			}
+		if m, ok := h.plex.MovieByKey(req.RatingKey); ok {
+			title = m.Title
+			year = m.Year
 		}
 		listMs := time.Since(tList).Milliseconds()
 
 		tStart := time.Now()
+		// A host-initiated load wins over any in-flight auto-restart —
+		// signal the auto-restart goroutine to abort before we call
+		// Start. Without this both could call /stop+/start in quick
+		// succession and Plex would see overlapping sessions.
+		h.session.SuppressAutoRestart()
 		if err := h.session.Start(req.RatingKey, 0); err != nil {
 			log.Printf("control: plex Start failed ip=%s ratingKey=%s err=%v",
 				clientIP(r), req.RatingKey, err)
@@ -669,6 +725,8 @@ func (h *Hub) HandleControl(w http.ResponseWriter, r *http.Request) {
 			h.mu.Unlock()
 			log.Printf("seek: restart needed (target=%.2f > edge=%.2f, no cache hit)",
 				target, h.session.EdgeSec())
+			// Host action wins over any in-flight auto-restart.
+			h.session.SuppressAutoRestart()
 			if err := h.session.Restart(target); err != nil {
 				log.Printf("seek: plex Restart failed: %v", err)
 				h.mu.Lock()

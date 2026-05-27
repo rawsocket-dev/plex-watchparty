@@ -24,6 +24,11 @@ type SegmentCache struct {
 	entries    map[cacheKey]*cacheEntry
 	lru        *list.List // front = most recent
 	totalBytes int64
+	// rangesCache memoizes RangesFor results, keyed by ratingKey. The
+	// broadcast loop calls RangesFor every 3s; over a 90-minute movie
+	// the cache holds thousands of segments and the linear scan + sort
+	// is non-trivial. Invalidated on every Put / evict / LoadFromDisk.
+	rangesCache map[string][][2]float64
 }
 
 type cacheKey struct {
@@ -41,11 +46,19 @@ type cacheEntry struct {
 
 func NewSegmentCache(dir string, maxBytes int64) *SegmentCache {
 	return &SegmentCache{
-		dir:      dir,
-		maxBytes: maxBytes,
-		entries:  make(map[cacheKey]*cacheEntry),
-		lru:      list.New(),
+		dir:         dir,
+		maxBytes:    maxBytes,
+		entries:     make(map[cacheKey]*cacheEntry),
+		lru:         list.New(),
+		rangesCache: make(map[string][][2]float64),
 	}
+}
+
+// invalidateRangesLocked drops the memoized RangesFor result for one
+// movie. Called whenever the set of cached segments for that movie
+// changes (Put, eviction). Must be called with c.mu held.
+func (c *SegmentCache) invalidateRangesLocked(ratingKey string) {
+	delete(c.rangesCache, ratingKey)
 }
 
 func (c *SegmentCache) Get(key cacheKey) (string, bool) {
@@ -147,19 +160,27 @@ func (c *SegmentCache) Put(key cacheKey, src io.Reader) (string, error) {
 		c.lru.Remove(oldest)
 		delete(c.entries, oe.key)
 		c.totalBytes -= oe.bytes
+		c.invalidateRangesLocked(oe.key.ratingKey)
 	}
 	e := &cacheEntry{key: key, path: finalPath, bytes: n}
 	e.elem = c.lru.PushFront(e)
 	c.entries[key] = e
 	c.totalBytes += n
+	c.invalidateRangesLocked(key.ratingKey)
 	return finalPath, nil
 }
 
 // RangesFor returns the union of all cached time ranges for ratingKey,
 // merged into the minimum number of contiguous intervals. Times are in
-// seconds. Returned slice is sorted by start.
+// seconds. Returned slice is sorted by start. Memoized — the
+// broadcast loop hits this every 3s, and on a large library cache
+// the underlying sort+merge isn't free.
 func (c *SegmentCache) RangesFor(ratingKey string) [][2]float64 {
 	c.mu.Lock()
+	if cached, ok := c.rangesCache[ratingKey]; ok {
+		c.mu.Unlock()
+		return cached
+	}
 	type r struct{ s, e int64 }
 	raw := make([]r, 0)
 	for k := range c.entries {
@@ -167,8 +188,9 @@ func (c *SegmentCache) RangesFor(ratingKey string) [][2]float64 {
 			raw = append(raw, r{k.startMs, k.endMs})
 		}
 	}
-	c.mu.Unlock()
 	if len(raw) == 0 {
+		c.rangesCache[ratingKey] = nil
+		c.mu.Unlock()
 		return nil
 	}
 	sort.Slice(raw, func(i, j int) bool { return raw[i].s < raw[j].s })
@@ -187,6 +209,8 @@ func (c *SegmentCache) RangesFor(ratingKey string) [][2]float64 {
 	for i, m := range merged {
 		out[i] = [2]float64{float64(m.s) / 1000.0, float64(m.e) / 1000.0}
 	}
+	c.rangesCache[ratingKey] = out
+	c.mu.Unlock()
 	return out
 }
 
@@ -234,6 +258,7 @@ func (c *SegmentCache) LoadFromDisk() error {
 			e.elem = c.lru.PushBack(e) // back = oldest; LoadFromDisk creates LRU as old
 			c.entries[key] = e
 			c.totalBytes += e.bytes
+			c.invalidateRangesLocked(ratingKey)
 		}
 	}
 	return nil
