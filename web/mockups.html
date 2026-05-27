@@ -6,8 +6,11 @@
 <title>Top-bar mockups · plex-watchparty</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;700&family=Marcellus&family=Outfit:wght@300;400;500;600&family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400;1,600;1,700&family=DM+Sans:wght@300;400;500;700&family=IBM+Plex+Mono:wght@300;400;500;600&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=JetBrains+Mono:wght@300;400;500&family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500;1,600;1,700&family=Audiowide&family=VT323&family=Special+Elite&family=Crimson+Text:ital,wght@0,400;0,600;1,400&family=Caveat:wght@400;600;700&family=Quicksand:wght@300;400;500;600&family=Oswald:wght@300;400;500;600;700&family=Roboto+Mono:wght@300;400;500&family=UnifrakturCook:wght@700&family=Patrick+Hand&family=Inter:wght@400;700;900&family=Space+Mono:wght@400;700&family=Bebas+Neue&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <style>
+  /* ============================================================
+     Page chrome — common to all mockups
+     ============================================================ */
   :root { color-scheme: dark; }
   * { box-sizing: border-box; }
   html, body {
@@ -18,11 +21,7 @@
     font-size: 14px;
     min-height: 100vh;
   }
-  .page {
-    max-width: 1240px;
-    margin: 0 auto;
-    padding: 3rem 1.5rem 6rem;
-  }
+  .page { max-width: 1240px; margin: 0 auto; padding: 3rem 1.5rem 6rem; }
   .page-head {
     border-bottom: 1px solid #2a2620;
     padding-bottom: 1.4rem;
@@ -43,9 +42,7 @@
     font-size: .85rem;
     letter-spacing: .04em;
   }
-  .mock {
-    margin-bottom: 3.5rem;
-  }
+  .mock { margin-bottom: 3.5rem; }
   .mock-label {
     display: flex;
     align-items: baseline;
@@ -57,10 +54,7 @@
     text-transform: uppercase;
     color: #807868;
   }
-  .mock-label .num {
-    color: #d4a574;
-    font-weight: 500;
-  }
+  .mock-label .num { color: #d4a574; font-weight: 500; }
   .mock-label .desc {
     text-transform: none;
     letter-spacing: 0;
@@ -70,11 +64,15 @@
     color: #c8c0b0;
     margin-left: auto;
   }
-  .preview {
-    border-radius: 4px;
-    overflow: hidden;
-    box-shadow: 0 30px 60px -20px rgba(0,0,0,.6);
+  .mock-label .keep {
+    color: #6ab36a;
+    border: 1px solid #2e5a2e;
+    padding: .15em .55em;
+    border-radius: 2px;
+    font-size: .58rem;
+    letter-spacing: .25em;
   }
+  .preview { border-radius: 4px; overflow: hidden; box-shadow: 0 30px 60px -20px rgba(0,0,0,.6); }
   .preview .stage {
     aspect-ratio: 16 / 5;
     background: #000;
@@ -102,130 +100,110 @@
     letter-spacing: .05em;
   }
 
-  /* =================================================================
-     MARQUEE — Art-Deco theater bulbs, marigold + brass on theater black
-     ================================================================= */
-  .marquee {
-    background: #0a0606;
+  /* ============================================================
+     01 — NEON NOIR  (synthwave: deep indigo, magenta + cyan, chrome title)
+     ============================================================ */
+  .noir {
+    background: #0a0418;
     background-image:
-      radial-gradient(ellipse at 50% 100%, rgba(95,25,25,.35) 0%, transparent 60%),
-      repeating-linear-gradient(90deg, rgba(255,255,255,.012) 0 2px, transparent 2px 4px);
-    font-family: "Marcellus", "Playfair Display", serif;
-    color: #f5d99e;
+      linear-gradient(180deg, rgba(255,45,180,.06) 0%, transparent 30%),
+      radial-gradient(ellipse at 50% 100%, rgba(0,229,255,.18) 0%, transparent 60%),
+      repeating-linear-gradient(0deg, rgba(255,255,255,.025) 0 1px, transparent 1px 3px),
+      #0a0418;
+    font-family: "VT323", "Audiowide", monospace;
+    color: #c5e8ff;
   }
-  .marquee .bar {
+  .noir .bar {
     display: grid;
     grid-template-columns: minmax(0,auto) minmax(0,1fr) minmax(0,auto);
-    align-items: stretch;
-    border-bottom: 1px solid #4a3520;
-    background:
-      linear-gradient(180deg, rgba(255,255,255,.02) 0%, transparent 100%),
-      #0a0606;
+    border-bottom: 1px solid #ff2db4;
+    box-shadow: 0 1px 0 rgba(255,45,180,.5), 0 4px 22px rgba(255,45,180,.18);
   }
-  .marquee .bulbs {
-    display: flex;
-    gap: 14px;
-    align-items: center;
-    padding: 0 1.2rem;
-    border-bottom: 2px solid #c79850;
-    background: linear-gradient(180deg, rgba(199,152,80,.08) 0%, transparent 100%);
-  }
-  .marquee .bulb {
-    width: 9px; height: 9px; border-radius: 50%;
-    background: #fde08a;
-    box-shadow: 0 0 10px rgba(253,224,138,.85), 0 0 22px rgba(253,224,138,.35);
-  }
-  .marquee .bulb.dim {
-    background: #6b4a20;
-    box-shadow: none;
-  }
-  .marquee .placard {
-    border-right: 1px solid #2c1f12;
+  .noir .neon {
+    border-right: 1px solid rgba(255,45,180,.25);
     padding: .85rem 1.3rem;
     display: flex;
     flex-direction: column;
+    gap: .15rem;
     justify-content: center;
-    gap: .2rem;
-    background: linear-gradient(180deg, rgba(199,152,80,.04) 0%, transparent 100%);
+    min-height: 60px;
   }
-  .marquee .placard .cap {
-    font-family: "Outfit", sans-serif;
-    font-size: .58rem;
-    letter-spacing: .35em;
-    text-transform: uppercase;
-    color: #8a6840;
-    font-weight: 500;
-  }
-  .marquee .placard .val {
-    font-family: "Marcellus", serif;
+  .noir .neon .lbl {
+    font-family: "VT323", monospace;
     font-size: .95rem;
-    color: #fde08a;
-    letter-spacing: .04em;
-  }
-  .marquee .placard.role .val {
-    display: inline-flex; align-items: center; gap: .55rem;
-  }
-  .marquee .placard.role .val::before {
-    content: '';
-    width: 8px; height: 8px;
-    background: #fde08a;
-    border-radius: 50%;
-    box-shadow: 0 0 8px #fde08a;
-  }
-  .marquee .title-block {
-    text-align: center;
-    padding: .65rem 1.6rem;
-    min-width: 0;
-    border-left: 1px solid #4a3520;
-    border-right: 1px solid #4a3520;
-    position: relative;
-  }
-  .marquee .title-block .cap {
-    font-family: "Outfit", sans-serif;
-    font-size: .55rem;
-    letter-spacing: .4em;
-    text-transform: uppercase;
-    color: #c79850;
-    margin-bottom: .15rem;
-  }
-  .marquee .title-block .ttl {
-    font-family: "Cinzel", serif;
-    font-weight: 500;
-    font-size: clamp(1.1rem, 1.9vw, 1.55rem);
-    color: #f9e3a8;
-    letter-spacing: .12em;
-    text-transform: uppercase;
-    text-shadow: 0 0 12px rgba(253,224,138,.4);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  .marquee .controls {
-    display: flex;
-    align-items: stretch;
-  }
-  .marquee .ctrl {
-    border-left: 1px solid #2c1f12;
-    padding: 0 1.2rem;
-    display: flex;
-    align-items: center;
-    gap: .55rem;
-    color: #c79850;
-    font-family: "Outfit", sans-serif;
-    font-size: .68rem;
+    color: #ff2db4;
     letter-spacing: .25em;
     text-transform: uppercase;
-    background: linear-gradient(180deg, rgba(199,152,80,.04) 0%, transparent 100%);
-    cursor: pointer;
-    transition: background .25s, color .25s;
+    text-shadow: 0 0 8px rgba(255,45,180,.7);
   }
-  .marquee .ctrl:hover { background: #c79850; color: #0a0606; }
-  .marquee .ctrl.primary { background: rgba(199,152,80,.18); color: #fde08a; }
-  .marquee .ctrl svg { width: 14px; height: 14px; fill: currentColor; }
+  .noir .neon .val {
+    font-family: "Audiowide", sans-serif;
+    font-size: .95rem;
+    color: #00e5ff;
+    letter-spacing: .12em;
+    text-shadow: 0 0 8px rgba(0,229,255,.6);
+  }
+  .noir .neon.role .val::before {
+    content: '◆ ';
+    color: #ff2db4;
+  }
+  .noir .title-cell {
+    border-left: 1px solid rgba(0,229,255,.4);
+    border-right: 1px solid rgba(0,229,255,.4);
+    padding: .55rem 1.6rem;
+    text-align: center;
+    background: linear-gradient(180deg, rgba(255,45,180,.05) 0%, transparent 80%);
+    justify-content: center;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+  .noir .title-cell .super {
+    font-family: "VT323", monospace;
+    font-size: .82rem;
+    color: #ff2db4;
+    letter-spacing: .3em;
+    text-shadow: 0 0 6px rgba(255,45,180,.55);
+  }
+  .noir .title-cell .ttl {
+    font-family: "Audiowide", sans-serif;
+    font-size: clamp(1.1rem, 2vw, 1.7rem);
+    background: linear-gradient(180deg, #ffffff 0%, #d6ecff 45%, #5ec7ff 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    letter-spacing: .08em;
+    text-shadow: 0 0 18px rgba(0,229,255,.45);
+    text-transform: uppercase;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .noir .act {
+    border-left: 1px solid rgba(255,45,180,.25);
+    padding: 0 1.3rem;
+    display: flex; align-items: center; gap: .55rem;
+    font-family: "Audiowide", sans-serif;
+    color: #00e5ff;
+    font-size: .8rem;
+    letter-spacing: .22em;
+    text-transform: uppercase;
+    text-shadow: 0 0 6px rgba(0,229,255,.45);
+    cursor: pointer;
+    transition: color .2s, text-shadow .2s, background .2s;
+  }
+  .noir .act:hover {
+    color: #ffffff;
+    background: rgba(255,45,180,.18);
+    text-shadow: 0 0 12px rgba(255,45,180,.9);
+  }
+  .noir .act.primary {
+    color: #ff2db4;
+    text-shadow: 0 0 12px rgba(255,45,180,.85);
+  }
+  .noir .act svg { width: 14px; height: 14px; fill: currentColor; filter: drop-shadow(0 0 6px currentColor); }
 
-  /* =================================================================
-     CONSOLE — TV studio control room, brushed graphite + signal mint
-     ================================================================= */
+  /* ============================================================
+     02 — CONSOLE  (KEEP — brushed graphite + signal mint, LED switches)
+     ============================================================ */
   .console {
     background:
       repeating-linear-gradient(90deg, rgba(255,255,255,.014) 0 1px, transparent 1px 3px),
@@ -238,52 +216,28 @@
     grid-template-columns: minmax(0,auto) minmax(0,1fr) minmax(0,auto);
     background: linear-gradient(180deg, #1a1e24 0%, #11141a 100%);
     border-bottom: 1px solid #2a323e;
-    box-shadow:
-      inset 0 1px 0 rgba(255,255,255,.04),
-      inset 0 -1px 0 rgba(0,0,0,.5);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.04), inset 0 -1px 0 rgba(0,0,0,.5);
   }
   .console .well {
     border-right: 1px solid #2a323e;
     padding: .8rem 1.2rem;
-    display: flex;
-    flex-direction: column;
-    gap: .25rem;
-    min-height: 64px;
-    justify-content: center;
-    box-shadow:
-      inset 0 0 18px rgba(0,0,0,.45),
-      inset 1px 0 0 rgba(255,255,255,.025);
+    display: flex; flex-direction: column; gap: .25rem;
+    min-height: 64px; justify-content: center;
+    box-shadow: inset 0 0 18px rgba(0,0,0,.45), inset 1px 0 0 rgba(255,255,255,.025);
     background: linear-gradient(180deg, rgba(255,255,255,.01) 0%, transparent 100%);
   }
-  .console .well .lbl {
-    font-size: .58rem;
-    letter-spacing: .25em;
-    text-transform: uppercase;
-    color: #5e6878;
-    font-weight: 500;
-  }
-  .console .well .val {
-    font-size: .82rem;
-    color: #d2d6dc;
-    letter-spacing: .08em;
-    font-variant-numeric: tabular-nums;
-  }
+  .console .well .lbl { font-size: .58rem; letter-spacing: .25em; text-transform: uppercase; color: #5e6878; font-weight: 500; }
+  .console .well .val { font-size: .82rem; color: #d2d6dc; letter-spacing: .08em; font-variant-numeric: tabular-nums; }
   .console .well .val .unit { color: #5e6878; margin-left: .25em; }
   .console .well.live .val { color: #9fe6ad; }
   .console .well.live .val::before {
-    content: '';
-    display: inline-block;
-    width: 7px; height: 7px;
-    border-radius: 50%;
-    background: #9fe6ad;
-    margin-right: .55em;
+    content: ''; display: inline-block;
+    width: 7px; height: 7px; border-radius: 50%;
+    background: #9fe6ad; margin-right: .55em;
     box-shadow: 0 0 8px rgba(159,230,173,.7), inset 0 0 3px rgba(255,255,255,.4);
     animation: pulse 2.4s ease-in-out infinite;
   }
-  @keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: .55; }
-  }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .55; } }
   .console .title-well {
     border-left: 1px solid #2a323e;
     border-right: 1px solid #2a323e;
@@ -294,20 +248,12 @@
     justify-content: center;
   }
   .console .title-well .lbl { color: #4a5260; }
-  .console .title-well .val {
-    font-size: 1rem;
-    letter-spacing: .04em;
-    color: #e8ecf2;
-    text-transform: none;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  }
+  .console .title-well .val { font-size: 1rem; letter-spacing: .04em; color: #e8ecf2; text-transform: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .console .switch {
     border-left: 1px solid #2a323e;
     background: linear-gradient(180deg, #1d2129 0%, #131820 100%);
     padding: 0 1.3rem;
-    display: flex;
-    align-items: center;
-    gap: .65rem;
+    display: flex; align-items: center; gap: .65rem;
     color: #8a92a0;
     font-size: .65rem;
     letter-spacing: .25em;
@@ -315,311 +261,1182 @@
     font-weight: 500;
     cursor: pointer;
     transition: color .2s, background .2s;
-    position: relative;
   }
   .console .switch .led {
-    width: 8px; height: 8px;
-    border-radius: 50%;
+    width: 8px; height: 8px; border-radius: 50%;
     background: #3a424e;
     box-shadow: inset 0 0 2px rgba(0,0,0,.6);
   }
-  .console .switch.on .led {
-    background: #9fe6ad;
-    box-shadow: 0 0 10px rgba(159,230,173,.8), inset 0 0 2px rgba(255,255,255,.4);
-  }
-  .console .switch.warn .led {
-    background: #f0a830;
-    box-shadow: 0 0 10px rgba(240,168,48,.7);
-  }
-  .console .switch:hover {
-    background: linear-gradient(180deg, #252b34 0%, #1a1f27 100%);
-    color: #d2d6dc;
-  }
+  .console .switch.on .led { background: #9fe6ad; box-shadow: 0 0 10px rgba(159,230,173,.8), inset 0 0 2px rgba(255,255,255,.4); }
+  .console .switch.warn .led { background: #f0a830; box-shadow: 0 0 10px rgba(240,168,48,.7); }
+  .console .switch:hover { background: linear-gradient(180deg, #252b34 0%, #1a1f27 100%); color: #d2d6dc; }
   .console .switch svg { width: 14px; height: 14px; fill: currentColor; }
 
-  /* =================================================================
-     ATRIUM — daylight editorial inversion, ivory + dusty rose
-     ================================================================= */
-  .atrium {
-    background: #f3ede0;
+  /* ============================================================
+     03 — CATALOG  (library card-catalog: cream stock, typewriter, ink stamps)
+     ============================================================ */
+  .catalog {
+    background: #f4ecd8;
     background-image:
-      radial-gradient(circle at 80% 20%, rgba(196,107,94,.04) 0%, transparent 40%);
-    font-family: "DM Sans", sans-serif;
-    color: #2a2620;
+      radial-gradient(circle at 20% 0%, rgba(168,54,42,.025) 0%, transparent 60%),
+      repeating-linear-gradient(0deg, transparent 0 1.6rem, rgba(61,44,94,.07) 1.6rem 1.61rem);
+    font-family: "Special Elite", "Courier New", monospace;
+    color: #2a1e10;
+    padding: 1.1rem 1.6rem .9rem;
   }
-  .atrium .bar {
-    padding: 1.8rem 2.5rem 1.2rem;
-    display: grid;
-    grid-template-columns: 1fr auto;
-    grid-template-rows: auto auto;
-    gap: .25rem 2rem;
-    align-items: end;
-  }
-  .atrium .meta-row {
-    grid-column: 1 / -1;
-    display: flex;
-    gap: 2.2rem;
-    align-items: center;
-    padding-bottom: .75rem;
-    border-bottom: 1px solid #d8cfbc;
-    margin-bottom: .25rem;
-  }
-  .atrium .meta {
-    display: flex;
-    flex-direction: column;
-    gap: .1rem;
-  }
-  .atrium .meta .lbl {
-    font-family: "DM Sans", sans-serif;
-    font-size: .55rem;
-    letter-spacing: .32em;
-    text-transform: uppercase;
-    color: #8a8478;
-    font-weight: 500;
-  }
-  .atrium .meta .val {
-    font-family: "DM Sans", sans-serif;
-    font-size: .82rem;
-    color: #2a2620;
-    font-weight: 400;
-    letter-spacing: .02em;
-    font-variant-numeric: tabular-nums;
-  }
-  .atrium .meta.role .val { color: #c46b5e; }
-  .atrium .title-area {
-    grid-column: 1;
-    padding-top: .4rem;
-  }
-  .atrium .title-area .super {
-    font-family: "DM Sans", sans-serif;
-    font-size: .55rem;
-    letter-spacing: .35em;
-    text-transform: uppercase;
-    color: #8a8478;
-    margin-bottom: .25rem;
-  }
-  .atrium .title-area .ttl {
-    font-family: "Cormorant Garamond", serif;
-    font-style: italic;
-    font-weight: 500;
-    font-size: clamp(1.7rem, 3.2vw, 2.6rem);
-    color: #1f1c17;
-    letter-spacing: -.015em;
-    line-height: 1;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  .atrium .acts {
-    grid-column: 2;
-    display: flex;
-    gap: 1.4rem;
-    align-items: center;
+  .catalog .topline {
+    display: flex; justify-content: space-between; align-items: baseline;
+    border-bottom: 1px solid #a08868;
     padding-bottom: .35rem;
+    margin-bottom: .9rem;
+    font-size: .68rem;
+    letter-spacing: .25em;
+    text-transform: uppercase;
+    color: #7a6448;
   }
-  .atrium .act {
-    font-family: "DM Sans", sans-serif;
+  .catalog .topline .accession { color: #a8362a; letter-spacing: .35em; }
+  .catalog .row {
+    display: grid;
+    grid-template-columns: 5.5rem 1fr;
+    gap: 1rem;
+    align-items: baseline;
+    padding: .2rem 0;
+  }
+  .catalog .row .lbl {
     font-size: .68rem;
     letter-spacing: .22em;
     text-transform: uppercase;
-    color: #2a2620;
-    font-weight: 500;
+    color: #5a4a30;
+  }
+  .catalog .row .val {
+    font-family: "Crimson Text", "Georgia", serif;
+    font-size: 1.08rem;
+    color: #1a1208;
+    letter-spacing: .015em;
+  }
+  .catalog .row.title .val {
+    font-family: "Crimson Text", serif;
+    font-style: italic;
+    font-weight: 600;
+    font-size: 1.55rem;
+    letter-spacing: -.005em;
+  }
+  .catalog .stamp {
+    position: absolute;
+    top: 1rem; right: 1.6rem;
+    border: 2px solid #a8362a;
+    color: #a8362a;
+    padding: .35rem .9rem .25rem;
+    font-family: "Special Elite", monospace;
+    font-size: .8rem;
+    letter-spacing: .25em;
+    text-transform: uppercase;
+    transform: rotate(-6deg);
+    background: rgba(244,236,216,.6);
+    line-height: 1;
+  }
+  .catalog .stamp .date {
+    display: block;
+    font-size: .58rem;
+    margin-top: .15rem;
+    letter-spacing: .15em;
+    color: #c45846;
+  }
+  .catalog .bottombar {
+    display: flex; gap: 1.3rem;
+    margin-top: 1rem;
+    padding-top: .5rem;
+    border-top: 1px solid #a08868;
+  }
+  .catalog .act {
+    display: inline-flex; align-items: center; gap: .45rem;
+    font-family: "Special Elite", monospace;
+    font-size: .72rem;
+    letter-spacing: .22em;
+    text-transform: uppercase;
+    color: #3d2c5e;
     cursor: pointer;
-    padding: .35rem 0;
-    border-bottom: 1px solid transparent;
-    transition: color .25s, border-color .25s;
+    padding: .15rem .4rem;
+    transition: color .25s, background .25s;
+  }
+  .catalog .act:hover { background: #3d2c5e; color: #f4ecd8; }
+  .catalog .act.primary { color: #a8362a; }
+  .catalog .act.primary:hover { background: #a8362a; color: #f4ecd8; }
+  .catalog .act svg { width: 12px; height: 12px; fill: currentColor; }
+  .catalog .head-wrap { position: relative; }
+
+  /* ============================================================
+     04 — WATERCOLOR  (soft cream + sage + coral, hand-lettered)
+     ============================================================ */
+  .water {
+    background: #f7f1e3;
+    background-image:
+      radial-gradient(ellipse at 10% 10%, rgba(244,165,132,.18) 0%, transparent 35%),
+      radial-gradient(ellipse at 85% 30%, rgba(163,181,154,.22) 0%, transparent 40%),
+      radial-gradient(circle at 40% 85%, rgba(173,200,228,.15) 0%, transparent 35%);
+    font-family: "Quicksand", sans-serif;
+    color: #4a4234;
+    padding: 1.2rem 1.6rem;
+  }
+  .water .bar {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: end;
+    gap: 1rem;
+  }
+  .water .meta-strip {
+    display: flex;
+    gap: 2rem;
+    flex-wrap: wrap;
+    margin-bottom: .85rem;
+  }
+  .water .chip {
+    display: flex; flex-direction: column;
+  }
+  .water .chip .lbl {
+    font-family: "Quicksand", sans-serif;
+    font-weight: 500;
+    font-size: .6rem;
+    letter-spacing: .22em;
+    text-transform: uppercase;
+    color: #8a8068;
+    margin-bottom: .15rem;
+  }
+  .water .chip .val {
+    font-family: "Quicksand", sans-serif;
+    font-weight: 600;
+    font-size: .95rem;
+    color: #5a4f3c;
+    letter-spacing: .01em;
+  }
+  .water .chip.role .val {
+    color: #c46b3e;
     display: inline-flex;
     align-items: center;
     gap: .45rem;
   }
-  .atrium .act svg { width: 13px; height: 13px; fill: currentColor; }
-  .atrium .act:hover {
-    color: #c46b5e;
-    border-bottom-color: #c46b5e;
+  .water .chip.role .val::before {
+    content: '';
+    width: 10px; height: 10px;
+    background: radial-gradient(circle, #f4a584 0%, #c46b3e 80%);
+    border-radius: 50%;
   }
-  .atrium .act.primary {
-    color: #c46b5e;
-    border-bottom: 1px solid #c46b5e;
+  .water .title-area { grid-column: 1; }
+  .water .title-area .ttl {
+    font-family: "Caveat", cursive;
+    font-weight: 700;
+    font-size: clamp(2rem, 4vw, 3.2rem);
+    line-height: 1;
+    color: #3a3024;
+    margin: 0;
   }
-  .atrium .stage {
+  .water .title-area .ttl::first-letter { color: #c46b3e; }
+  .water .acts {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    align-self: end;
+    display: flex; gap: .7rem;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+  .water .bub {
+    display: inline-flex; align-items: center; gap: .5rem;
+    background: rgba(255,255,255,.55);
+    border: 1.5px solid rgba(163,181,154,.6);
+    border-radius: 999px;
+    padding: .55rem 1.05rem;
+    font-family: "Quicksand", sans-serif;
+    font-weight: 500;
+    font-size: .75rem;
+    color: #5a4f3c;
+    cursor: pointer;
+    transition: all .28s ease;
+    box-shadow: 0 2px 12px rgba(244,165,132,.08);
+  }
+  .water .bub:hover {
+    background: #fff;
+    border-color: #c46b3e;
+    color: #c46b3e;
+    transform: translateY(-1px);
+  }
+  .water .bub.primary {
+    background: linear-gradient(135deg, #f4a584 0%, #c46b3e 100%);
+    border-color: transparent;
+    color: #fff;
+  }
+  .water .bub.primary:hover {
+    color: #fff;
+    box-shadow: 0 4px 16px rgba(196,107,62,.4);
+  }
+  .water .bub svg { width: 13px; height: 13px; fill: currentColor; }
+
+  /* ============================================================
+     05 — CONSTRUCTIVIST  (Bauhaus: red/yellow/blue geometric blocks)
+     ============================================================ */
+  .bauhaus {
+    background: #f0e8d4;
+    font-family: "Roboto Mono", monospace;
+    color: #1a1a1a;
+    position: relative;
+    overflow: hidden;
+  }
+  .bauhaus::before {
+    content: '';
+    position: absolute;
+    top: -30px; right: -30px;
+    width: 140px; height: 140px;
+    background: #d63a3a;
+    border-radius: 50%;
+    z-index: 0;
+  }
+  .bauhaus::after {
+    content: '';
+    position: absolute;
+    top: 65%; left: 38%;
+    width: 0; height: 0;
+    border-left: 50px solid transparent;
+    border-right: 50px solid transparent;
+    border-bottom: 86px solid #f0c14b;
+    transform: rotate(15deg);
+    z-index: 0;
+    opacity: .9;
+  }
+  .bauhaus .bar {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    grid-template-columns: minmax(0,auto) minmax(0,1fr) minmax(0,auto);
+    border-bottom: 6px solid #1a1a1a;
+  }
+  .bauhaus .blok {
+    border-right: 2px solid #1a1a1a;
+    padding: 1rem 1.3rem;
+    display: flex; flex-direction: column; gap: .15rem;
+    background: rgba(240,232,212,.8);
+    min-height: 72px;
+    justify-content: center;
+  }
+  .bauhaus .blok .lbl {
+    font-family: "Roboto Mono", monospace;
+    font-size: .58rem;
+    font-weight: 500;
+    letter-spacing: .3em;
+    text-transform: uppercase;
+    color: #1a1a1a;
+  }
+  .bauhaus .blok .val {
+    font-family: "Oswald", sans-serif;
+    font-weight: 600;
+    font-size: 1.1rem;
+    color: #1a1a1a;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+  }
+  .bauhaus .blok.role { background: #d63a3a; color: #f0e8d4; }
+  .bauhaus .blok.role .lbl,
+  .bauhaus .blok.role .val { color: #f0e8d4; }
+  .bauhaus .title-block {
+    border-left: 2px solid #1a1a1a;
+    border-right: 2px solid #1a1a1a;
+    background: #1e4f9a;
+    padding: 1rem 1.5rem;
+    color: #f0e8d4;
+    display: flex; flex-direction: column;
+    justify-content: center;
+    min-width: 0;
+  }
+  .bauhaus .title-block .super {
+    font-family: "Roboto Mono", monospace;
+    font-size: .58rem;
+    letter-spacing: .3em;
+    text-transform: uppercase;
+    color: #f0c14b;
+    margin-bottom: .1rem;
+  }
+  .bauhaus .title-block .ttl {
+    font-family: "Oswald", sans-serif;
+    font-weight: 700;
+    font-size: clamp(1.2rem, 2.2vw, 1.85rem);
+    letter-spacing: -.005em;
+    text-transform: uppercase;
+    line-height: 1;
+    color: #f0e8d4;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .bauhaus .acts { display: flex; }
+  .bauhaus .act {
+    border-left: 2px solid #1a1a1a;
+    background: #f0e8d4;
+    padding: 0 1.25rem;
+    display: flex; align-items: center; gap: .55rem;
+    font-family: "Oswald", sans-serif;
+    font-weight: 500;
+    font-size: .85rem;
+    text-transform: uppercase;
+    letter-spacing: .12em;
+    color: #1a1a1a;
+    cursor: pointer;
+    transition: background .2s, color .2s;
+  }
+  .bauhaus .act:hover { background: #1a1a1a; color: #f0c14b; }
+  .bauhaus .act.primary { background: #f0c14b; }
+  .bauhaus .act.primary:hover { background: #1a1a1a; color: #f0c14b; }
+  .bauhaus .act svg { width: 14px; height: 14px; fill: currentColor; }
+
+  /* ============================================================
+     06 — BROADSHEET  (newspaper: ink black on cream, masthead serif)
+     ============================================================ */
+  .broadsheet {
+    background: #f4ede0;
+    color: #1a1a1a;
+    font-family: "Crimson Text", serif;
+    padding: 1.1rem 1.6rem 1rem;
+    position: relative;
+  }
+  .broadsheet::before {
+    content: '';
+    position: absolute;
+    left: 1.6rem; right: 1.6rem;
+    top: 4.2rem;
+    height: 3px;
+    border-top: 1px solid #1a1a1a;
+    border-bottom: 1px solid #1a1a1a;
+  }
+  .broadsheet .masthead {
+    display: flex; justify-content: space-between; align-items: baseline;
+    margin-bottom: 1.5rem;
+  }
+  .broadsheet .masthead .title {
+    font-family: "UnifrakturCook", "Times New Roman", serif;
+    font-weight: 700;
+    font-size: clamp(1.4rem, 2.6vw, 2rem);
+    color: #1a1a1a;
+    letter-spacing: .01em;
+    line-height: 1;
+  }
+  .broadsheet .masthead .meta {
+    font-family: "Crimson Text", serif;
+    font-style: italic;
+    font-size: .85rem;
+    color: #4a4030;
+    text-align: right;
+    line-height: 1.3;
+  }
+  .broadsheet .masthead .meta .vol {
+    display: block;
+    font-style: normal;
+    font-size: .65rem;
+    letter-spacing: .25em;
+    text-transform: uppercase;
+    color: #a8362a;
+  }
+  .broadsheet .columns {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) minmax(0, auto);
+    gap: 1.4rem;
+    align-items: end;
+  }
+  .broadsheet .col-meta {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: .3rem 1rem;
+    padding-right: 1rem;
+    border-right: 1px solid #1a1a1a;
+  }
+  .broadsheet .col-meta .lbl {
+    font-family: "Crimson Text", serif;
+    font-style: italic;
+    font-size: .7rem;
+    color: #4a4030;
+    letter-spacing: 0;
+  }
+  .broadsheet .col-meta .val {
+    font-family: "Crimson Text", serif;
+    font-weight: 600;
+    font-size: .92rem;
+    color: #1a1a1a;
+  }
+  .broadsheet .feature .super {
+    font-family: "Crimson Text", serif;
+    font-style: italic;
+    font-size: .8rem;
+    color: #a8362a;
+    margin-bottom: .15rem;
+  }
+  .broadsheet .feature .ttl {
+    font-family: "Cormorant Garamond", "Times New Roman", serif;
+    font-weight: 600;
+    font-size: clamp(1.4rem, 2.6vw, 2rem);
+    line-height: 1;
+    color: #1a1a1a;
+    letter-spacing: -.01em;
+    text-transform: none;
+  }
+  .broadsheet .byline {
+    border-left: 1px solid #1a1a1a;
+    padding-left: 1rem;
+    display: flex; flex-direction: column; gap: .55rem;
+    align-items: flex-start;
+  }
+  .broadsheet .col-act {
+    font-family: "Crimson Text", serif;
+    font-style: italic;
+    font-size: .92rem;
+    color: #1a1a1a;
+    text-decoration: underline;
+    text-decoration-color: #a8362a;
+    text-underline-offset: .25em;
+    cursor: pointer;
+    transition: color .2s;
+  }
+  .broadsheet .col-act:hover { color: #a8362a; }
+  .broadsheet .col-act.primary {
+    font-weight: 600;
+    font-style: normal;
+    text-decoration: none;
+    display: inline-flex; align-items: center; gap: .35rem;
+    border: 1.5px solid #1a1a1a;
+    padding: .25rem .8rem;
+  }
+  .broadsheet .col-act.primary:hover { background: #1a1a1a; color: #f4ede0; }
+  .broadsheet .col-act svg { width: 12px; height: 12px; fill: currentColor; }
+
+  /* ============================================================
+     07 — TERMINAL  (TUI: phosphor green on near-black, box-drawing chars)
+     ============================================================ */
+  .term {
+    background: #0d1117;
+    background-image:
+      repeating-linear-gradient(0deg, rgba(134,179,0,.025) 0 1px, transparent 1px 3px);
+    color: #86b300;
+    font-family: "IBM Plex Mono", "Courier New", monospace;
+    padding: .9rem 1.3rem;
+    font-size: .85rem;
+    line-height: 1.45;
+  }
+  .term .row { display: flex; gap: .9rem; align-items: baseline; }
+  .term .row.top {
+    color: #5a7300;
+    border-bottom: 1px dashed #3a4a00;
+    padding-bottom: .35rem;
+    margin-bottom: .5rem;
+  }
+  .term .row.top .crumb { letter-spacing: .15em; }
+  .term .row.top .crumb.active { color: #e6b450; }
+  .term .row.top .blink { animation: blink 1s steps(1) infinite; color: #e6b450; }
+  @keyframes blink { 50% { opacity: 0; } }
+  .term .grid {
+    display: grid;
+    grid-template-columns: minmax(0,auto) minmax(0,1fr) minmax(0,auto);
+    align-items: center;
+    gap: .3rem 1.2rem;
+  }
+  .term .pair {
+    display: inline-flex; gap: .55rem;
+    align-items: baseline;
+  }
+  .term .pair .k { color: #5a7300; }
+  .term .pair .v { color: #e6b450; }
+  .term .pair .v.live { color: #b3e600; }
+  .term .pair .v.live::before {
+    content: '● ';
+    animation: pulse 1.8s ease-in-out infinite;
+  }
+  .term .feed {
+    color: #cfe682;
+    padding: 0 1rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .term .feed::before { content: '┤ '; color: #5a7300; }
+  .term .feed::after  { content: ' ├'; color: #5a7300; }
+  .term .actions { display: flex; gap: .25rem; }
+  .term .btn {
+    border: 1px solid #3a4a00;
+    color: #86b300;
+    padding: .25rem .65rem;
+    background: rgba(134,179,0,.04);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: .8rem;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    transition: all .2s;
+  }
+  .term .btn:hover { background: #86b300; color: #0d1117; }
+  .term .btn.primary {
+    border-color: #e6b450;
+    color: #e6b450;
+  }
+  .term .btn.primary:hover { background: #e6b450; color: #0d1117; }
+  .term .lower {
+    border-top: 1px dashed #3a4a00;
+    margin-top: .55rem;
+    padding-top: .35rem;
+    display: flex; gap: 1.2rem;
+    font-size: .75rem;
+    color: #5a7300;
+  }
+  .term .lower .key { color: #e6b450; }
+
+  /* ============================================================
+     08 — POLAROID  (scrapbook: warm felt, slanted photo cards + tape)
+     ============================================================ */
+  .poly {
     background:
-      radial-gradient(ellipse at 50% 0%, rgba(196,107,94,.08) 0%, transparent 60%),
-      #1e1a15;
+      radial-gradient(ellipse at 30% 0%, rgba(255,255,255,.04) 0%, transparent 60%),
+      #2d4a3e;
+    background-image:
+      radial-gradient(ellipse at 30% 0%, rgba(255,255,255,.04) 0%, transparent 60%),
+      repeating-linear-gradient(45deg, rgba(0,0,0,.05) 0 2px, transparent 2px 6px),
+      linear-gradient(180deg, #355649 0%, #2a4438 100%);
+    padding: 1.3rem 1.4rem;
+    color: #f4ecd8;
+    font-family: "Patrick Hand", "Caveat", cursive;
   }
-  .atrium .stage .frame-label { color: #8a8478; }
+  .poly .cards {
+    display: grid;
+    grid-template-columns: minmax(0,auto) minmax(0,1fr) minmax(0,auto);
+    align-items: center;
+    gap: .7rem;
+  }
+  .poly .pgroup { display: flex; gap: .6rem; align-items: center; }
+  .poly .card {
+    background: #f4ecd8;
+    color: #2a1e10;
+    padding: .55rem .55rem 1.05rem;
+    box-shadow: 0 6px 14px rgba(0,0,0,.35), 0 1px 2px rgba(0,0,0,.2);
+    position: relative;
+    min-width: 7rem;
+  }
+  .poly .card.tilt-l { transform: rotate(-3deg); }
+  .poly .card.tilt-r { transform: rotate(2.5deg); }
+  .poly .card.tilt-s { transform: rotate(-1deg); }
+  .poly .card .photo {
+    background: linear-gradient(135deg, #c46b3e 0%, #6a4030 100%);
+    aspect-ratio: 4 / 3;
+    margin-bottom: .4rem;
+    display: flex; align-items: center; justify-content: center;
+    color: #f4ecd8;
+    font-size: .7rem;
+    font-family: "Patrick Hand", cursive;
+    letter-spacing: .1em;
+  }
+  .poly .card .caption {
+    font-family: "Caveat", cursive;
+    font-weight: 600;
+    font-size: 1.05rem;
+    color: #2a1e10;
+    line-height: 1.05;
+    text-align: center;
+  }
+  .poly .card .stat {
+    font-family: "Patrick Hand", cursive;
+    font-size: .72rem;
+    color: #6a5040;
+    text-align: center;
+    margin-top: .15rem;
+  }
+  .poly .card .tape {
+    position: absolute;
+    top: -8px; left: 50%;
+    transform: translateX(-50%) rotate(-2deg);
+    width: 50px; height: 14px;
+    background: linear-gradient(180deg, rgba(255,239,180,.85) 0%, rgba(255,239,180,.6) 100%);
+    border-left: 1px dashed rgba(0,0,0,.1);
+    border-right: 1px dashed rgba(0,0,0,.1);
+  }
+  .poly .title-card {
+    background: #f4ecd8;
+    color: #2a1e10;
+    padding: .8rem 1.2rem 1.2rem;
+    transform: rotate(-.8deg);
+    box-shadow: 0 10px 22px rgba(0,0,0,.4);
+    position: relative;
+    min-width: 0;
+  }
+  .poly .title-card .super {
+    font-family: "Patrick Hand", cursive;
+    font-size: .78rem;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: #8a6048;
+    margin-bottom: .2rem;
+  }
+  .poly .title-card .ttl {
+    font-family: "Caveat", cursive;
+    font-weight: 700;
+    font-size: clamp(1.6rem, 3vw, 2.4rem);
+    line-height: .95;
+    color: #2a1e10;
+    margin: 0;
+  }
+  .poly .title-card .tape {
+    position: absolute;
+    top: -10px; left: 1.2rem;
+    width: 60px; height: 16px;
+    background: linear-gradient(180deg, rgba(255,239,180,.85) 0%, rgba(255,239,180,.6) 100%);
+    transform: rotate(-4deg);
+  }
+  .poly .act {
+    display: inline-flex; align-items: center; gap: .35rem;
+    font-family: "Patrick Hand", cursive;
+    font-size: .95rem;
+    color: #f4ecd8;
+    cursor: pointer;
+    padding: .25rem .55rem;
+    border-bottom: 1.5px dashed rgba(244,236,216,.6);
+    transition: color .25s, border-color .25s;
+  }
+  .poly .act:hover { color: #ffd6a0; border-bottom-color: #ffd6a0; }
+  .poly .act.primary {
+    background: #f4ecd8;
+    color: #2d4a3e;
+    border-bottom: 0;
+    padding: .45rem .85rem;
+    border-radius: 1px;
+    font-weight: 600;
+  }
+  .poly .act.primary:hover { background: #ffd6a0; color: #2d4a3e; }
+  .poly .act svg { width: 13px; height: 13px; fill: currentColor; }
+
+  /* ============================================================
+     09 — BRUTALIST  (concrete grey, black slabs, highlighter yellow)
+     ============================================================ */
+  .brut {
+    background: #6a6a6a;
+    background-image:
+      repeating-linear-gradient(45deg, rgba(0,0,0,.025) 0 2px, transparent 2px 4px),
+      linear-gradient(180deg, #6a6a6a 0%, #585858 100%);
+    color: #f0eee5;
+    font-family: "Inter", "Helvetica Neue", sans-serif;
+  }
+  .brut .bar {
+    display: grid;
+    grid-template-columns: minmax(0,auto) minmax(0,1fr) minmax(0,auto);
+    border-top: 3px solid #000;
+    border-bottom: 3px solid #000;
+    background: #1a1a1a;
+  }
+  .brut .slab {
+    border-right: 2px solid #000;
+    padding: 1rem 1.2rem;
+    background: #4a4a4a;
+    display: flex; flex-direction: column; gap: .2rem;
+    min-height: 70px;
+    justify-content: center;
+  }
+  .brut .slab .lbl {
+    font-family: "Inter", sans-serif;
+    font-weight: 900;
+    font-size: .58rem;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: #f0eee5;
+  }
+  .brut .slab .val {
+    font-family: "Space Mono", monospace;
+    font-weight: 700;
+    font-size: .95rem;
+    color: #ffd700;
+    letter-spacing: 0;
+    font-variant-numeric: tabular-nums;
+  }
+  .brut .slab.role .val { color: #ffd700; }
+  .brut .slab.role { background: #000; }
+  .brut .title-slab {
+    background: #ffd700;
+    color: #1a1a1a;
+    border-left: 2px solid #000;
+    border-right: 2px solid #000;
+    padding: 1rem 1.4rem;
+    display: flex; flex-direction: column;
+    justify-content: center;
+    min-width: 0;
+  }
+  .brut .title-slab .super {
+    font-family: "Inter", sans-serif;
+    font-weight: 900;
+    font-size: .58rem;
+    letter-spacing: .25em;
+    text-transform: uppercase;
+    color: #1a1a1a;
+    margin-bottom: .1rem;
+  }
+  .brut .title-slab .ttl {
+    font-family: "Inter", sans-serif;
+    font-weight: 900;
+    font-size: clamp(1.1rem, 2vw, 1.65rem);
+    letter-spacing: -.02em;
+    text-transform: uppercase;
+    color: #1a1a1a;
+    line-height: 1;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .brut .acts { display: flex; }
+  .brut .act {
+    border-left: 2px solid #000;
+    background: #4a4a4a;
+    color: #f0eee5;
+    padding: 0 1.2rem;
+    display: flex; align-items: center; gap: .55rem;
+    font-family: "Inter", sans-serif;
+    font-weight: 900;
+    font-size: .65rem;
+    letter-spacing: .18em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: background .15s, color .15s;
+  }
+  .brut .act:hover { background: #ffd700; color: #1a1a1a; }
+  .brut .act.primary { background: #000; color: #ffd700; }
+  .brut .act.primary:hover { background: #ffd700; color: #1a1a1a; }
+  .brut .act svg { width: 14px; height: 14px; fill: currentColor; }
+
+  /* ============================================================
+     10 — BASS  (mid-century: cream paper, cut-paper accents, condensed display)
+     ============================================================ */
+  .bass {
+    background: #f0e6d2;
+    background-image:
+      radial-gradient(ellipse at 100% 100%, rgba(212,160,23,.1) 0%, transparent 45%),
+      repeating-linear-gradient(0deg, rgba(0,0,0,.008) 0 1px, transparent 1px 2px);
+    color: #2a1e10;
+    font-family: "DM Mono", monospace;
+    padding: 1.1rem 1.6rem 1rem;
+    position: relative;
+    overflow: hidden;
+  }
+  .bass::before {
+    content: '';
+    position: absolute;
+    top: 0; left: -10px;
+    width: 70px; height: 100%;
+    background: #d9483e;
+    clip-path: polygon(0 0, 100% 0, 30% 100%, 0 100%);
+    z-index: 0;
+  }
+  .bass::after {
+    content: '';
+    position: absolute;
+    bottom: 0; right: 12%;
+    width: 18px; height: 18px;
+    background: #6a7148;
+    border-radius: 50%;
+    z-index: 0;
+  }
+  .bass .bar {
+    position: relative; z-index: 1;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: end;
+    gap: 1rem;
+  }
+  .bass .meta-row {
+    grid-column: 1 / -1;
+    display: flex; gap: 2.4rem;
+    align-items: baseline;
+    padding-bottom: .85rem;
+    border-bottom: 2px solid #2a1e10;
+    margin-bottom: .35rem;
+    padding-left: 4.5rem;
+  }
+  .bass .meta {
+    display: flex; flex-direction: column; gap: .05rem;
+  }
+  .bass .meta .lbl {
+    font-family: "DM Mono", monospace;
+    font-size: .58rem;
+    letter-spacing: .3em;
+    text-transform: uppercase;
+    color: #6a5638;
+  }
+  .bass .meta .val {
+    font-family: "Bebas Neue", sans-serif;
+    font-size: 1.2rem;
+    color: #2a1e10;
+    letter-spacing: .04em;
+    line-height: 1;
+  }
+  .bass .meta.role .val { color: #d9483e; }
+  .bass .title-area {
+    grid-column: 1;
+    padding-left: 4.5rem;
+  }
+  .bass .title-area .super {
+    font-family: "DM Mono", monospace;
+    font-size: .6rem;
+    letter-spacing: .35em;
+    text-transform: uppercase;
+    color: #d9483e;
+    margin-bottom: .15rem;
+  }
+  .bass .title-area .ttl {
+    font-family: "Bebas Neue", sans-serif;
+    font-weight: 400;
+    font-size: clamp(2rem, 4vw, 3.2rem);
+    color: #2a1e10;
+    line-height: .95;
+    letter-spacing: .015em;
+  }
+  .bass .acts {
+    grid-column: 2;
+    display: flex;
+    gap: .55rem;
+    align-items: center;
+  }
+  .bass .pill {
+    display: inline-flex; align-items: center; gap: .45rem;
+    background: transparent;
+    border: 1.5px solid #2a1e10;
+    color: #2a1e10;
+    padding: .45rem .95rem;
+    font-family: "Bebas Neue", sans-serif;
+    font-size: .85rem;
+    letter-spacing: .15em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: all .25s;
+  }
+  .bass .pill:hover { background: #2a1e10; color: #f0e6d2; }
+  .bass .pill.primary {
+    background: #d9483e;
+    border-color: #d9483e;
+    color: #f0e6d2;
+  }
+  .bass .pill.primary:hover {
+    background: #2a1e10;
+    border-color: #2a1e10;
+  }
+  .bass .pill svg { width: 13px; height: 13px; fill: currentColor; }
+
 </style>
 </head>
 <body>
 <div class="page">
   <div class="page-head">
-    <h1>Top-bar mockups · a different look &amp; feel</h1>
-    <p>Three directions. Same content slots (role · bandwidth · viewers · title · play/pause · zoom/fullscreen · library/logout) — different design languages.</p>
+    <h1>Top-bar mockups · ten directions</h1>
+    <p>02 (Console) is the keeper from the previous round. Nine new directions follow — each has its own typographic and color point of view but carries the same content slots.</p>
   </div>
 
-  <!-- ============================================================
-       1. MARQUEE
-       ============================================================ -->
+  <!-- 01 — NEON NOIR -->
   <div class="mock">
     <div class="mock-label">
       <span class="num">01</span>
-      <span>Marquee</span>
-      <span class="desc">Art-Deco theater bulbs · brass + marigold on velvet black</span>
+      <span>Neon Noir</span>
+      <span class="desc">Synthwave · chrome title, magenta + cyan glow, CRT scanlines</span>
     </div>
-    <div class="preview marquee">
-      <div class="bulbs">
-        <span class="bulb"></span><span class="bulb dim"></span>
-        <span class="bulb"></span><span class="bulb dim"></span>
-        <span class="bulb"></span><span class="bulb dim"></span>
-        <span class="bulb"></span><span class="bulb dim"></span>
-        <span class="bulb"></span><span class="bulb dim"></span>
-        <span class="bulb"></span><span class="bulb dim"></span>
-        <span class="bulb"></span><span class="bulb dim"></span>
-        <span class="bulb"></span><span class="bulb dim"></span>
-        <span class="bulb"></span><span class="bulb dim"></span>
-        <span class="bulb"></span><span class="bulb dim"></span>
-        <span class="bulb"></span><span class="bulb dim"></span>
-        <span class="bulb"></span><span class="bulb dim"></span>
-        <span class="bulb"></span><span class="bulb dim"></span>
-        <span class="bulb"></span><span class="bulb dim"></span>
-        <span class="bulb"></span><span class="bulb dim"></span>
-        <span class="bulb"></span><span class="bulb dim"></span>
-        <span class="bulb"></span><span class="bulb dim"></span>
-      </div>
+    <div class="preview noir">
       <div class="bar">
         <div style="display:flex">
-          <div class="placard role">
-            <span class="cap">Manager</span>
-            <span class="val">Raw Socket</span>
-          </div>
-          <div class="placard">
-            <span class="cap">Wire</span>
-            <span class="val">8.4 / 23 Mbps</span>
-          </div>
-          <div class="placard">
-            <span class="cap">House</span>
-            <span class="val">3 seated</span>
-          </div>
+          <div class="neon role"><span class="lbl">Director</span><span class="val">Raw Socket</span></div>
+          <div class="neon"><span class="lbl">Bandwidth</span><span class="val">08.4 / 23 Mbps</span></div>
+          <div class="neon"><span class="lbl">Crew</span><span class="val">03 ONLINE</span></div>
         </div>
-        <div class="title-block">
-          <div class="cap">Now Showing</div>
+        <div class="title-cell">
+          <div class="super">FEATURE PRESENTATION</div>
           <div class="ttl">Top Gun · Maverick</div>
         </div>
-        <div class="controls">
-          <div class="ctrl primary"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>Run Film</div>
-          <div class="ctrl"><svg viewBox="0 0 24 24"><path d="M3 5h18v2H3zm0 6h12v2H3zm0 6h18v2H3z"/></svg>Fit</div>
-          <div class="ctrl"><svg viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7zm-2-4h2V7h3V5H5zm12 7h-3v2h5v-5h-2zm-3-12v2h3v3h2V5z"/></svg>House</div>
-          <div class="ctrl"><svg viewBox="0 0 24 24"><path d="M4 6h14V4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h14v-2H4V6zm17 1l-5 5 5 5V7z"/></svg>Foyer</div>
+        <div style="display:flex">
+          <div class="act primary"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>RUN</div>
+          <div class="act"><svg viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7zm-2-4h2V7h3V5H5zm12 7h-3v2h5v-5h-2zm-3-12v2h3v3h2V5z"/></svg>FS</div>
+          <div class="act">LIB</div>
+          <div class="act">EJECT</div>
         </div>
       </div>
-      <div class="stage"><span class="frame-label">— the picture plays here —</span></div>
+      <div class="stage"><span class="frame-label">— picture begins —</span></div>
     </div>
   </div>
 
-  <!-- ============================================================
-       2. CONSOLE
-       ============================================================ -->
+  <!-- 02 — CONSOLE (KEPT) -->
   <div class="mock">
     <div class="mock-label">
       <span class="num">02</span>
       <span>Console</span>
+      <span class="keep">keep</span>
       <span class="desc">Studio control room · brushed graphite, signal mint, LED switches</span>
     </div>
     <div class="preview console">
       <div class="bar">
         <div style="display:flex">
-          <div class="well live">
-            <span class="lbl">Op_001 · Role</span>
-            <span class="val">Host</span>
-          </div>
-          <div class="well">
-            <span class="lbl">Bw_out · L01</span>
-            <span class="val">08.4<span class="unit">/</span>23.1<span class="unit"> Mbps</span></span>
-          </div>
-          <div class="well">
-            <span class="lbl">Ch_audience</span>
-            <span class="val">003<span class="unit"> seats</span></span>
-          </div>
-          <div class="well">
-            <span class="lbl">Sync</span>
-            <span class="val">LOCKED</span>
-          </div>
+          <div class="well live"><span class="lbl">Op_001 · Role</span><span class="val">Host</span></div>
+          <div class="well"><span class="lbl">Bw_out · L01</span><span class="val">08.4<span class="unit">/</span>23.1<span class="unit"> Mbps</span></span></div>
+          <div class="well"><span class="lbl">Ch_audience</span><span class="val">003<span class="unit"> seats</span></span></div>
+          <div class="well"><span class="lbl">Sync</span><span class="val">LOCKED</span></div>
         </div>
-        <div class="well title-well">
-          <span class="lbl">Feed_Live · Source 01</span>
-          <span class="val">Top Gun: Maverick</span>
-        </div>
+        <div class="well title-well"><span class="lbl">Feed_Live · Source 01</span><span class="val">Top Gun: Maverick</span></div>
         <div style="display:flex">
-          <div class="switch on">
-            <span class="led"></span>
-            <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
-            Run
-          </div>
-          <div class="switch">
-            <span class="led"></span>
-            <svg viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7zm-2-4h2V7h3V5H5zm12 7h-3v2h5v-5h-2zm-3-12v2h3v3h2V5z"/></svg>
-            FS
-          </div>
-          <div class="switch">
-            <span class="led"></span>
-            <svg viewBox="0 0 24 24"><path d="M3 5h18v2H3zm0 6h12v2H3zm0 6h18v2H3z"/></svg>
-            Lib
-          </div>
-          <div class="switch warn">
-            <span class="led"></span>
-            <svg viewBox="0 0 24 24"><path d="M4 6h14V4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h14v-2H4V6zm17 1l-5 5 5 5V7z"/></svg>
-            Out
-          </div>
+          <div class="switch on"><span class="led"></span><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>Run</div>
+          <div class="switch"><span class="led"></span><svg viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7zm-2-4h2V7h3V5H5zm12 7h-3v2h5v-5h-2zm-3-12v2h3v3h2V5z"/></svg>FS</div>
+          <div class="switch"><span class="led"></span><svg viewBox="0 0 24 24"><path d="M3 5h18v2H3zm0 6h12v2H3zm0 6h18v2H3z"/></svg>Lib</div>
+          <div class="switch warn"><span class="led"></span><svg viewBox="0 0 24 24"><path d="M4 6h14V4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h14v-2H4V6zm17 1l-5 5 5 5V7z"/></svg>Out</div>
         </div>
       </div>
       <div class="stage"><span class="frame-label">— live feed routed here —</span></div>
     </div>
   </div>
 
-  <!-- ============================================================
-       3. ATRIUM
-       ============================================================ -->
+  <!-- 03 — CATALOG -->
   <div class="mock">
     <div class="mock-label">
       <span class="num">03</span>
-      <span>Atrium</span>
-      <span class="desc">Daylight editorial · ivory paper, italic Garamond, dusty-rose accent</span>
+      <span>Catalog</span>
+      <span class="desc">Library card · cream stock, typewriter, ink-stamped due-date</span>
     </div>
-    <div class="preview atrium">
-      <div class="bar">
-        <div class="meta-row">
-          <div class="meta role">
-            <span class="lbl">Host</span>
-            <span class="val">Raw Socket</span>
-          </div>
-          <div class="meta">
-            <span class="lbl">Bandwidth</span>
-            <span class="val">8.4 / 23 Mbps</span>
-          </div>
-          <div class="meta">
-            <span class="lbl">In the room</span>
-            <span class="val">3 viewers</span>
-          </div>
-          <div class="meta">
-            <span class="lbl">Sync</span>
-            <span class="val">Locked</span>
-          </div>
+    <div class="preview catalog">
+      <div class="head-wrap">
+        <div class="topline">
+          <span>Late Show Archive · Card File</span>
+          <span class="accession">No. 0047-MAV-2022</span>
         </div>
-        <div class="title-area">
-          <div class="super">Now playing — picture no. 04</div>
-          <div class="ttl">Top Gun: Maverick</div>
-        </div>
-        <div class="acts">
-          <span class="act primary">
-            <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
-            Play
-          </span>
+        <div class="stamp">Now Showing<span class="date">May · 27 · 26</span></div>
+        <div class="row title"><span class="lbl">Title</span><span class="val">Top Gun: Maverick</span></div>
+        <div class="row"><span class="lbl">Director</span><span class="val">Raw Socket · checked out</span></div>
+        <div class="row"><span class="lbl">Reading rm.</span><span class="val">3 patrons · 8.4 / 23 Mbps</span></div>
+        <div class="bottombar">
+          <span class="act primary"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>Begin Reel</span>
           <span class="act">Zoom</span>
-          <span class="act">Fullscreen</span>
-          <span class="act">Library</span>
+          <span class="act">Full screen</span>
+          <span class="act">Catalog</span>
           <span class="act">Sign out</span>
         </div>
       </div>
+    </div>
+  </div>
+
+  <!-- 04 — WATERCOLOR -->
+  <div class="mock">
+    <div class="mock-label">
+      <span class="num">04</span>
+      <span>Watercolor</span>
+      <span class="desc">Soft · warm cream wash, sage + coral, hand-lettered Caveat title</span>
+    </div>
+    <div class="preview water">
+      <div class="bar">
+        <div class="meta-strip">
+          <div class="chip role"><span class="lbl">Host</span><span class="val">Raw Socket</span></div>
+          <div class="chip"><span class="lbl">Bandwidth</span><span class="val">8.4 / 23 Mbps</span></div>
+          <div class="chip"><span class="lbl">In the room</span><span class="val">3 friends</span></div>
+          <div class="chip"><span class="lbl">Sync</span><span class="val">Locked in</span></div>
+        </div>
+        <div class="title-area">
+          <div class="ttl">Top Gun: Maverick</div>
+        </div>
+        <div class="acts">
+          <span class="bub primary"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>Play</span>
+          <span class="bub">Zoom</span>
+          <span class="bub">Fullscreen</span>
+          <span class="bub">Library</span>
+          <span class="bub">Sign out</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 05 — CONSTRUCTIVIST -->
+  <div class="mock">
+    <div class="mock-label">
+      <span class="num">05</span>
+      <span>Constructivist</span>
+      <span class="desc">Bauhaus · red disc, yellow triangle, blue title block, Oswald display</span>
+    </div>
+    <div class="preview bauhaus">
+      <div class="bar">
+        <div style="display:flex">
+          <div class="blok role"><span class="lbl">Host</span><span class="val">Raw Socket</span></div>
+          <div class="blok"><span class="lbl">Bandwidth</span><span class="val">8.4/23 Mbps</span></div>
+          <div class="blok"><span class="lbl">Room</span><span class="val">3 viewers</span></div>
+        </div>
+        <div class="title-block">
+          <div class="super">NOW SHOWING</div>
+          <div class="ttl">Top Gun: Maverick</div>
+        </div>
+        <div class="acts">
+          <div class="act primary"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>Play</div>
+          <div class="act">Fit</div>
+          <div class="act">Full</div>
+          <div class="act">Exit</div>
+        </div>
+      </div>
       <div class="stage"><span class="frame-label">— picture begins —</span></div>
+    </div>
+  </div>
+
+  <!-- 06 — BROADSHEET -->
+  <div class="mock">
+    <div class="mock-label">
+      <span class="num">06</span>
+      <span>Broadsheet</span>
+      <span class="desc">Newspaper · Fraktur masthead, ink rules, byline column</span>
+    </div>
+    <div class="preview broadsheet">
+      <div class="masthead">
+        <div class="title">The Late Show Gazette</div>
+        <div class="meta"><span class="vol">Vol. III · No. 47</span>Tuesday Evening Edition · May 27, 2026</div>
+      </div>
+      <div class="columns">
+        <div class="col-meta">
+          <span class="lbl">Host —</span><span class="val">Raw Socket</span>
+          <span class="lbl">Bandwidth —</span><span class="val">8.4 / 23 Mbps</span>
+          <span class="lbl">Audience —</span><span class="val">3 attending</span>
+          <span class="lbl">Sync —</span><span class="val">Locked</span>
+        </div>
+        <div class="feature">
+          <div class="super">Front Page · Feature Presentation</div>
+          <div class="ttl">Top Gun: Maverick</div>
+        </div>
+        <div class="byline">
+          <span class="col-act primary"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>Begin reading</span>
+          <span class="col-act">Full screen</span>
+          <span class="col-act">Archive</span>
+          <span class="col-act">Sign out</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 07 — TERMINAL -->
+  <div class="mock">
+    <div class="mock-label">
+      <span class="num">07</span>
+      <span>Terminal</span>
+      <span class="desc">TUI · phosphor green on near-black, mono everywhere, blinking caret</span>
+    </div>
+    <div class="preview term">
+      <div class="row top">
+        <span class="crumb">[ wp@latshow ]</span>
+        <span class="crumb">~/movies/</span>
+        <span class="crumb active">top-gun-maverick.m3u8</span>
+        <span class="blink">_</span>
+      </div>
+      <div class="grid">
+        <div style="display:flex; gap: 1.2rem">
+          <span class="pair"><span class="k">role:</span><span class="v live">host</span></span>
+          <span class="pair"><span class="k">bw:</span><span class="v">8.4/23.1 mbps</span></span>
+          <span class="pair"><span class="k">peers:</span><span class="v">3</span></span>
+          <span class="pair"><span class="k">sync:</span><span class="v">locked</span></span>
+        </div>
+        <div class="feed">now playing: top gun maverick</div>
+        <div class="actions">
+          <button class="btn primary">▶ run</button>
+          <button class="btn">⛶ fs</button>
+          <button class="btn">≡ lib</button>
+          <button class="btn">⎋ out</button>
+        </div>
+      </div>
+      <div class="lower">
+        <span><span class="key">space</span> play/pause</span>
+        <span><span class="key">f</span> fullscreen</span>
+        <span><span class="key">m</span> mute</span>
+        <span><span class="key">↑↓</span> vol</span>
+        <span><span class="key">q</span> quit</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 08 — POLAROID -->
+  <div class="mock">
+    <div class="mock-label">
+      <span class="num">08</span>
+      <span>Polaroid</span>
+      <span class="desc">Scrapbook · tilted photo cards, masking tape, handwritten captions</span>
+    </div>
+    <div class="preview poly">
+      <div class="cards">
+        <div class="pgroup">
+          <div class="card tilt-l">
+            <span class="tape"></span>
+            <div class="photo">HOST</div>
+            <div class="caption">Raw Socket</div>
+            <div class="stat">running the room</div>
+          </div>
+          <div class="card tilt-r">
+            <div class="photo" style="background: linear-gradient(135deg, #6a7148 0%, #3d4a25 100%)">BW</div>
+            <div class="caption">8.4 / 23</div>
+            <div class="stat">Mbps · room</div>
+          </div>
+          <div class="card tilt-s">
+            <div class="photo" style="background: linear-gradient(135deg, #d4a017 0%, #8a6900 100%)">CREW</div>
+            <div class="caption">3 friends</div>
+            <div class="stat">all locked in</div>
+          </div>
+        </div>
+        <div class="title-card">
+          <span class="tape"></span>
+          <div class="super">tonight's pick</div>
+          <div class="ttl">Top Gun: Maverick</div>
+        </div>
+        <div class="pgroup">
+          <div class="act primary"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>roll it</div>
+          <div style="display:flex; flex-direction:column; gap: .25rem">
+            <span class="act">zoom</span>
+            <span class="act">full</span>
+            <span class="act">library</span>
+            <span class="act">sign out</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 09 — BRUTALIST -->
+  <div class="mock">
+    <div class="mock-label">
+      <span class="num">09</span>
+      <span>Brutalist</span>
+      <span class="desc">Concrete grey, black slabs, highlighter yellow title block</span>
+    </div>
+    <div class="preview brut">
+      <div class="bar">
+        <div style="display:flex">
+          <div class="slab role"><span class="lbl">Role</span><span class="val">HOST</span></div>
+          <div class="slab"><span class="lbl">BW Mbps</span><span class="val">08.4/23.1</span></div>
+          <div class="slab"><span class="lbl">Audience</span><span class="val">003</span></div>
+          <div class="slab"><span class="lbl">Sync</span><span class="val">LOCK</span></div>
+        </div>
+        <div class="title-slab">
+          <div class="super">FEATURE</div>
+          <div class="ttl">Top Gun: Maverick</div>
+        </div>
+        <div class="acts">
+          <div class="act primary"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>PLAY</div>
+          <div class="act">FS</div>
+          <div class="act">LIB</div>
+          <div class="act">OUT</div>
+        </div>
+      </div>
+      <div class="stage"><span class="frame-label">— picture begins —</span></div>
+    </div>
+  </div>
+
+  <!-- 10 — BASS -->
+  <div class="mock">
+    <div class="mock-label">
+      <span class="num">10</span>
+      <span>Bass</span>
+      <span class="desc">Mid-century poster · cut-paper red wedge, Bebas Neue display, olive dot</span>
+    </div>
+    <div class="preview bass">
+      <div class="bar">
+        <div class="meta-row">
+          <div class="meta role"><span class="lbl">Host</span><span class="val">Raw Socket</span></div>
+          <div class="meta"><span class="lbl">Bandwidth</span><span class="val">8.4 / 23 Mbps</span></div>
+          <div class="meta"><span class="lbl">In the room</span><span class="val">3 viewers</span></div>
+          <div class="meta"><span class="lbl">Sync</span><span class="val">Locked</span></div>
+        </div>
+        <div class="title-area">
+          <div class="super">Tonight · Reel 04</div>
+          <div class="ttl">Top Gun: Maverick</div>
+        </div>
+        <div class="acts">
+          <span class="pill primary"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>Play</span>
+          <span class="pill">Fit</span>
+          <span class="pill">FS</span>
+          <span class="pill">Library</span>
+          <span class="pill">Out</span>
+        </div>
+      </div>
     </div>
   </div>
 
