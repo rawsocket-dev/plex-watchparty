@@ -6,10 +6,10 @@
 <title>Top-bar mockups · plex-watchparty</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=JetBrains+Mono:wght@300;400;500&family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500;1,600;1,700&family=Audiowide&family=VT323&family=Special+Elite&family=Crimson+Text:ital,wght@0,400;0,600;1,400&family=Caveat:wght@400;600;700&family=Quicksand:wght@300;400;500;600&family=Oswald:wght@300;400;500;600;700&family=Roboto+Mono:wght@300;400;500&family=UnifrakturCook:wght@700&family=Patrick+Hand&family=Inter:wght@400;700;900&family=Space+Mono:wght@400;700&family=Bebas+Neue&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@300;400;500&family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,400;1,500;1,600&family=Outfit:wght@200;300;400;500;600;700&family=Roboto+Slab:wght@400;700;900&family=Bangers&family=Bowlby+One&family=Architects+Daughter&family=Bungee&family=Orbitron:wght@500;700;900&family=Share+Tech+Mono&family=Allura&family=Cinzel:wght@400;500;700&family=Tangerine:wght@400;700&family=Fjalla+One&family=Anton&family=Caveat:wght@400;600;700&family=UnifrakturCook:wght@700&family=Bebas+Neue&family=DM+Mono:wght@300;400;500&family=DM+Sans:wght@300;400;500;700&family=Inter:wght@300;400;500;700;900&family=Roboto+Mono:wght@300;400;500&family=Space+Mono:wght@400;700&family=VT323&family=Audiowide&family=Crimson+Text:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
 <style>
   /* ============================================================
-     Page chrome — common to all mockups
+     Page chrome
      ============================================================ */
   :root { color-scheme: dark; }
   * { box-sizing: border-box; }
@@ -22,1139 +22,1533 @@
     min-height: 100vh;
   }
   .page { max-width: 1240px; margin: 0 auto; padding: 3rem 1.5rem 6rem; }
-  .page-head {
-    border-bottom: 1px solid #2a2620;
-    padding-bottom: 1.4rem;
-    margin-bottom: 2.5rem;
-  }
+  .page-head { border-bottom: 1px solid #2a2620; padding-bottom: 1.4rem; margin-bottom: 2.5rem; }
   .page-head h1 {
     margin: 0 0 .4rem;
     font-family: "Cormorant Garamond", serif;
-    font-style: italic;
-    font-weight: 400;
-    font-size: 2.1rem;
-    color: #e8e2d4;
-    letter-spacing: -.01em;
+    font-style: italic; font-weight: 400; font-size: 2.1rem;
+    color: #e8e2d4; letter-spacing: -.01em;
   }
-  .page-head p {
-    margin: 0;
-    color: #807868;
-    font-size: .85rem;
-    letter-spacing: .04em;
-  }
+  .page-head p { margin: 0; color: #807868; font-size: .85rem; letter-spacing: .04em; }
   .mock { margin-bottom: 3.5rem; }
   .mock-label {
-    display: flex;
-    align-items: baseline;
-    gap: 1rem;
+    display: flex; align-items: baseline; gap: 1rem;
     margin-bottom: .85rem;
     font-family: "JetBrains Mono", monospace;
-    font-size: .68rem;
-    letter-spacing: .3em;
-    text-transform: uppercase;
+    font-size: .68rem; letter-spacing: .3em; text-transform: uppercase;
     color: #807868;
   }
   .mock-label .num { color: #d4a574; font-weight: 500; }
   .mock-label .desc {
-    text-transform: none;
-    letter-spacing: 0;
+    text-transform: none; letter-spacing: 0;
     font-family: "Cormorant Garamond", serif;
-    font-style: italic;
-    font-size: .95rem;
-    color: #c8c0b0;
+    font-style: italic; font-size: .95rem; color: #c8c0b0;
     margin-left: auto;
   }
   .mock-label .keep {
-    color: #6ab36a;
-    border: 1px solid #2e5a2e;
-    padding: .15em .55em;
-    border-radius: 2px;
-    font-size: .58rem;
-    letter-spacing: .25em;
+    color: #6ab36a; border: 1px solid #2e5a2e;
+    padding: .15em .55em; border-radius: 2px;
+    font-size: .58rem; letter-spacing: .25em;
   }
   .preview { border-radius: 4px; overflow: hidden; box-shadow: 0 30px 60px -20px rgba(0,0,0,.6); }
-  .preview .stage {
-    aspect-ratio: 16 / 5;
-    background: #000;
-    background-image:
-      radial-gradient(circle at 20% 30%, rgba(255,255,255,.04) 0%, transparent 50%),
-      radial-gradient(circle at 80% 70%, rgba(255,255,255,.025) 0%, transparent 50%);
-    display: flex;
-    align-items: flex-end;
-    justify-content: center;
-    padding: 1.5rem;
-    position: relative;
-  }
-  .preview .stage::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(180deg, transparent 0%, rgba(0,0,0,.4) 100%);
-  }
-  .preview .stage .frame-label {
-    position: relative;
-    font-family: "Cormorant Garamond", serif;
-    font-style: italic;
-    font-size: 1.1rem;
-    color: #6a6258;
-    letter-spacing: .05em;
-  }
 
   /* ============================================================
-     01 — NEON NOIR  (synthwave: deep indigo, magenta + cyan, chrome title)
-     ============================================================ */
-  .noir {
-    background: #0a0418;
-    background-image:
-      linear-gradient(180deg, rgba(255,45,180,.06) 0%, transparent 30%),
-      radial-gradient(ellipse at 50% 100%, rgba(0,229,255,.18) 0%, transparent 60%),
-      repeating-linear-gradient(0deg, rgba(255,255,255,.025) 0 1px, transparent 1px 3px),
-      #0a0418;
-    font-family: "VT323", "Audiowide", monospace;
-    color: #c5e8ff;
-  }
-  .noir .bar {
-    display: grid;
-    grid-template-columns: minmax(0,auto) minmax(0,1fr) minmax(0,auto);
-    border-bottom: 1px solid #ff2db4;
-    box-shadow: 0 1px 0 rgba(255,45,180,.5), 0 4px 22px rgba(255,45,180,.18);
-  }
-  .noir .neon {
-    border-right: 1px solid rgba(255,45,180,.25);
-    padding: .85rem 1.3rem;
-    display: flex;
-    flex-direction: column;
-    gap: .15rem;
-    justify-content: center;
-    min-height: 60px;
-  }
-  .noir .neon .lbl {
-    font-family: "VT323", monospace;
-    font-size: .95rem;
-    color: #ff2db4;
-    letter-spacing: .25em;
-    text-transform: uppercase;
-    text-shadow: 0 0 8px rgba(255,45,180,.7);
-  }
-  .noir .neon .val {
-    font-family: "Audiowide", sans-serif;
-    font-size: .95rem;
-    color: #00e5ff;
-    letter-spacing: .12em;
-    text-shadow: 0 0 8px rgba(0,229,255,.6);
-  }
-  .noir .neon.role .val::before {
-    content: '◆ ';
-    color: #ff2db4;
-  }
-  .noir .title-cell {
-    border-left: 1px solid rgba(0,229,255,.4);
-    border-right: 1px solid rgba(0,229,255,.4);
-    padding: .55rem 1.6rem;
-    text-align: center;
-    background: linear-gradient(180deg, rgba(255,45,180,.05) 0%, transparent 80%);
-    justify-content: center;
-    display: flex;
-    flex-direction: column;
-    min-width: 0;
-  }
-  .noir .title-cell .super {
-    font-family: "VT323", monospace;
-    font-size: .82rem;
-    color: #ff2db4;
-    letter-spacing: .3em;
-    text-shadow: 0 0 6px rgba(255,45,180,.55);
-  }
-  .noir .title-cell .ttl {
-    font-family: "Audiowide", sans-serif;
-    font-size: clamp(1.1rem, 2vw, 1.7rem);
-    background: linear-gradient(180deg, #ffffff 0%, #d6ecff 45%, #5ec7ff 100%);
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
-    letter-spacing: .08em;
-    text-shadow: 0 0 18px rgba(0,229,255,.45);
-    text-transform: uppercase;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  }
-  .noir .act {
-    border-left: 1px solid rgba(255,45,180,.25);
-    padding: 0 1.3rem;
-    display: flex; align-items: center; gap: .55rem;
-    font-family: "Audiowide", sans-serif;
-    color: #00e5ff;
-    font-size: .8rem;
-    letter-spacing: .22em;
-    text-transform: uppercase;
-    text-shadow: 0 0 6px rgba(0,229,255,.45);
-    cursor: pointer;
-    transition: color .2s, text-shadow .2s, background .2s;
-  }
-  .noir .act:hover {
-    color: #ffffff;
-    background: rgba(255,45,180,.18);
-    text-shadow: 0 0 12px rgba(255,45,180,.9);
-  }
-  .noir .act.primary {
-    color: #ff2db4;
-    text-shadow: 0 0 12px rgba(255,45,180,.85);
-  }
-  .noir .act svg { width: 14px; height: 14px; fill: currentColor; filter: drop-shadow(0 0 6px currentColor); }
-
-  /* ============================================================
-     02 — CONSOLE  (KEEP — brushed graphite + signal mint, LED switches)
+     01 — CONSOLE  (KEEP)
      ============================================================ */
   .console {
     background:
       repeating-linear-gradient(90deg, rgba(255,255,255,.014) 0 1px, transparent 1px 3px),
       linear-gradient(180deg, #232830 0%, #181c22 100%);
-    font-family: "IBM Plex Mono", ui-monospace, monospace;
-    color: #d2d6dc;
+    font-family: "IBM Plex Mono", monospace; color: #d2d6dc;
   }
   .console .bar {
-    display: grid;
-    grid-template-columns: minmax(0,auto) minmax(0,1fr) minmax(0,auto);
+    display: grid; grid-template-columns: minmax(0,auto) minmax(0,1fr) minmax(0,auto);
     background: linear-gradient(180deg, #1a1e24 0%, #11141a 100%);
     border-bottom: 1px solid #2a323e;
     box-shadow: inset 0 1px 0 rgba(255,255,255,.04), inset 0 -1px 0 rgba(0,0,0,.5);
   }
   .console .well {
-    border-right: 1px solid #2a323e;
-    padding: .8rem 1.2rem;
+    border-right: 1px solid #2a323e; padding: .8rem 1.2rem;
     display: flex; flex-direction: column; gap: .25rem;
     min-height: 64px; justify-content: center;
     box-shadow: inset 0 0 18px rgba(0,0,0,.45), inset 1px 0 0 rgba(255,255,255,.025);
-    background: linear-gradient(180deg, rgba(255,255,255,.01) 0%, transparent 100%);
   }
-  .console .well .lbl { font-size: .58rem; letter-spacing: .25em; text-transform: uppercase; color: #5e6878; font-weight: 500; }
-  .console .well .val { font-size: .82rem; color: #d2d6dc; letter-spacing: .08em; font-variant-numeric: tabular-nums; }
+  .console .well .lbl { font-size: .58rem; letter-spacing: .25em; text-transform: uppercase; color: #5e6878; }
+  .console .well .val { font-size: .82rem; color: #d2d6dc; letter-spacing: .08em; }
   .console .well .val .unit { color: #5e6878; margin-left: .25em; }
   .console .well.live .val { color: #9fe6ad; }
   .console .well.live .val::before {
-    content: ''; display: inline-block;
-    width: 7px; height: 7px; border-radius: 50%;
-    background: #9fe6ad; margin-right: .55em;
-    box-shadow: 0 0 8px rgba(159,230,173,.7), inset 0 0 3px rgba(255,255,255,.4);
+    content: ''; display: inline-block; width: 7px; height: 7px;
+    border-radius: 50%; background: #9fe6ad; margin-right: .55em;
+    box-shadow: 0 0 8px rgba(159,230,173,.7);
     animation: pulse 2.4s ease-in-out infinite;
   }
   @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .55; } }
   .console .title-well {
-    border-left: 1px solid #2a323e;
-    border-right: 1px solid #2a323e;
-    background: #0f1217;
-    box-shadow: inset 0 0 30px rgba(0,0,0,.6);
-    text-align: left;
-    padding: .8rem 1.4rem;
-    justify-content: center;
+    border-left: 1px solid #2a323e; border-right: 1px solid #2a323e;
+    background: #0f1217; padding: .8rem 1.4rem; justify-content: center;
   }
   .console .title-well .lbl { color: #4a5260; }
-  .console .title-well .val { font-size: 1rem; letter-spacing: .04em; color: #e8ecf2; text-transform: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .console .title-well .val { font-size: 1rem; letter-spacing: .04em; color: #e8ecf2; text-transform: none; }
   .console .switch {
     border-left: 1px solid #2a323e;
     background: linear-gradient(180deg, #1d2129 0%, #131820 100%);
     padding: 0 1.3rem;
     display: flex; align-items: center; gap: .65rem;
-    color: #8a92a0;
-    font-size: .65rem;
-    letter-spacing: .25em;
-    text-transform: uppercase;
-    font-weight: 500;
-    cursor: pointer;
-    transition: color .2s, background .2s;
+    color: #8a92a0; font-size: .65rem; letter-spacing: .25em; text-transform: uppercase;
+    cursor: pointer; transition: all .2s;
   }
-  .console .switch .led {
-    width: 8px; height: 8px; border-radius: 50%;
-    background: #3a424e;
-    box-shadow: inset 0 0 2px rgba(0,0,0,.6);
-  }
-  .console .switch.on .led { background: #9fe6ad; box-shadow: 0 0 10px rgba(159,230,173,.8), inset 0 0 2px rgba(255,255,255,.4); }
+  .console .switch .led { width: 8px; height: 8px; border-radius: 50%; background: #3a424e; }
+  .console .switch.on .led { background: #9fe6ad; box-shadow: 0 0 10px rgba(159,230,173,.8); }
   .console .switch.warn .led { background: #f0a830; box-shadow: 0 0 10px rgba(240,168,48,.7); }
-  .console .switch:hover { background: linear-gradient(180deg, #252b34 0%, #1a1f27 100%); color: #d2d6dc; }
+  .console .switch:hover { background: #252b34; color: #d2d6dc; }
   .console .switch svg { width: 14px; height: 14px; fill: currentColor; }
 
   /* ============================================================
-     03 — CATALOG  (library card-catalog: cream stock, typewriter, ink stamps)
+     02 — VAPORWAVE  (pastel pink + cyan, dreamy marble)
      ============================================================ */
-  .catalog {
-    background: #f4ecd8;
+  .vapor {
+    background:
+      linear-gradient(135deg, #ffb3d9 0%, #b3d9ff 50%, #d9b3ff 100%);
     background-image:
-      radial-gradient(circle at 20% 0%, rgba(168,54,42,.025) 0%, transparent 60%),
-      repeating-linear-gradient(0deg, transparent 0 1.6rem, rgba(61,44,94,.07) 1.6rem 1.61rem);
-    font-family: "Special Elite", "Courier New", monospace;
-    color: #2a1e10;
-    padding: 1.1rem 1.6rem .9rem;
-  }
-  .catalog .topline {
-    display: flex; justify-content: space-between; align-items: baseline;
-    border-bottom: 1px solid #a08868;
-    padding-bottom: .35rem;
-    margin-bottom: .9rem;
-    font-size: .68rem;
-    letter-spacing: .25em;
-    text-transform: uppercase;
-    color: #7a6448;
-  }
-  .catalog .topline .accession { color: #a8362a; letter-spacing: .35em; }
-  .catalog .row {
-    display: grid;
-    grid-template-columns: 5.5rem 1fr;
-    gap: 1rem;
-    align-items: baseline;
-    padding: .2rem 0;
-  }
-  .catalog .row .lbl {
-    font-size: .68rem;
-    letter-spacing: .22em;
-    text-transform: uppercase;
-    color: #5a4a30;
-  }
-  .catalog .row .val {
-    font-family: "Crimson Text", "Georgia", serif;
-    font-size: 1.08rem;
-    color: #1a1208;
-    letter-spacing: .015em;
-  }
-  .catalog .row.title .val {
-    font-family: "Crimson Text", serif;
-    font-style: italic;
-    font-weight: 600;
-    font-size: 1.55rem;
-    letter-spacing: -.005em;
-  }
-  .catalog .stamp {
-    position: absolute;
-    top: 1rem; right: 1.6rem;
-    border: 2px solid #a8362a;
-    color: #a8362a;
-    padding: .35rem .9rem .25rem;
-    font-family: "Special Elite", monospace;
-    font-size: .8rem;
-    letter-spacing: .25em;
-    text-transform: uppercase;
-    transform: rotate(-6deg);
-    background: rgba(244,236,216,.6);
-    line-height: 1;
-  }
-  .catalog .stamp .date {
-    display: block;
-    font-size: .58rem;
-    margin-top: .15rem;
-    letter-spacing: .15em;
-    color: #c45846;
-  }
-  .catalog .bottombar {
-    display: flex; gap: 1.3rem;
-    margin-top: 1rem;
-    padding-top: .5rem;
-    border-top: 1px solid #a08868;
-  }
-  .catalog .act {
-    display: inline-flex; align-items: center; gap: .45rem;
-    font-family: "Special Elite", monospace;
-    font-size: .72rem;
-    letter-spacing: .22em;
-    text-transform: uppercase;
-    color: #3d2c5e;
-    cursor: pointer;
-    padding: .15rem .4rem;
-    transition: color .25s, background .25s;
-  }
-  .catalog .act:hover { background: #3d2c5e; color: #f4ecd8; }
-  .catalog .act.primary { color: #a8362a; }
-  .catalog .act.primary:hover { background: #a8362a; color: #f4ecd8; }
-  .catalog .act svg { width: 12px; height: 12px; fill: currentColor; }
-  .catalog .head-wrap { position: relative; }
-
-  /* ============================================================
-     04 — WATERCOLOR  (soft cream + sage + coral, hand-lettered)
-     ============================================================ */
-  .water {
-    background: #f7f1e3;
-    background-image:
-      radial-gradient(ellipse at 10% 10%, rgba(244,165,132,.18) 0%, transparent 35%),
-      radial-gradient(ellipse at 85% 30%, rgba(163,181,154,.22) 0%, transparent 40%),
-      radial-gradient(circle at 40% 85%, rgba(173,200,228,.15) 0%, transparent 35%);
-    font-family: "Quicksand", sans-serif;
-    color: #4a4234;
+      radial-gradient(ellipse at 20% 100%, rgba(255,179,217,.6) 0%, transparent 40%),
+      radial-gradient(ellipse at 80% 0%, rgba(179,217,255,.55) 0%, transparent 45%),
+      linear-gradient(135deg, #ffd8eb 0%, #c8e0ff 100%);
+    color: #4a2a5e; font-family: "Outfit", sans-serif;
     padding: 1.2rem 1.6rem;
   }
-  .water .bar {
-    display: grid;
-    grid-template-columns: 1fr auto;
-    align-items: end;
-    gap: 1rem;
+  .vapor .bar { display: grid; grid-template-columns: 1fr auto; gap: 1rem; align-items: end; }
+  .vapor .meta-row {
+    grid-column: 1 / -1; display: flex; gap: 2rem; flex-wrap: wrap;
+    padding-bottom: .85rem; margin-bottom: .35rem;
+    border-bottom: 1px solid rgba(255,255,255,.6);
   }
-  .water .meta-strip {
-    display: flex;
-    gap: 2rem;
-    flex-wrap: wrap;
-    margin-bottom: .85rem;
+  .vapor .chip { display: flex; flex-direction: column; gap: .1rem; }
+  .vapor .chip .lbl {
+    font-family: "VT323", monospace; font-size: .82rem;
+    letter-spacing: .15em; text-transform: uppercase; color: #ff66b3;
   }
-  .water .chip {
-    display: flex; flex-direction: column;
+  .vapor .chip .val { font-weight: 600; font-size: .95rem; color: #4a2a5e; }
+  .vapor .chip.role .val::before {
+    content: '♡ '; color: #ff66b3;
   }
-  .water .chip .lbl {
-    font-family: "Quicksand", sans-serif;
-    font-weight: 500;
-    font-size: .6rem;
-    letter-spacing: .22em;
-    text-transform: uppercase;
-    color: #8a8068;
-    margin-bottom: .15rem;
+  .vapor .title-area .super {
+    font-family: "VT323", monospace; font-size: .9rem;
+    letter-spacing: .35em; text-transform: uppercase; color: #ff66b3;
+    text-shadow: 1px 1px 0 rgba(255,255,255,.8);
   }
-  .water .chip .val {
-    font-family: "Quicksand", sans-serif;
-    font-weight: 600;
-    font-size: .95rem;
-    color: #5a4f3c;
-    letter-spacing: .01em;
+  .vapor .title-area .ttl {
+    font-family: "Outfit", sans-serif; font-weight: 300;
+    font-size: clamp(1.8rem, 3.4vw, 2.8rem); line-height: 1;
+    color: #4a2a5e;
+    text-shadow: 3px 3px 0 rgba(255,179,217,.7), 6px 6px 0 rgba(179,217,255,.5);
   }
-  .water .chip.role .val {
-    color: #c46b3e;
-    display: inline-flex;
-    align-items: center;
-    gap: .45rem;
-  }
-  .water .chip.role .val::before {
-    content: '';
-    width: 10px; height: 10px;
-    background: radial-gradient(circle, #f4a584 0%, #c46b3e 80%);
-    border-radius: 50%;
-  }
-  .water .title-area { grid-column: 1; }
-  .water .title-area .ttl {
-    font-family: "Caveat", cursive;
-    font-weight: 700;
-    font-size: clamp(2rem, 4vw, 3.2rem);
-    line-height: 1;
-    color: #3a3024;
-    margin: 0;
-  }
-  .water .title-area .ttl::first-letter { color: #c46b3e; }
-  .water .acts {
-    grid-column: 2;
-    grid-row: 1 / span 2;
-    align-self: end;
-    display: flex; gap: .7rem;
-    flex-wrap: wrap;
-    justify-content: flex-end;
-  }
-  .water .bub {
-    display: inline-flex; align-items: center; gap: .5rem;
-    background: rgba(255,255,255,.55);
-    border: 1.5px solid rgba(163,181,154,.6);
-    border-radius: 999px;
-    padding: .55rem 1.05rem;
-    font-family: "Quicksand", sans-serif;
-    font-weight: 500;
-    font-size: .75rem;
-    color: #5a4f3c;
-    cursor: pointer;
-    transition: all .28s ease;
-    box-shadow: 0 2px 12px rgba(244,165,132,.08);
-  }
-  .water .bub:hover {
-    background: #fff;
-    border-color: #c46b3e;
-    color: #c46b3e;
-    transform: translateY(-1px);
-  }
-  .water .bub.primary {
-    background: linear-gradient(135deg, #f4a584 0%, #c46b3e 100%);
-    border-color: transparent;
-    color: #fff;
-  }
-  .water .bub.primary:hover {
-    color: #fff;
-    box-shadow: 0 4px 16px rgba(196,107,62,.4);
-  }
-  .water .bub svg { width: 13px; height: 13px; fill: currentColor; }
-
-  /* ============================================================
-     05 — CONSTRUCTIVIST  (Bauhaus: red/yellow/blue geometric blocks)
-     ============================================================ */
-  .bauhaus {
-    background: #f0e8d4;
-    font-family: "Roboto Mono", monospace;
-    color: #1a1a1a;
-    position: relative;
-    overflow: hidden;
-  }
-  .bauhaus::before {
-    content: '';
-    position: absolute;
-    top: -30px; right: -30px;
-    width: 140px; height: 140px;
-    background: #d63a3a;
-    border-radius: 50%;
-    z-index: 0;
-  }
-  .bauhaus::after {
-    content: '';
-    position: absolute;
-    top: 65%; left: 38%;
-    width: 0; height: 0;
-    border-left: 50px solid transparent;
-    border-right: 50px solid transparent;
-    border-bottom: 86px solid #f0c14b;
-    transform: rotate(15deg);
-    z-index: 0;
-    opacity: .9;
-  }
-  .bauhaus .bar {
-    position: relative;
-    z-index: 1;
-    display: grid;
-    grid-template-columns: minmax(0,auto) minmax(0,1fr) minmax(0,auto);
-    border-bottom: 6px solid #1a1a1a;
-  }
-  .bauhaus .blok {
-    border-right: 2px solid #1a1a1a;
-    padding: 1rem 1.3rem;
-    display: flex; flex-direction: column; gap: .15rem;
-    background: rgba(240,232,212,.8);
-    min-height: 72px;
-    justify-content: center;
-  }
-  .bauhaus .blok .lbl {
-    font-family: "Roboto Mono", monospace;
-    font-size: .58rem;
-    font-weight: 500;
-    letter-spacing: .3em;
-    text-transform: uppercase;
-    color: #1a1a1a;
-  }
-  .bauhaus .blok .val {
-    font-family: "Oswald", sans-serif;
-    font-weight: 600;
-    font-size: 1.1rem;
-    color: #1a1a1a;
-    letter-spacing: .04em;
-    text-transform: uppercase;
-  }
-  .bauhaus .blok.role { background: #d63a3a; color: #f0e8d4; }
-  .bauhaus .blok.role .lbl,
-  .bauhaus .blok.role .val { color: #f0e8d4; }
-  .bauhaus .title-block {
-    border-left: 2px solid #1a1a1a;
-    border-right: 2px solid #1a1a1a;
-    background: #1e4f9a;
-    padding: 1rem 1.5rem;
-    color: #f0e8d4;
-    display: flex; flex-direction: column;
-    justify-content: center;
-    min-width: 0;
-  }
-  .bauhaus .title-block .super {
-    font-family: "Roboto Mono", monospace;
-    font-size: .58rem;
-    letter-spacing: .3em;
-    text-transform: uppercase;
-    color: #f0c14b;
-    margin-bottom: .1rem;
-  }
-  .bauhaus .title-block .ttl {
-    font-family: "Oswald", sans-serif;
-    font-weight: 700;
-    font-size: clamp(1.2rem, 2.2vw, 1.85rem);
-    letter-spacing: -.005em;
-    text-transform: uppercase;
-    line-height: 1;
-    color: #f0e8d4;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  }
-  .bauhaus .acts { display: flex; }
-  .bauhaus .act {
-    border-left: 2px solid #1a1a1a;
-    background: #f0e8d4;
-    padding: 0 1.25rem;
-    display: flex; align-items: center; gap: .55rem;
-    font-family: "Oswald", sans-serif;
-    font-weight: 500;
-    font-size: .85rem;
-    text-transform: uppercase;
-    letter-spacing: .12em;
-    color: #1a1a1a;
-    cursor: pointer;
-    transition: background .2s, color .2s;
-  }
-  .bauhaus .act:hover { background: #1a1a1a; color: #f0c14b; }
-  .bauhaus .act.primary { background: #f0c14b; }
-  .bauhaus .act.primary:hover { background: #1a1a1a; color: #f0c14b; }
-  .bauhaus .act svg { width: 14px; height: 14px; fill: currentColor; }
-
-  /* ============================================================
-     06 — BROADSHEET  (newspaper: ink black on cream, masthead serif)
-     ============================================================ */
-  .broadsheet {
-    background: #f4ede0;
-    color: #1a1a1a;
-    font-family: "Crimson Text", serif;
-    padding: 1.1rem 1.6rem 1rem;
-    position: relative;
-  }
-  .broadsheet::before {
-    content: '';
-    position: absolute;
-    left: 1.6rem; right: 1.6rem;
-    top: 4.2rem;
-    height: 3px;
-    border-top: 1px solid #1a1a1a;
-    border-bottom: 1px solid #1a1a1a;
-  }
-  .broadsheet .masthead {
-    display: flex; justify-content: space-between; align-items: baseline;
-    margin-bottom: 1.5rem;
-  }
-  .broadsheet .masthead .title {
-    font-family: "UnifrakturCook", "Times New Roman", serif;
-    font-weight: 700;
-    font-size: clamp(1.4rem, 2.6vw, 2rem);
-    color: #1a1a1a;
-    letter-spacing: .01em;
-    line-height: 1;
-  }
-  .broadsheet .masthead .meta {
-    font-family: "Crimson Text", serif;
-    font-style: italic;
-    font-size: .85rem;
-    color: #4a4030;
-    text-align: right;
-    line-height: 1.3;
-  }
-  .broadsheet .masthead .meta .vol {
-    display: block;
-    font-style: normal;
-    font-size: .65rem;
-    letter-spacing: .25em;
-    text-transform: uppercase;
-    color: #a8362a;
-  }
-  .broadsheet .columns {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) minmax(0, auto);
-    gap: 1.4rem;
-    align-items: end;
-  }
-  .broadsheet .col-meta {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: .3rem 1rem;
-    padding-right: 1rem;
-    border-right: 1px solid #1a1a1a;
-  }
-  .broadsheet .col-meta .lbl {
-    font-family: "Crimson Text", serif;
-    font-style: italic;
-    font-size: .7rem;
-    color: #4a4030;
-    letter-spacing: 0;
-  }
-  .broadsheet .col-meta .val {
-    font-family: "Crimson Text", serif;
-    font-weight: 600;
-    font-size: .92rem;
-    color: #1a1a1a;
-  }
-  .broadsheet .feature .super {
-    font-family: "Crimson Text", serif;
-    font-style: italic;
-    font-size: .8rem;
-    color: #a8362a;
-    margin-bottom: .15rem;
-  }
-  .broadsheet .feature .ttl {
-    font-family: "Cormorant Garamond", "Times New Roman", serif;
-    font-weight: 600;
-    font-size: clamp(1.4rem, 2.6vw, 2rem);
-    line-height: 1;
-    color: #1a1a1a;
-    letter-spacing: -.01em;
-    text-transform: none;
-  }
-  .broadsheet .byline {
-    border-left: 1px solid #1a1a1a;
-    padding-left: 1rem;
-    display: flex; flex-direction: column; gap: .55rem;
-    align-items: flex-start;
-  }
-  .broadsheet .col-act {
-    font-family: "Crimson Text", serif;
-    font-style: italic;
-    font-size: .92rem;
-    color: #1a1a1a;
-    text-decoration: underline;
-    text-decoration-color: #a8362a;
-    text-underline-offset: .25em;
-    cursor: pointer;
-    transition: color .2s;
-  }
-  .broadsheet .col-act:hover { color: #a8362a; }
-  .broadsheet .col-act.primary {
-    font-weight: 600;
-    font-style: normal;
-    text-decoration: none;
+  .vapor .acts { display: flex; gap: .55rem; align-items: center; }
+  .vapor .vbtn {
     display: inline-flex; align-items: center; gap: .35rem;
-    border: 1.5px solid #1a1a1a;
-    padding: .25rem .8rem;
-  }
-  .broadsheet .col-act.primary:hover { background: #1a1a1a; color: #f4ede0; }
-  .broadsheet .col-act svg { width: 12px; height: 12px; fill: currentColor; }
-
-  /* ============================================================
-     07 — TERMINAL  (TUI: phosphor green on near-black, box-drawing chars)
-     ============================================================ */
-  .term {
-    background: #0d1117;
-    background-image:
-      repeating-linear-gradient(0deg, rgba(134,179,0,.025) 0 1px, transparent 1px 3px);
-    color: #86b300;
-    font-family: "IBM Plex Mono", "Courier New", monospace;
-    padding: .9rem 1.3rem;
-    font-size: .85rem;
-    line-height: 1.45;
-  }
-  .term .row { display: flex; gap: .9rem; align-items: baseline; }
-  .term .row.top {
-    color: #5a7300;
-    border-bottom: 1px dashed #3a4a00;
-    padding-bottom: .35rem;
-    margin-bottom: .5rem;
-  }
-  .term .row.top .crumb { letter-spacing: .15em; }
-  .term .row.top .crumb.active { color: #e6b450; }
-  .term .row.top .blink { animation: blink 1s steps(1) infinite; color: #e6b450; }
-  @keyframes blink { 50% { opacity: 0; } }
-  .term .grid {
-    display: grid;
-    grid-template-columns: minmax(0,auto) minmax(0,1fr) minmax(0,auto);
-    align-items: center;
-    gap: .3rem 1.2rem;
-  }
-  .term .pair {
-    display: inline-flex; gap: .55rem;
-    align-items: baseline;
-  }
-  .term .pair .k { color: #5a7300; }
-  .term .pair .v { color: #e6b450; }
-  .term .pair .v.live { color: #b3e600; }
-  .term .pair .v.live::before {
-    content: '● ';
-    animation: pulse 1.8s ease-in-out infinite;
-  }
-  .term .feed {
-    color: #cfe682;
-    padding: 0 1rem;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .term .feed::before { content: '┤ '; color: #5a7300; }
-  .term .feed::after  { content: ' ├'; color: #5a7300; }
-  .term .actions { display: flex; gap: .25rem; }
-  .term .btn {
-    border: 1px solid #3a4a00;
-    color: #86b300;
-    padding: .25rem .65rem;
-    background: rgba(134,179,0,.04);
-    cursor: pointer;
-    font-family: inherit;
-    font-size: .8rem;
-    letter-spacing: .08em;
-    text-transform: uppercase;
-    transition: all .2s;
-  }
-  .term .btn:hover { background: #86b300; color: #0d1117; }
-  .term .btn.primary {
-    border-color: #e6b450;
-    color: #e6b450;
-  }
-  .term .btn.primary:hover { background: #e6b450; color: #0d1117; }
-  .term .lower {
-    border-top: 1px dashed #3a4a00;
-    margin-top: .55rem;
-    padding-top: .35rem;
-    display: flex; gap: 1.2rem;
-    font-size: .75rem;
-    color: #5a7300;
-  }
-  .term .lower .key { color: #e6b450; }
-
-  /* ============================================================
-     08 — POLAROID  (scrapbook: warm felt, slanted photo cards + tape)
-     ============================================================ */
-  .poly {
-    background:
-      radial-gradient(ellipse at 30% 0%, rgba(255,255,255,.04) 0%, transparent 60%),
-      #2d4a3e;
-    background-image:
-      radial-gradient(ellipse at 30% 0%, rgba(255,255,255,.04) 0%, transparent 60%),
-      repeating-linear-gradient(45deg, rgba(0,0,0,.05) 0 2px, transparent 2px 6px),
-      linear-gradient(180deg, #355649 0%, #2a4438 100%);
-    padding: 1.3rem 1.4rem;
-    color: #f4ecd8;
-    font-family: "Patrick Hand", "Caveat", cursive;
-  }
-  .poly .cards {
-    display: grid;
-    grid-template-columns: minmax(0,auto) minmax(0,1fr) minmax(0,auto);
-    align-items: center;
-    gap: .7rem;
-  }
-  .poly .pgroup { display: flex; gap: .6rem; align-items: center; }
-  .poly .card {
-    background: #f4ecd8;
-    color: #2a1e10;
-    padding: .55rem .55rem 1.05rem;
-    box-shadow: 0 6px 14px rgba(0,0,0,.35), 0 1px 2px rgba(0,0,0,.2);
-    position: relative;
-    min-width: 7rem;
-  }
-  .poly .card.tilt-l { transform: rotate(-3deg); }
-  .poly .card.tilt-r { transform: rotate(2.5deg); }
-  .poly .card.tilt-s { transform: rotate(-1deg); }
-  .poly .card .photo {
-    background: linear-gradient(135deg, #c46b3e 0%, #6a4030 100%);
-    aspect-ratio: 4 / 3;
-    margin-bottom: .4rem;
-    display: flex; align-items: center; justify-content: center;
-    color: #f4ecd8;
-    font-size: .7rem;
-    font-family: "Patrick Hand", cursive;
-    letter-spacing: .1em;
-  }
-  .poly .card .caption {
-    font-family: "Caveat", cursive;
-    font-weight: 600;
-    font-size: 1.05rem;
-    color: #2a1e10;
-    line-height: 1.05;
-    text-align: center;
-  }
-  .poly .card .stat {
-    font-family: "Patrick Hand", cursive;
-    font-size: .72rem;
-    color: #6a5040;
-    text-align: center;
-    margin-top: .15rem;
-  }
-  .poly .card .tape {
-    position: absolute;
-    top: -8px; left: 50%;
-    transform: translateX(-50%) rotate(-2deg);
-    width: 50px; height: 14px;
-    background: linear-gradient(180deg, rgba(255,239,180,.85) 0%, rgba(255,239,180,.6) 100%);
-    border-left: 1px dashed rgba(0,0,0,.1);
-    border-right: 1px dashed rgba(0,0,0,.1);
-  }
-  .poly .title-card {
-    background: #f4ecd8;
-    color: #2a1e10;
-    padding: .8rem 1.2rem 1.2rem;
-    transform: rotate(-.8deg);
-    box-shadow: 0 10px 22px rgba(0,0,0,.4);
-    position: relative;
-    min-width: 0;
-  }
-  .poly .title-card .super {
-    font-family: "Patrick Hand", cursive;
-    font-size: .78rem;
-    letter-spacing: .12em;
-    text-transform: uppercase;
-    color: #8a6048;
-    margin-bottom: .2rem;
-  }
-  .poly .title-card .ttl {
-    font-family: "Caveat", cursive;
-    font-weight: 700;
-    font-size: clamp(1.6rem, 3vw, 2.4rem);
-    line-height: .95;
-    color: #2a1e10;
-    margin: 0;
-  }
-  .poly .title-card .tape {
-    position: absolute;
-    top: -10px; left: 1.2rem;
-    width: 60px; height: 16px;
-    background: linear-gradient(180deg, rgba(255,239,180,.85) 0%, rgba(255,239,180,.6) 100%);
-    transform: rotate(-4deg);
-  }
-  .poly .act {
-    display: inline-flex; align-items: center; gap: .35rem;
-    font-family: "Patrick Hand", cursive;
-    font-size: .95rem;
-    color: #f4ecd8;
-    cursor: pointer;
-    padding: .25rem .55rem;
-    border-bottom: 1.5px dashed rgba(244,236,216,.6);
-    transition: color .25s, border-color .25s;
-  }
-  .poly .act:hover { color: #ffd6a0; border-bottom-color: #ffd6a0; }
-  .poly .act.primary {
-    background: #f4ecd8;
-    color: #2d4a3e;
-    border-bottom: 0;
-    padding: .45rem .85rem;
-    border-radius: 1px;
-    font-weight: 600;
-  }
-  .poly .act.primary:hover { background: #ffd6a0; color: #2d4a3e; }
-  .poly .act svg { width: 13px; height: 13px; fill: currentColor; }
-
-  /* ============================================================
-     09 — BRUTALIST  (concrete grey, black slabs, highlighter yellow)
-     ============================================================ */
-  .brut {
-    background: #6a6a6a;
-    background-image:
-      repeating-linear-gradient(45deg, rgba(0,0,0,.025) 0 2px, transparent 2px 4px),
-      linear-gradient(180deg, #6a6a6a 0%, #585858 100%);
-    color: #f0eee5;
-    font-family: "Inter", "Helvetica Neue", sans-serif;
-  }
-  .brut .bar {
-    display: grid;
-    grid-template-columns: minmax(0,auto) minmax(0,1fr) minmax(0,auto);
-    border-top: 3px solid #000;
-    border-bottom: 3px solid #000;
-    background: #1a1a1a;
-  }
-  .brut .slab {
-    border-right: 2px solid #000;
-    padding: 1rem 1.2rem;
-    background: #4a4a4a;
-    display: flex; flex-direction: column; gap: .2rem;
-    min-height: 70px;
-    justify-content: center;
-  }
-  .brut .slab .lbl {
-    font-family: "Inter", sans-serif;
-    font-weight: 900;
-    font-size: .58rem;
-    letter-spacing: .12em;
-    text-transform: uppercase;
-    color: #f0eee5;
-  }
-  .brut .slab .val {
-    font-family: "Space Mono", monospace;
-    font-weight: 700;
-    font-size: .95rem;
-    color: #ffd700;
-    letter-spacing: 0;
-    font-variant-numeric: tabular-nums;
-  }
-  .brut .slab.role .val { color: #ffd700; }
-  .brut .slab.role { background: #000; }
-  .brut .title-slab {
-    background: #ffd700;
-    color: #1a1a1a;
-    border-left: 2px solid #000;
-    border-right: 2px solid #000;
-    padding: 1rem 1.4rem;
-    display: flex; flex-direction: column;
-    justify-content: center;
-    min-width: 0;
-  }
-  .brut .title-slab .super {
-    font-family: "Inter", sans-serif;
-    font-weight: 900;
-    font-size: .58rem;
-    letter-spacing: .25em;
-    text-transform: uppercase;
-    color: #1a1a1a;
-    margin-bottom: .1rem;
-  }
-  .brut .title-slab .ttl {
-    font-family: "Inter", sans-serif;
-    font-weight: 900;
-    font-size: clamp(1.1rem, 2vw, 1.65rem);
-    letter-spacing: -.02em;
-    text-transform: uppercase;
-    color: #1a1a1a;
-    line-height: 1;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  }
-  .brut .acts { display: flex; }
-  .brut .act {
-    border-left: 2px solid #000;
-    background: #4a4a4a;
-    color: #f0eee5;
-    padding: 0 1.2rem;
-    display: flex; align-items: center; gap: .55rem;
-    font-family: "Inter", sans-serif;
-    font-weight: 900;
-    font-size: .65rem;
-    letter-spacing: .18em;
-    text-transform: uppercase;
-    cursor: pointer;
-    transition: background .15s, color .15s;
-  }
-  .brut .act:hover { background: #ffd700; color: #1a1a1a; }
-  .brut .act.primary { background: #000; color: #ffd700; }
-  .brut .act.primary:hover { background: #ffd700; color: #1a1a1a; }
-  .brut .act svg { width: 14px; height: 14px; fill: currentColor; }
-
-  /* ============================================================
-     10 — BASS  (mid-century: cream paper, cut-paper accents, condensed display)
-     ============================================================ */
-  .bass {
-    background: #f0e6d2;
-    background-image:
-      radial-gradient(ellipse at 100% 100%, rgba(212,160,23,.1) 0%, transparent 45%),
-      repeating-linear-gradient(0deg, rgba(0,0,0,.008) 0 1px, transparent 1px 2px);
-    color: #2a1e10;
-    font-family: "DM Mono", monospace;
-    padding: 1.1rem 1.6rem 1rem;
-    position: relative;
-    overflow: hidden;
-  }
-  .bass::before {
-    content: '';
-    position: absolute;
-    top: 0; left: -10px;
-    width: 70px; height: 100%;
-    background: #d9483e;
-    clip-path: polygon(0 0, 100% 0, 30% 100%, 0 100%);
-    z-index: 0;
-  }
-  .bass::after {
-    content: '';
-    position: absolute;
-    bottom: 0; right: 12%;
-    width: 18px; height: 18px;
-    background: #6a7148;
-    border-radius: 50%;
-    z-index: 0;
-  }
-  .bass .bar {
-    position: relative; z-index: 1;
-    display: grid;
-    grid-template-columns: 1fr auto;
-    align-items: end;
-    gap: 1rem;
-  }
-  .bass .meta-row {
-    grid-column: 1 / -1;
-    display: flex; gap: 2.4rem;
-    align-items: baseline;
-    padding-bottom: .85rem;
-    border-bottom: 2px solid #2a1e10;
-    margin-bottom: .35rem;
-    padding-left: 4.5rem;
-  }
-  .bass .meta {
-    display: flex; flex-direction: column; gap: .05rem;
-  }
-  .bass .meta .lbl {
-    font-family: "DM Mono", monospace;
-    font-size: .58rem;
-    letter-spacing: .3em;
-    text-transform: uppercase;
-    color: #6a5638;
-  }
-  .bass .meta .val {
-    font-family: "Bebas Neue", sans-serif;
-    font-size: 1.2rem;
-    color: #2a1e10;
-    letter-spacing: .04em;
-    line-height: 1;
-  }
-  .bass .meta.role .val { color: #d9483e; }
-  .bass .title-area {
-    grid-column: 1;
-    padding-left: 4.5rem;
-  }
-  .bass .title-area .super {
-    font-family: "DM Mono", monospace;
-    font-size: .6rem;
-    letter-spacing: .35em;
-    text-transform: uppercase;
-    color: #d9483e;
-    margin-bottom: .15rem;
-  }
-  .bass .title-area .ttl {
-    font-family: "Bebas Neue", sans-serif;
-    font-weight: 400;
-    font-size: clamp(2rem, 4vw, 3.2rem);
-    color: #2a1e10;
-    line-height: .95;
-    letter-spacing: .015em;
-  }
-  .bass .acts {
-    grid-column: 2;
-    display: flex;
-    gap: .55rem;
-    align-items: center;
-  }
-  .bass .pill {
-    display: inline-flex; align-items: center; gap: .45rem;
-    background: transparent;
-    border: 1.5px solid #2a1e10;
-    color: #2a1e10;
-    padding: .45rem .95rem;
-    font-family: "Bebas Neue", sans-serif;
-    font-size: .85rem;
-    letter-spacing: .15em;
-    text-transform: uppercase;
-    cursor: pointer;
+    background: rgba(255,255,255,.45); backdrop-filter: blur(8px);
+    border: 1.5px solid rgba(255,255,255,.8);
+    color: #4a2a5e; padding: .5rem 1rem;
+    font-family: "Outfit", sans-serif; font-weight: 500;
+    font-size: .75rem; letter-spacing: .12em; text-transform: lowercase;
+    border-radius: 999px; cursor: pointer;
     transition: all .25s;
   }
-  .bass .pill:hover { background: #2a1e10; color: #f0e6d2; }
-  .bass .pill.primary {
-    background: #d9483e;
-    border-color: #d9483e;
-    color: #f0e6d2;
+  .vapor .vbtn:hover { background: #fff; transform: translateY(-2px); box-shadow: 0 6px 16px rgba(255,102,179,.3); }
+  .vapor .vbtn.primary {
+    background: linear-gradient(135deg, #ff66b3 0%, #b366ff 100%);
+    color: #fff; border-color: transparent;
   }
-  .bass .pill.primary:hover {
-    background: #2a1e10;
-    border-color: #2a1e10;
+  .vapor .vbtn svg { width: 12px; height: 12px; fill: currentColor; }
+
+  /* ============================================================
+     03 — LETTERPRESS  (debossed ink on cotton, heavy slab)
+     ============================================================ */
+  .press {
+    background: #efe9d8;
+    background-image:
+      radial-gradient(circle at 30% 20%, rgba(255,255,255,.5) 0%, transparent 60%),
+      url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence baseFrequency='0.85' numOctaves='2'/><feColorMatrix values='0 0 0 0 .2  0 0 0 0 .15  0 0 0 0 .1  0 0 0 .08 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>"),
+      #efe9d8;
+    color: #1a1208; padding: 1.3rem 1.7rem;
+    font-family: "Roboto Slab", "Crimson Text", serif;
   }
-  .bass .pill svg { width: 13px; height: 13px; fill: currentColor; }
+  .press .bar { display: grid; grid-template-columns: 1fr auto; gap: 1.2rem; align-items: center; }
+  .press .meta-row {
+    grid-column: 1 / -1;
+    display: flex; gap: 2.4rem;
+    padding-bottom: .55rem; margin-bottom: .5rem;
+    border-bottom: 2px solid #1a1208;
+  }
+  .press .label-pair { display: flex; flex-direction: column; gap: .05rem; }
+  .press .label-pair .lbl {
+    font-family: "Roboto Slab", serif; font-weight: 700;
+    font-size: .58rem; letter-spacing: .3em; text-transform: uppercase;
+    color: #5a3a1a;
+  }
+  .press .label-pair .val {
+    font-family: "Roboto Slab", serif; font-weight: 700;
+    font-size: 1rem; color: #1a1208; letter-spacing: .01em;
+    text-shadow: 0 1px 0 rgba(255,255,255,.55);
+  }
+  .press .label-pair.role .val { color: #7a1d10; }
+  .press .title-area .ttl {
+    font-family: "Roboto Slab", serif; font-weight: 900;
+    font-size: clamp(1.8rem, 3.5vw, 2.9rem); line-height: .95;
+    color: #1a1208; letter-spacing: -.01em; text-transform: uppercase;
+    text-shadow:
+      0 1px 0 rgba(255,255,255,.6),
+      inset 0 0 6px rgba(0,0,0,.4);
+  }
+  .press .acts { display: flex; gap: .55rem; flex-direction: column; align-items: flex-end; }
+  .press .pbtn {
+    display: inline-flex; align-items: center; gap: .4rem;
+    background: #1a1208; color: #efe9d8;
+    padding: .4rem 1rem;
+    font-family: "Roboto Slab", serif; font-weight: 700;
+    font-size: .72rem; letter-spacing: .22em; text-transform: uppercase;
+    cursor: pointer; transition: background .2s;
+    box-shadow: 0 2px 0 rgba(0,0,0,.2), inset 0 1px 0 rgba(255,255,255,.05);
+  }
+  .press .pbtn:hover { background: #7a1d10; }
+  .press .pbtn.primary { background: #7a1d10; }
+  .press .pbtn.primary:hover { background: #1a1208; }
+  .press .pbtn svg { width: 12px; height: 12px; fill: currentColor; }
+  .press .pbtn.ghost { background: transparent; color: #1a1208; border: 2px solid #1a1208; box-shadow: none; }
+  .press .pbtn.ghost:hover { background: #1a1208; color: #efe9d8; }
+
+  /* ============================================================
+     04 — SUBWAY  (MTA route bullets, station signage)
+     ============================================================ */
+  .subway {
+    background: #1a1a1a; color: #fff;
+    font-family: "Inter", "Helvetica Neue", sans-serif;
+    padding: 1rem 1.4rem;
+  }
+  .subway .bar {
+    display: grid; grid-template-columns: minmax(0,auto) minmax(0,1fr) minmax(0,auto);
+    gap: 1.3rem; align-items: center;
+  }
+  .subway .routes { display: flex; gap: .55rem; align-items: center; }
+  .subway .bullet {
+    width: 38px; height: 38px; border-radius: 50%;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-family: "Inter", sans-serif; font-weight: 700;
+    font-size: 1.05rem; color: #fff;
+    letter-spacing: -.02em;
+  }
+  .subway .bullet.h { background: #ee352e; }
+  .subway .bullet.bw { background: #00933c; }
+  .subway .bullet.r { background: #ff6319; }
+  .subway .bullet.s { background: #0039a6; }
+  .subway .bullet.txt-dark { color: #1a1a1a; background: #fccc0a; }
+  .subway .stop-label {
+    font-family: "Inter", sans-serif; font-weight: 500;
+    font-size: .7rem; letter-spacing: .04em;
+    color: #aaa; margin-top: 2px;
+  }
+  .subway .route-pair { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+  .subway .station {
+    font-family: "Inter", sans-serif; font-weight: 700;
+    font-size: clamp(1.4rem, 2.6vw, 2rem);
+    text-transform: uppercase; letter-spacing: -.015em; line-height: 1;
+    color: #fff;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .subway .station-meta {
+    font-family: "Inter", sans-serif; font-weight: 400;
+    font-size: .7rem; color: #aaa; letter-spacing: .15em;
+    text-transform: uppercase; margin-top: .25rem;
+  }
+  .subway .acts { display: flex; gap: .45rem; }
+  .subway .sbtn {
+    display: inline-flex; align-items: center; gap: .35rem;
+    background: #fff; color: #1a1a1a;
+    padding: .55rem .95rem;
+    font-family: "Inter", sans-serif; font-weight: 700;
+    font-size: .68rem; letter-spacing: .12em; text-transform: uppercase;
+    cursor: pointer; transition: background .15s;
+  }
+  .subway .sbtn:hover { background: #fccc0a; }
+  .subway .sbtn.primary { background: #ee352e; color: #fff; }
+  .subway .sbtn.primary:hover { background: #c41e1a; }
+  .subway .sbtn svg { width: 12px; height: 12px; fill: currentColor; }
+
+  /* ============================================================
+     05 — COMIC  (Ben-Day dots, POW burst, primary panels)
+     ============================================================ */
+  .comic {
+    background: #fff8e0;
+    background-image: radial-gradient(#f0a020 1.2px, transparent 1.2px);
+    background-size: 10px 10px;
+    color: #1a1a1a;
+    font-family: "Bangers", "Comic Sans MS", sans-serif;
+    padding: 1.1rem 1.5rem; position: relative;
+  }
+  .comic .bar {
+    display: grid; grid-template-columns: minmax(0,auto) minmax(0,1fr) minmax(0,auto);
+    gap: .8rem; align-items: center; position: relative; z-index: 1;
+  }
+  .comic .panel {
+    background: #fff;
+    border: 3px solid #1a1a1a;
+    box-shadow: 4px 4px 0 #1a1a1a;
+    padding: .55rem .95rem;
+    display: flex; flex-direction: column; gap: .1rem;
+  }
+  .comic .panel .lbl {
+    font-family: "Bangers", sans-serif; font-size: .8rem;
+    letter-spacing: .12em; color: #c4001a;
+  }
+  .comic .panel .val {
+    font-family: "Bangers", sans-serif; font-size: 1.2rem;
+    letter-spacing: .04em; color: #1a1a1a;
+  }
+  .comic .panel.role { background: #fcd000; }
+  .comic .panel-group { display: flex; gap: .7rem; }
+  .comic .title-panel {
+    background: #c4001a; color: #fff8e0;
+    border: 3px solid #1a1a1a;
+    box-shadow: 5px 5px 0 #1a1a1a;
+    padding: .65rem 1.4rem; text-align: center;
+    transform: rotate(-.5deg);
+  }
+  .comic .title-panel .super {
+    font-family: "Bangers", sans-serif; font-size: .95rem;
+    letter-spacing: .25em; color: #fcd000;
+  }
+  .comic .title-panel .ttl {
+    font-family: "Bangers", sans-serif;
+    font-size: clamp(1.5rem, 3vw, 2.2rem);
+    letter-spacing: .04em; line-height: 1;
+    -webkit-text-stroke: 1px #1a1a1a;
+  }
+  .comic .burst {
+    position: absolute; top: .5rem; left: 1.2rem;
+    background: #fcd000; color: #1a1a1a;
+    font-family: "Bangers", sans-serif; font-size: 1.4rem;
+    padding: .4rem .7rem; transform: rotate(-12deg);
+    border: 3px solid #1a1a1a;
+    clip-path: polygon(0% 30%, 15% 0%, 35% 25%, 55% 0%, 75% 30%, 100% 10%, 88% 50%, 100% 80%, 70% 70%, 55% 100%, 35% 75%, 15% 100%, 0% 70%);
+    width: 90px; height: 50px;
+    display: flex; align-items: center; justify-content: center;
+    z-index: 2;
+  }
+  .comic .acts { display: flex; gap: .35rem; }
+  .comic .cbtn {
+    background: #fff; color: #1a1a1a;
+    border: 3px solid #1a1a1a;
+    box-shadow: 3px 3px 0 #1a1a1a;
+    padding: .35rem .75rem;
+    font-family: "Bangers", sans-serif; font-size: .85rem;
+    letter-spacing: .08em; cursor: pointer;
+    transition: transform .12s, box-shadow .12s;
+  }
+  .comic .cbtn:hover { transform: translate(-1px,-1px); box-shadow: 4px 4px 0 #1a1a1a; }
+  .comic .cbtn:active { transform: translate(2px,2px); box-shadow: 1px 1px 0 #1a1a1a; }
+  .comic .cbtn.primary { background: #00a058; color: #fff8e0; }
+  .comic .cbtn svg { width: 12px; height: 12px; fill: currentColor; vertical-align: -1px; }
+
+  /* ============================================================
+     06 — HUD  (angular tactical readout, cyan)
+     ============================================================ */
+  .hud {
+    background:
+      radial-gradient(circle at 30% 100%, rgba(0,255,234,.05) 0%, transparent 50%),
+      linear-gradient(180deg, #001a2e 0%, #00060f 100%);
+    color: #88f5e8; font-family: "Share Tech Mono", monospace;
+    padding: .9rem 1.3rem; position: relative;
+  }
+  .hud .bar {
+    display: grid; grid-template-columns: minmax(0,auto) minmax(0,1fr) minmax(0,auto);
+    gap: .85rem; align-items: center;
+  }
+  .hud .hex {
+    clip-path: polygon(8% 0, 100% 0, 92% 100%, 0 100%);
+    background: linear-gradient(135deg, rgba(0,255,234,.15) 0%, rgba(0,255,234,.04) 100%);
+    border: 1px solid rgba(0,255,234,.55);
+    padding: .55rem 1.5rem .55rem 1.2rem;
+    display: flex; flex-direction: column; gap: .05rem;
+    min-width: 7rem;
+  }
+  .hud .hex .lbl {
+    font-family: "Share Tech Mono", monospace; font-size: .58rem;
+    letter-spacing: .22em; color: #00b8a8; text-transform: uppercase;
+  }
+  .hud .hex .val {
+    font-family: "Orbitron", sans-serif; font-weight: 500;
+    font-size: .95rem; color: #00ffea; letter-spacing: .08em;
+    text-shadow: 0 0 6px rgba(0,255,234,.6);
+  }
+  .hud .hex.live .val::before { content: '◢ '; color: #ff8a3d; }
+  .hud .row { display: flex; gap: .35rem; }
+  .hud .title-hex {
+    background: linear-gradient(135deg, rgba(0,255,234,.08) 0%, rgba(0,255,234,.02) 100%);
+    border: 1px solid rgba(0,255,234,.4);
+    clip-path: polygon(3% 0, 100% 0, 97% 100%, 0 100%);
+    padding: .65rem 2rem; text-align: center;
+    display: flex; flex-direction: column;
+    min-width: 0;
+  }
+  .hud .title-hex .super {
+    font-family: "Share Tech Mono", monospace; font-size: .6rem;
+    letter-spacing: .35em; color: #ff8a3d; text-transform: uppercase;
+  }
+  .hud .title-hex .ttl {
+    font-family: "Orbitron", sans-serif; font-weight: 700;
+    font-size: clamp(1.1rem, 2vw, 1.65rem);
+    color: #fff; letter-spacing: .12em; text-transform: uppercase;
+    text-shadow: 0 0 12px rgba(0,255,234,.45);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .hud .hbtn {
+    background: rgba(0,255,234,.1); border: 1px solid rgba(0,255,234,.6);
+    clip-path: polygon(10% 0, 100% 0, 90% 100%, 0 100%);
+    color: #00ffea; padding: .45rem 1.1rem;
+    font-family: "Share Tech Mono", monospace;
+    font-size: .72rem; letter-spacing: .18em; text-transform: uppercase;
+    cursor: pointer; transition: all .2s;
+  }
+  .hud .hbtn:hover { background: #00ffea; color: #001a2e; }
+  .hud .hbtn.primary { background: rgba(255,138,61,.2); border-color: #ff8a3d; color: #ff8a3d; }
+  .hud .hbtn.primary:hover { background: #ff8a3d; color: #001a2e; }
+
+  /* ============================================================
+     07 — CASINO  (Vegas neon script + gold)
+     ============================================================ */
+  .casino {
+    background:
+      radial-gradient(ellipse at 50% 100%, rgba(212,160,23,.2) 0%, transparent 60%),
+      radial-gradient(ellipse at 50% 0%, rgba(204,30,52,.15) 0%, transparent 50%),
+      #0c0606;
+    color: #f5d99e; padding: 1.2rem 1.6rem;
+    font-family: "Cinzel", serif; position: relative;
+  }
+  .casino .bulbs {
+    display: flex; gap: 8px; margin-bottom: .85rem;
+    justify-content: center;
+  }
+  .casino .bulbs .b {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: #fde08a; box-shadow: 0 0 10px rgba(253,224,138,.9);
+  }
+  .casino .bulbs .b.off { background: #6b4a20; box-shadow: none; }
+  .casino .bar {
+    display: grid; grid-template-columns: 1fr auto;
+    gap: 1.2rem; align-items: end;
+  }
+  .casino .meta-row {
+    grid-column: 1 / -1;
+    display: flex; gap: 2rem;
+    padding-bottom: .85rem;
+    border-bottom: 1.5px solid #d4a017;
+    margin-bottom: .35rem;
+  }
+  .casino .lp { display: flex; flex-direction: column; }
+  .casino .lp .lbl {
+    font-family: "Cinzel", serif; font-weight: 500;
+    font-size: .58rem; letter-spacing: .35em; color: #d4a017;
+    text-transform: uppercase;
+  }
+  .casino .lp .val {
+    font-family: "Cinzel", serif; font-weight: 500;
+    font-size: 1rem; color: #f5d99e; letter-spacing: .04em;
+  }
+  .casino .lp.role .val { color: #ff6b5e; }
+  .casino .title-area .super {
+    font-family: "Cinzel", serif; font-weight: 500;
+    font-size: .72rem; letter-spacing: .42em; color: #d4a017;
+    text-transform: uppercase;
+  }
+  .casino .title-area .ttl {
+    font-family: "Allura", "Tangerine", cursive;
+    font-weight: 400; font-size: clamp(2.4rem, 5vw, 3.8rem);
+    line-height: 1; color: #fde08a;
+    text-shadow:
+      0 0 10px rgba(253,224,138,.6),
+      0 0 24px rgba(253,224,138,.3),
+      0 2px 0 rgba(0,0,0,.4);
+  }
+  .casino .acts { display: flex; gap: .45rem; flex-direction: column; align-items: flex-end; }
+  .casino .acts .actrow { display: flex; gap: .4rem; }
+  .casino .casbtn {
+    background: linear-gradient(180deg, #d4a017 0%, #8a6900 100%);
+    color: #0c0606; padding: .45rem 1.05rem;
+    font-family: "Cinzel", serif; font-weight: 500;
+    font-size: .72rem; letter-spacing: .25em; text-transform: uppercase;
+    cursor: pointer;
+    box-shadow: 0 1px 0 rgba(255,255,255,.25) inset, 0 -1px 0 rgba(0,0,0,.3) inset, 0 0 8px rgba(212,160,23,.5);
+    transition: all .2s;
+  }
+  .casino .casbtn:hover {
+    background: linear-gradient(180deg, #fde08a 0%, #d4a017 100%);
+    box-shadow: 0 0 16px rgba(253,224,138,.7);
+  }
+  .casino .casbtn.primary {
+    background: linear-gradient(180deg, #ff6b5e 0%, #c41e1a 100%);
+    color: #fff;
+    box-shadow: 0 0 12px rgba(204,30,52,.5);
+  }
+  .casino .casbtn.primary:hover { background: linear-gradient(180deg, #ff8a7e 0%, #ff6b5e 100%); }
+  .casino .casbtn svg { width: 11px; height: 11px; fill: currentColor; vertical-align: -1px; }
+
+  /* ============================================================
+     08 — TAPE DECK  (70s hi-fi: wood-grain, VU meters, brushed silver)
+     ============================================================ */
+  .deck {
+    background:
+      repeating-linear-gradient(90deg, rgba(74,46,28,.5) 0 1px, transparent 1px 4px, rgba(58,36,22,.5) 4px 5px, transparent 5px 12px),
+      linear-gradient(180deg, #6a4830 0%, #4a3220 100%);
+    color: #e8ddc0; padding: 1.2rem 1.5rem;
+    font-family: "Fjalla One", sans-serif;
+  }
+  .deck .bar {
+    display: grid; grid-template-columns: minmax(0,auto) minmax(0,1fr) minmax(0,auto);
+    gap: 1rem; align-items: center;
+    background: linear-gradient(180deg, #ddd6c8 0%, #c8c0b0 50%, #a8a090 100%);
+    border-radius: 4px;
+    border: 2px solid #2a1e10;
+    padding: .85rem 1.1rem;
+    box-shadow: inset 0 1px 2px rgba(255,255,255,.6), inset 0 -2px 4px rgba(0,0,0,.25), 0 4px 10px rgba(0,0,0,.4);
+  }
+  .deck .vu {
+    background: #0a0f0a; border: 1px solid #1a1a1a;
+    border-radius: 3px; padding: .35rem .55rem;
+    min-width: 7rem; display: flex; flex-direction: column; gap: .15rem;
+    box-shadow: inset 0 0 6px rgba(0,0,0,.7);
+  }
+  .deck .vu .lbl {
+    font-family: "Roboto Slab", serif; font-weight: 700;
+    font-size: .55rem; letter-spacing: .25em; text-transform: uppercase;
+    color: #cce680;
+  }
+  .deck .vu .bar-track {
+    height: 8px; background: #1a1a1a;
+    border-radius: 1px; position: relative; overflow: hidden;
+    border: 1px solid #000;
+  }
+  .deck .vu .bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #cce680 0%, #cce680 60%, #f0c14b 75%, #ff4b3e 100%);
+    width: 70%;
+    box-shadow: 0 0 6px rgba(204,230,128,.5);
+  }
+  .deck .vu .val {
+    font-family: "Roboto Slab", serif; font-weight: 700;
+    font-size: .65rem; color: #cce680; letter-spacing: .08em;
+  }
+  .deck .vu.live .val { color: #f0c14b; }
+  .deck .title-block {
+    text-align: center; min-width: 0;
+    padding: .25rem .5rem;
+  }
+  .deck .title-block .super {
+    font-family: "Fjalla One", sans-serif;
+    font-size: .58rem; letter-spacing: .35em;
+    color: #4a3220; text-transform: uppercase;
+  }
+  .deck .title-block .ttl {
+    font-family: "Fjalla One", sans-serif;
+    font-size: clamp(1.2rem, 2.4vw, 1.9rem);
+    color: #2a1e10; letter-spacing: .02em;
+    text-shadow: 0 1px 0 rgba(255,255,255,.5);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    text-transform: uppercase;
+  }
+  .deck .knobs { display: flex; gap: .55rem; align-items: center; }
+  .deck .knob {
+    width: 38px; height: 38px; border-radius: 50%;
+    background:
+      radial-gradient(circle at 35% 30%, #f0e8d0 0%, #a8a090 60%, #6a6258 100%);
+    border: 2px solid #2a1e10;
+    box-shadow: 0 2px 4px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.5);
+    position: relative; cursor: pointer;
+    transition: transform .25s;
+  }
+  .deck .knob::after {
+    content: ''; position: absolute;
+    top: 4px; left: 50%; width: 3px; height: 12px;
+    background: #1a1a1a; transform: translateX(-50%);
+    border-radius: 1px;
+  }
+  .deck .knob:hover { transform: rotate(35deg); }
+  .deck .knob.primary {
+    background: radial-gradient(circle at 35% 30%, #ff8a3d 0%, #c4001a 70%, #6a0010 100%);
+  }
+  .deck .knob.primary::after { background: #fff8e0; }
+  .deck .knob .label {
+    position: absolute; top: calc(100% + 4px); left: 50%;
+    transform: translateX(-50%);
+    font-family: "Roboto Slab", serif; font-weight: 700;
+    font-size: .52rem; letter-spacing: .15em; text-transform: uppercase;
+    color: #2a1e10; white-space: nowrap;
+  }
+
+  /* ============================================================
+     09 — VINYL  (LP record motif, grooves, sleeve)
+     ============================================================ */
+  .vinyl {
+    background: #1a0a08;
+    background-image:
+      radial-gradient(ellipse at 75% 50%, rgba(212,90,30,.18) 0%, transparent 50%);
+    color: #e8c8a0; padding: 1.3rem 1.6rem;
+    font-family: "Anton", sans-serif;
+    position: relative; overflow: hidden;
+  }
+  .vinyl .disc {
+    position: absolute; right: -60px; top: 50%; transform: translateY(-50%);
+    width: 220px; height: 220px; border-radius: 50%;
+    background:
+      radial-gradient(circle, #d44a1e 0% 12%, transparent 12% 14%, #1a0a08 14% 100%),
+      repeating-radial-gradient(circle, rgba(255,255,255,.04) 0 1px, transparent 1px 3px);
+    box-shadow: 0 0 30px rgba(0,0,0,.6), inset 0 0 30px rgba(0,0,0,.8);
+    z-index: 0;
+  }
+  .vinyl .bar {
+    position: relative; z-index: 1;
+    display: grid; grid-template-columns: 1fr auto;
+    gap: 1rem; align-items: end;
+    padding-right: 200px;
+  }
+  .vinyl .side-strip {
+    grid-column: 1 / -1;
+    display: flex; gap: 1.8rem; align-items: baseline;
+    padding-bottom: .55rem;
+    border-bottom: 1px solid #4a2820;
+    margin-bottom: .35rem;
+  }
+  .vinyl .ls { display: flex; flex-direction: column; gap: 0; }
+  .vinyl .ls .lbl {
+    font-family: "DM Mono", monospace; font-size: .58rem;
+    color: #a86a40; letter-spacing: .35em; text-transform: uppercase;
+  }
+  .vinyl .ls .val {
+    font-family: "Anton", sans-serif; font-size: 1rem;
+    color: #e8c8a0; letter-spacing: .06em;
+  }
+  .vinyl .ls.role .val { color: #d44a1e; }
+  .vinyl .sleeve {
+    grid-column: 1;
+  }
+  .vinyl .sleeve .super {
+    font-family: "DM Mono", monospace; font-size: .68rem;
+    color: #d44a1e; letter-spacing: .4em; text-transform: uppercase;
+    margin-bottom: .15rem;
+  }
+  .vinyl .sleeve .ttl {
+    font-family: "Anton", sans-serif;
+    font-size: clamp(1.8rem, 3.8vw, 2.8rem); line-height: .92;
+    color: #f4d8a8; letter-spacing: .02em;
+    text-transform: uppercase;
+  }
+  .vinyl .acts {
+    grid-column: 2;
+    display: flex; gap: .35rem;
+  }
+  .vinyl .vbtn {
+    background: transparent; border: 1.5px solid #d44a1e;
+    color: #d44a1e; padding: .45rem .85rem;
+    font-family: "Anton", sans-serif;
+    font-size: .8rem; letter-spacing: .18em; text-transform: uppercase;
+    cursor: pointer; transition: all .2s;
+    display: inline-flex; align-items: center; gap: .35rem;
+  }
+  .vinyl .vbtn:hover { background: #d44a1e; color: #1a0a08; }
+  .vinyl .vbtn.primary { background: #d44a1e; color: #1a0a08; }
+  .vinyl .vbtn.primary:hover { background: #f4d8a8; border-color: #f4d8a8; }
+  .vinyl .vbtn svg { width: 12px; height: 12px; fill: currentColor; }
+
+  /* ============================================================
+     10 — PLAYBILL  (theater program: gold trim, italic display, three acts)
+     ============================================================ */
+  .play {
+    background: #f7e6a0;
+    background-image:
+      linear-gradient(180deg, rgba(212,160,23,.15) 0%, transparent 30%),
+      url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence baseFrequency='0.7'/><feColorMatrix values='0 0 0 0 .3  0 0 0 0 .25  0 0 0 0 .15  0 0 0 .04 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+    color: #2a1e10; padding: 1.3rem 1.7rem;
+    font-family: "Cinzel", serif; position: relative;
+  }
+  .play::before, .play::after {
+    content: ''; position: absolute;
+    left: 1.7rem; right: 1.7rem; height: 2px;
+    background: linear-gradient(90deg, transparent, #d4a017, transparent);
+  }
+  .play::before { top: 4.2rem; }
+  .play::after  { top: 4.5rem; }
+  .play .masthead {
+    text-align: center; margin-bottom: 1.6rem;
+  }
+  .play .masthead .producers {
+    font-family: "Cinzel", serif; font-weight: 400;
+    font-size: .58rem; letter-spacing: .42em; color: #7a5818;
+    text-transform: uppercase;
+  }
+  .play .masthead .name {
+    font-family: "UnifrakturCook", serif; font-weight: 700;
+    font-size: clamp(1.6rem, 3vw, 2.3rem); color: #2a1e10;
+    line-height: 1; margin-top: .15rem;
+  }
+  .play .bar { display: grid; grid-template-columns: 1fr auto; align-items: end; gap: 1rem; }
+  .play .cast-row {
+    grid-column: 1 / -1; display: flex; gap: 2.4rem;
+    justify-content: center;
+    padding: .55rem 0;
+    border-top: 1px solid #c4951c; border-bottom: 1px solid #c4951c;
+    margin-bottom: .6rem;
+  }
+  .play .cast { text-align: center; }
+  .play .cast .role-name {
+    font-family: "Cinzel", serif; font-weight: 500;
+    font-size: .58rem; letter-spacing: .4em; color: #7a5818;
+    text-transform: uppercase;
+  }
+  .play .cast .actor {
+    font-family: "Cormorant Garamond", serif; font-style: italic;
+    font-weight: 500; font-size: 1rem; color: #2a1e10;
+  }
+  .play .title-area {
+    grid-column: 1 / -1; text-align: center;
+  }
+  .play .title-area .ttl {
+    font-family: "Cormorant Garamond", serif; font-style: italic;
+    font-weight: 600;
+    font-size: clamp(2rem, 4vw, 3.2rem); line-height: 1;
+    color: #2a1e10; letter-spacing: -.005em;
+  }
+  .play .acts-line {
+    text-align: center; margin-top: .35rem;
+    font-family: "Cinzel", serif; font-weight: 400;
+    font-size: .68rem; letter-spacing: .35em; color: #7a5818;
+    text-transform: uppercase;
+  }
+  .play .ushers {
+    grid-column: 1 / -1;
+    display: flex; gap: .55rem; justify-content: center;
+    margin-top: .9rem;
+  }
+  .play .usher {
+    display: inline-flex; align-items: center; gap: .4rem;
+    background: transparent;
+    border: 1.5px solid #d4a017;
+    color: #2a1e10;
+    padding: .4rem 1rem;
+    font-family: "Cinzel", serif; font-weight: 500;
+    font-size: .7rem; letter-spacing: .25em; text-transform: uppercase;
+    cursor: pointer; transition: all .2s;
+  }
+  .play .usher:hover { background: #d4a017; color: #f7e6a0; }
+  .play .usher.primary { background: #2a1e10; color: #d4a017; border-color: #2a1e10; }
+  .play .usher.primary:hover { background: #d4a017; color: #2a1e10; }
+  .play .usher svg { width: 12px; height: 12px; fill: currentColor; }
+
+  /* ============================================================
+     11 — VHS  (90s box art, scanlines, chunky type)
+     ============================================================ */
+  .vhs {
+    background:
+      repeating-linear-gradient(0deg, rgba(255,255,255,.04) 0 1px, transparent 1px 3px),
+      linear-gradient(135deg, #ff2db4 0%, #6b1a8a 30%, #00b3ff 100%);
+    color: #fff; padding: 1.2rem 1.5rem;
+    font-family: "Bungee", "Impact", sans-serif;
+    position: relative;
+  }
+  .vhs::before {
+    content: 'CH 03'; position: absolute; top: .5rem; right: 1rem;
+    font-family: "VT323", monospace; font-size: 1.1rem;
+    color: #ffec3d; letter-spacing: .25em;
+    text-shadow: 2px 2px 0 #1a1a1a;
+  }
+  .vhs .bar {
+    display: grid; grid-template-columns: minmax(0,auto) minmax(0,1fr) minmax(0,auto);
+    gap: 1rem; align-items: end;
+  }
+  .vhs .stat-row {
+    grid-column: 1 / -1; display: flex; gap: 1.4rem;
+    padding-bottom: .55rem; margin-bottom: .35rem;
+    border-bottom: 3px solid #ffec3d;
+  }
+  .vhs .stat { display: flex; flex-direction: column; gap: .05rem; }
+  .vhs .stat .lbl {
+    font-family: "VT323", monospace; font-size: .9rem;
+    color: #ffec3d; letter-spacing: .2em; text-transform: uppercase;
+  }
+  .vhs .stat .val {
+    font-family: "Bungee", sans-serif; font-size: .82rem;
+    color: #fff; letter-spacing: .04em;
+    text-shadow: 2px 2px 0 #1a1a1a;
+  }
+  .vhs .stat.role .val { color: #ffec3d; }
+  .vhs .title-block .super {
+    font-family: "VT323", monospace; font-size: 1rem;
+    color: #ffec3d; letter-spacing: .35em;
+    text-shadow: 1px 1px 0 #1a1a1a;
+  }
+  .vhs .title-block .ttl {
+    font-family: "Bungee", sans-serif;
+    font-size: clamp(1.4rem, 2.8vw, 2.2rem); line-height: 1;
+    color: #fff; letter-spacing: 0;
+    text-shadow:
+      3px 3px 0 #1a1a1a,
+      6px 6px 0 #ff2db4;
+    text-transform: uppercase;
+  }
+  .vhs .acts { display: flex; gap: .35rem; }
+  .vhs .tape-btn {
+    background: #1a1a1a; color: #ffec3d;
+    border: 2px solid #ffec3d;
+    padding: .4rem .85rem;
+    font-family: "Bungee", sans-serif; font-size: .68rem;
+    letter-spacing: .12em; text-transform: uppercase;
+    cursor: pointer; transition: all .15s;
+    box-shadow: 3px 3px 0 #1a1a1a;
+  }
+  .vhs .tape-btn:hover { transform: translate(-1px,-1px); box-shadow: 4px 4px 0 #1a1a1a; }
+  .vhs .tape-btn.primary { background: #ffec3d; color: #1a1a1a; }
+  .vhs .tape-btn svg { width: 11px; height: 11px; fill: currentColor; vertical-align: -1px; }
+
+  /* ============================================================
+     12 — SPARTAN  (Wallpaper*/Apartamento minimalism)
+     ============================================================ */
+  .spartan {
+    background: #fafaf7; color: #1a1a1a;
+    font-family: "Inter", sans-serif;
+    padding: 2.2rem 2.8rem 1.8rem;
+  }
+  .spartan .bar { display: grid; grid-template-columns: 1fr 2fr 1fr; gap: 3rem; align-items: end; }
+  .spartan .col-meta { display: flex; flex-direction: column; gap: .65rem; }
+  .spartan .row-meta { display: flex; gap: 1.6rem; }
+  .spartan .row-meta .lbl {
+    font-family: "Inter", sans-serif; font-weight: 400;
+    font-size: .55rem; letter-spacing: .3em; text-transform: uppercase;
+    color: #999; width: 5rem; flex-shrink: 0;
+  }
+  .spartan .row-meta .val {
+    font-family: "Inter", sans-serif; font-weight: 300;
+    font-size: .85rem; color: #1a1a1a; letter-spacing: 0;
+  }
+  .spartan .row-meta.role .val { color: #b8503f; }
+  .spartan .title-col { text-align: left; }
+  .spartan .title-col .num {
+    font-family: "Inter", sans-serif; font-weight: 300;
+    font-size: .55rem; letter-spacing: .35em; color: #999;
+    text-transform: uppercase; margin-bottom: .35rem;
+  }
+  .spartan .title-col .ttl {
+    font-family: "Cormorant Garamond", serif; font-weight: 300;
+    font-size: clamp(2rem, 4vw, 3.4rem); line-height: 1;
+    color: #1a1a1a; letter-spacing: -.02em;
+  }
+  .spartan .acts { display: flex; flex-direction: column; gap: .35rem; align-items: flex-end; }
+  .spartan .link {
+    font-family: "Inter", sans-serif; font-weight: 400;
+    font-size: .65rem; letter-spacing: .25em; text-transform: uppercase;
+    color: #1a1a1a; text-decoration: none;
+    border-bottom: 1px solid #1a1a1a;
+    padding-bottom: 2px; cursor: pointer;
+    transition: all .25s;
+  }
+  .spartan .link:hover { color: #b8503f; border-bottom-color: #b8503f; }
+  .spartan .link.primary {
+    border-bottom: 2px solid #b8503f;
+    color: #b8503f;
+    font-weight: 500;
+  }
+
+  /* ============================================================
+     13 — Y2K  (chrome + glass bubble buttons, frutiger aero)
+     ============================================================ */
+  .y2k {
+    background:
+      radial-gradient(ellipse at 20% 30%, rgba(255,255,255,.4) 0%, transparent 50%),
+      linear-gradient(160deg, #6ec0ff 0%, #b0e5ff 30%, #d8f0ff 60%, #ffe6f0 100%);
+    color: #003a6b; padding: 1.2rem 1.5rem;
+    font-family: "Audiowide", sans-serif;
+  }
+  .y2k .bar {
+    display: grid; grid-template-columns: minmax(0,auto) minmax(0,1fr) minmax(0,auto);
+    gap: .8rem; align-items: center;
+  }
+  .y2k .bubble {
+    background:
+      linear-gradient(180deg, rgba(255,255,255,.85) 0%, rgba(255,255,255,.45) 50%, rgba(180,220,255,.6) 100%);
+    border: 1px solid rgba(255,255,255,.85);
+    border-radius: 18px;
+    padding: .55rem 1.1rem;
+    display: flex; flex-direction: column; gap: .1rem;
+    box-shadow:
+      0 2px 6px rgba(0,80,180,.18),
+      inset 0 1px 0 rgba(255,255,255,.9),
+      inset 0 -8px 12px rgba(180,220,255,.4);
+    backdrop-filter: blur(4px);
+  }
+  .y2k .bubble .lbl {
+    font-family: "Audiowide", sans-serif; font-size: .58rem;
+    letter-spacing: .15em; color: #3a78b8; text-transform: uppercase;
+  }
+  .y2k .bubble .val {
+    font-family: "Audiowide", sans-serif; font-size: .85rem;
+    color: #003a6b; letter-spacing: .04em;
+    text-shadow: 0 1px 0 rgba(255,255,255,.6);
+  }
+  .y2k .bubble.role .val::before { content: '✦ '; color: #ff5ec0; }
+  .y2k .br { display: flex; gap: .55rem; }
+  .y2k .title-bubble {
+    background:
+      linear-gradient(180deg, rgba(255,255,255,.95) 0%, rgba(255,255,255,.55) 50%, rgba(200,230,255,.6) 100%);
+    border: 1.5px solid rgba(255,255,255,.9);
+    border-radius: 22px;
+    padding: .65rem 1.6rem; text-align: center;
+    box-shadow:
+      0 4px 14px rgba(0,80,180,.22),
+      inset 0 1px 0 rgba(255,255,255,1),
+      inset 0 -10px 16px rgba(180,220,255,.45);
+    min-width: 0;
+  }
+  .y2k .title-bubble .super {
+    font-family: "Audiowide", sans-serif; font-size: .58rem;
+    letter-spacing: .3em; color: #ff5ec0; text-transform: uppercase;
+  }
+  .y2k .title-bubble .ttl {
+    font-family: "Audiowide", sans-serif;
+    font-size: clamp(1.2rem, 2.4vw, 1.8rem); line-height: 1;
+    color: #003a6b; letter-spacing: .04em;
+    text-shadow: 0 2px 0 rgba(255,255,255,.7);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .y2k .yb {
+    background: linear-gradient(180deg, #ffffff 0%, #c8e0ff 100%);
+    border: 1px solid rgba(255,255,255,.85);
+    border-radius: 999px;
+    color: #003a6b;
+    padding: .55rem 1.05rem;
+    font-family: "Audiowide", sans-serif;
+    font-size: .68rem; letter-spacing: .15em; text-transform: uppercase;
+    cursor: pointer; transition: all .2s;
+    box-shadow: 0 2px 6px rgba(0,80,180,.2), inset 0 1px 0 rgba(255,255,255,.95);
+  }
+  .y2k .yb:hover { transform: translateY(-1px); box-shadow: 0 4px 10px rgba(0,80,180,.3), inset 0 1px 0 rgba(255,255,255,1); }
+  .y2k .yb.primary {
+    background: linear-gradient(180deg, #ff8acc 0%, #ff5ec0 100%);
+    color: #fff;
+    box-shadow: 0 2px 8px rgba(255,94,192,.4), inset 0 1px 0 rgba(255,255,255,.6);
+  }
+  .y2k .yb svg { width: 10px; height: 10px; fill: currentColor; vertical-align: -1px; }
+
+  /* ============================================================
+     14 — SKETCHBOOK  (pencil + grid paper)
+     ============================================================ */
+  .sketch {
+    background: #f4f0e4;
+    background-image:
+      linear-gradient(0deg, rgba(80,90,120,.08) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(80,90,120,.08) 1px, transparent 1px);
+    background-size: 24px 24px;
+    color: #2a2620;
+    padding: 1.4rem 1.7rem;
+    font-family: "Architects Daughter", "Caveat", cursive;
+  }
+  .sketch .bar { display: grid; grid-template-columns: 1fr auto; gap: 1.2rem; align-items: end; }
+  .sketch .meta-row {
+    grid-column: 1 / -1;
+    display: flex; gap: 2rem; flex-wrap: wrap;
+    padding-bottom: .65rem; margin-bottom: .4rem;
+    border-bottom: 2px solid #2a2620;
+    border-image: linear-gradient(90deg, transparent, #2a2620 10%, #2a2620 90%, transparent) 1;
+  }
+  .sketch .note { display: flex; flex-direction: column; }
+  .sketch .note .lbl {
+    font-family: "Architects Daughter", cursive;
+    font-size: .68rem; letter-spacing: .15em;
+    color: #6a5a48; text-transform: uppercase;
+  }
+  .sketch .note .val {
+    font-family: "Caveat", cursive; font-weight: 600;
+    font-size: 1.15rem; color: #2a2620;
+    line-height: 1.1;
+  }
+  .sketch .note.role .val { color: #c4001a; text-decoration: underline; text-decoration-thickness: 1.5px; text-underline-offset: 3px; }
+  .sketch .title-area .super {
+    font-family: "Architects Daughter", cursive;
+    font-size: .8rem; color: #6a5a48; letter-spacing: .1em;
+  }
+  .sketch .title-area .ttl {
+    font-family: "Caveat", cursive; font-weight: 700;
+    font-size: clamp(2rem, 4vw, 3.2rem); line-height: 1;
+    color: #2a2620; margin: 0;
+  }
+  .sketch .title-area .ttl::before { content: '✎ '; color: #6a5a48; font-size: .7em; vertical-align: middle; }
+  .sketch .acts { display: flex; gap: .5rem; flex-direction: column; align-items: flex-end; }
+  .sketch .actrow { display: flex; gap: .35rem; }
+  .sketch .sk {
+    display: inline-flex; align-items: center; gap: .35rem;
+    background: rgba(244,240,228,.7);
+    border: 2px solid #2a2620;
+    border-radius: 14px 22px 14px 24px;
+    color: #2a2620; padding: .35rem .85rem;
+    font-family: "Architects Daughter", cursive;
+    font-size: .72rem; letter-spacing: .04em;
+    cursor: pointer; transition: all .25s;
+  }
+  .sketch .sk:hover { background: #2a2620; color: #f4f0e4; }
+  .sketch .sk.primary {
+    background: #c4001a; color: #f4f0e4;
+    border-color: #c4001a;
+    border-radius: 22px 14px 24px 14px;
+  }
+  .sketch .sk.primary:hover { background: #2a2620; border-color: #2a2620; }
+  .sketch .sk svg { width: 11px; height: 11px; fill: currentColor; }
+
+  /* ============================================================
+     15 — RISOGRAPH  (duotone overprint, grain, misregister)
+     ============================================================ */
+  .riso {
+    background: #f7f1da;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence baseFrequency='0.95' numOctaves='2'/><feColorMatrix values='0 0 0 0 .3  0 0 0 0 .15  0 0 0 0 .35  0 0 0 .15 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+    color: #1a1a3a; padding: 1.2rem 1.5rem;
+    font-family: "Bowlby One", sans-serif; position: relative;
+  }
+  .riso::before {
+    content: ''; position: absolute;
+    bottom: -10px; left: 5%; width: 30%; height: 60%;
+    background: #ff3a78; mix-blend-mode: multiply;
+    border-radius: 50%;
+    opacity: .35;
+  }
+  .riso::after {
+    content: ''; position: absolute;
+    top: -10px; right: 8%; width: 25%; height: 70%;
+    background: #1a47ee; mix-blend-mode: multiply;
+    border-radius: 50%; opacity: .35;
+  }
+  .riso .bar {
+    position: relative; z-index: 1;
+    display: grid; grid-template-columns: 1fr auto; gap: 1rem; align-items: end;
+  }
+  .riso .stat-row {
+    grid-column: 1 / -1;
+    display: flex; gap: 1.6rem; flex-wrap: wrap;
+    padding-bottom: .55rem; margin-bottom: .35rem;
+    border-bottom: 3px solid #1a1a3a;
+  }
+  .riso .s { display: flex; flex-direction: column; }
+  .riso .s .lbl {
+    font-family: "Roboto Mono", monospace; font-weight: 500;
+    font-size: .58rem; letter-spacing: .25em; text-transform: uppercase;
+    color: #ff3a78;
+  }
+  .riso .s .val {
+    font-family: "Bowlby One", sans-serif; font-size: 1rem;
+    color: #1a1a3a; letter-spacing: 0;
+    text-shadow: 2px 2px 0 #ff3a78;
+  }
+  .riso .s.role .val { color: #1a47ee; text-shadow: 2px 2px 0 #ff3a78; }
+  .riso .title-area .super {
+    font-family: "Roboto Mono", monospace; font-size: .65rem;
+    color: #ff3a78; letter-spacing: .35em;
+  }
+  .riso .title-area .ttl {
+    font-family: "Bowlby One", sans-serif;
+    font-size: clamp(1.8rem, 3.6vw, 2.8rem); line-height: 1;
+    color: #1a1a3a; letter-spacing: -.005em;
+    text-shadow: 4px 4px 0 #ff3a78, 8px 8px 0 #1a47ee;
+    text-transform: uppercase;
+  }
+  .riso .acts { display: flex; gap: .4rem; flex-direction: column; align-items: flex-end; }
+  .riso .actrow { display: flex; gap: .35rem; }
+  .riso .rb {
+    display: inline-flex; align-items: center; gap: .35rem;
+    background: #f7f1da; color: #1a1a3a;
+    border: 2.5px solid #1a1a3a;
+    padding: .4rem .85rem;
+    font-family: "Roboto Mono", monospace; font-weight: 500;
+    font-size: .65rem; letter-spacing: .15em; text-transform: uppercase;
+    cursor: pointer; transition: all .15s;
+  }
+  .riso .rb:hover { background: #1a47ee; color: #f7f1da; border-color: #1a47ee; }
+  .riso .rb.primary { background: #ff3a78; border-color: #ff3a78; color: #f7f1da; }
+  .riso .rb.primary:hover { background: #1a1a3a; border-color: #1a1a3a; }
+  .riso .rb svg { width: 11px; height: 11px; fill: currentColor; }
+
+  /* ============================================================
+     16 — SOVIET  (propaganda poster: heavy red, black silhouette)
+     ============================================================ */
+  .soviet {
+    background:
+      linear-gradient(120deg, #c41e1a 0%, #c41e1a 55%, #f0e8d0 55%, #f0e8d0 100%);
+    color: #1a1a1a; padding: 1.3rem 1.7rem;
+    font-family: "Oswald", sans-serif;
+    position: relative; overflow: hidden;
+  }
+  .soviet::before {
+    content: ''; position: absolute;
+    top: 50%; left: 35%; width: 80px; height: 80px;
+    background: #1a1a1a; transform: translateY(-50%) rotate(45deg);
+    z-index: 0;
+  }
+  .soviet .bar {
+    position: relative; z-index: 1;
+    display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; align-items: end;
+  }
+  .soviet .left-meta {
+    color: #f0e8d0;
+    display: flex; flex-direction: column; gap: .35rem;
+  }
+  .soviet .left-meta .row {
+    display: flex; gap: .85rem; align-items: baseline;
+    border-bottom: 1px solid rgba(240,232,208,.4);
+    padding-bottom: .15rem;
+  }
+  .soviet .left-meta .lbl {
+    font-family: "Oswald", sans-serif; font-weight: 500;
+    font-size: .65rem; letter-spacing: .3em; color: #f0c14b;
+    text-transform: uppercase;
+    width: 5rem;
+  }
+  .soviet .left-meta .val {
+    font-family: "Oswald", sans-serif; font-weight: 700;
+    font-size: .95rem; color: #f0e8d0; letter-spacing: .04em;
+    text-transform: uppercase;
+  }
+  .soviet .right-side {
+    text-align: right;
+  }
+  .soviet .right-side .super {
+    font-family: "Oswald", sans-serif; font-weight: 500;
+    font-size: .68rem; letter-spacing: .42em; color: #c41e1a;
+    text-transform: uppercase;
+  }
+  .soviet .right-side .ttl {
+    font-family: "Oswald", sans-serif; font-weight: 700;
+    font-size: clamp(1.5rem, 3vw, 2.4rem); line-height: 1;
+    color: #1a1a1a; letter-spacing: -.005em;
+    text-transform: uppercase;
+  }
+  .soviet .acts {
+    grid-column: 1 / -1;
+    display: flex; gap: .35rem;
+    margin-top: .65rem;
+    padding-top: .55rem;
+    border-top: 3px solid #1a1a1a;
+  }
+  .soviet .sov {
+    display: inline-flex; align-items: center; gap: .4rem;
+    background: #1a1a1a; color: #f0c14b;
+    padding: .45rem 1rem;
+    font-family: "Oswald", sans-serif; font-weight: 500;
+    font-size: .72rem; letter-spacing: .25em; text-transform: uppercase;
+    cursor: pointer; transition: all .15s;
+  }
+  .soviet .sov:hover { background: #c41e1a; color: #f0e8d0; }
+  .soviet .sov.primary { background: #c41e1a; color: #f0e8d0; }
+  .soviet .sov.primary:hover { background: #1a1a1a; color: #f0c14b; }
+  .soviet .sov svg { width: 12px; height: 12px; fill: currentColor; }
+
+  /* ============================================================
+     17 — TAROT  (midnight + gold filigree, mystical)
+     ============================================================ */
+  .tarot {
+    background:
+      radial-gradient(ellipse at 50% 0%, rgba(212,160,23,.12) 0%, transparent 50%),
+      radial-gradient(ellipse at 50% 100%, rgba(106,30,140,.18) 0%, transparent 50%),
+      #0a0820;
+    color: #d4a017; padding: 1.4rem 1.7rem;
+    font-family: "Cinzel", serif;
+    position: relative;
+    border-top: 1px solid #6a4a18;
+    border-bottom: 1px solid #6a4a18;
+  }
+  .tarot::before, .tarot::after {
+    content: ''; position: absolute;
+    width: 60px; height: 60px;
+    background-image: radial-gradient(circle at center, #d4a017 0%, #d4a017 2px, transparent 2px);
+    background-size: 8px 8px;
+    opacity: .25;
+  }
+  .tarot::before { top: .5rem; left: .8rem; }
+  .tarot::after  { bottom: .5rem; right: .8rem; }
+  .tarot .bar {
+    display: grid; grid-template-columns: 1fr 1.4fr 1fr; gap: 1.5rem; align-items: end;
+  }
+  .tarot .corner {
+    text-align: center; padding: .25rem 0;
+    border-top: 1px solid #6a4a18;
+    border-bottom: 1px solid #6a4a18;
+  }
+  .tarot .corner .lbl {
+    font-family: "Cinzel", serif; font-weight: 500;
+    font-size: .58rem; letter-spacing: .42em; color: #6a4a18;
+    text-transform: uppercase;
+  }
+  .tarot .corner .val {
+    font-family: "Cormorant Garamond", serif; font-style: italic;
+    font-weight: 500; font-size: 1.1rem; color: #f5d99e;
+    margin-top: .15rem;
+  }
+  .tarot .center { text-align: center; }
+  .tarot .center .arcana {
+    font-family: "Cinzel", serif; font-weight: 500;
+    font-size: .65rem; letter-spacing: .45em; color: #d4a017;
+    text-transform: uppercase;
+    margin-bottom: .35rem;
+  }
+  .tarot .center .arcana::before { content: '✦  '; }
+  .tarot .center .arcana::after  { content: '  ✦'; }
+  .tarot .center .ttl {
+    font-family: "Cormorant Garamond", serif; font-style: italic;
+    font-weight: 600;
+    font-size: clamp(1.8rem, 3.6vw, 2.7rem); line-height: 1;
+    color: #f5d99e; letter-spacing: -.005em;
+    text-shadow: 0 0 12px rgba(245,217,158,.3);
+  }
+  .tarot .stat-bar {
+    grid-column: 1 / -1; text-align: center;
+    margin-top: .85rem; padding-top: .55rem;
+    border-top: 1px solid #6a4a18;
+    display: flex; gap: 1.5rem; justify-content: center;
+  }
+  .tarot .arcanum {
+    display: inline-flex; align-items: center; gap: .55rem;
+    font-family: "Cinzel", serif; font-weight: 500;
+    font-size: .72rem; letter-spacing: .25em; color: #d4a017;
+    text-transform: uppercase;
+    cursor: pointer; transition: color .25s;
+  }
+  .tarot .arcanum:hover { color: #f5d99e; }
+  .tarot .arcanum.primary { color: #f5d99e; }
+  .tarot .arcanum::before { content: '⛤'; font-size: .85rem; color: #d4a017; }
+  .tarot .arcanum.primary::before { content: '✦'; }
+
+  /* ============================================================
+     18 — TICKER  (Bloomberg-ish: black + amber, multi-column data crawl)
+     ============================================================ */
+  .ticker {
+    background: #000; color: #ffb84a;
+    font-family: "DM Mono", monospace;
+    padding: .85rem 1.3rem;
+    border-top: 2px solid #ffb84a;
+    border-bottom: 2px solid #ffb84a;
+  }
+  .ticker .bar {
+    display: grid; grid-template-columns: minmax(0,auto) minmax(0,1fr) minmax(0,auto);
+    gap: 1.5rem; align-items: center;
+  }
+  .ticker .col {
+    display: flex; flex-direction: column; gap: .15rem;
+    border-right: 1px solid #663d00; padding-right: 1rem;
+  }
+  .ticker .col:last-child { border-right: 0; padding-right: 0; }
+  .ticker .col .lbl {
+    font-family: "DM Mono", monospace; font-size: .58rem;
+    letter-spacing: .22em; color: #ff8a20; text-transform: uppercase;
+  }
+  .ticker .col .val {
+    font-family: "DM Mono", monospace; font-weight: 500;
+    font-size: .92rem; color: #ffec99; letter-spacing: .04em;
+    font-variant-numeric: tabular-nums;
+  }
+  .ticker .col .delta {
+    font-family: "DM Mono", monospace; font-size: .68rem;
+    color: #4cff7a; letter-spacing: .05em;
+  }
+  .ticker .col .delta.dn { color: #ff4a4a; }
+  .ticker .col-group { display: flex; gap: 1rem; }
+  .ticker .title-col {
+    display: flex; flex-direction: column; gap: .15rem;
+    border-left: 1px solid #663d00;
+    border-right: 1px solid #663d00;
+    padding: 0 1rem;
+    min-width: 0;
+  }
+  .ticker .title-col .lbl { color: #ff8a20; }
+  .ticker .title-col .ttl {
+    font-family: "DM Mono", monospace; font-weight: 500;
+    font-size: 1.05rem; color: #fff; letter-spacing: .04em;
+    text-transform: uppercase;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .ticker .acts { display: flex; gap: .3rem; }
+  .ticker .tk {
+    background: transparent;
+    border: 1px solid #ffb84a;
+    color: #ffb84a; padding: .35rem .75rem;
+    font-family: "DM Mono", monospace;
+    font-size: .65rem; letter-spacing: .12em; text-transform: uppercase;
+    cursor: pointer; transition: all .15s;
+  }
+  .ticker .tk:hover { background: #ffb84a; color: #000; }
+  .ticker .tk.primary { background: #ffb84a; color: #000; }
+  .ticker .tk.primary:hover { background: #4cff7a; border-color: #4cff7a; }
+
+  /* ============================================================
+     19 — CHART  (clinical medical pale-blue + ECG line)
+     ============================================================ */
+  .chart {
+    background: #f0f5f7; color: #1a2a3a;
+    padding: 1.1rem 1.4rem .9rem;
+    font-family: "IBM Plex Sans", sans-serif;
+    position: relative;
+    border-left: 4px solid #e8f3f5;
+  }
+  .chart::before {
+    content: ''; position: absolute;
+    bottom: 0; left: 0; right: 0; height: 3px;
+    background-image:
+      linear-gradient(90deg, transparent 0%, transparent 14%, #00ad8a 14%, #00ad8a 14.5%, transparent 14.5%, transparent 16%, #00ad8a 16%, #00ad8a 16.7%, transparent 16.7%, transparent 100%);
+    opacity: 0;
+  }
+  .chart::after {
+    content: ''; position: absolute;
+    bottom: 4px; left: 1.4rem; right: 1.4rem; height: 14px;
+    background: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='14' viewBox='0 0 200 14'><path fill='none' stroke='%2300ad8a' stroke-width='1.5' d='M0 7 L40 7 L42 7 L46 1 L48 13 L50 4 L52 8 L56 7 L80 7 L88 7 L90 7 L94 1 L96 13 L98 4 L100 8 L104 7 L130 7 L138 7 L140 7 L144 1 L146 13 L148 4 L150 8 L154 7 L200 7'/></svg>") repeat-x;
+  }
+  .chart .header {
+    display: flex; justify-content: space-between; align-items: baseline;
+    border-bottom: 1px solid #c4d8de;
+    padding-bottom: .35rem; margin-bottom: .55rem;
+  }
+  .chart .header .id {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: .68rem; letter-spacing: .15em;
+    color: #6a8a9a; text-transform: uppercase;
+  }
+  .chart .header .id .num { color: #1a2a3a; font-weight: 500; }
+  .chart .header .status {
+    display: inline-flex; align-items: center; gap: .35rem;
+    font-family: "IBM Plex Mono", monospace; font-size: .68rem;
+    letter-spacing: .15em; color: #00ad8a; text-transform: uppercase;
+  }
+  .chart .header .status::before {
+    content: ''; width: 7px; height: 7px;
+    background: #00ad8a; border-radius: 50%;
+    animation: pulse 1.4s ease-in-out infinite;
+  }
+  .chart .grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr) 1.6fr auto;
+    gap: .9rem; align-items: center;
+  }
+  .chart .cell .lbl {
+    font-family: "IBM Plex Mono", monospace; font-size: .55rem;
+    letter-spacing: .22em; color: #6a8a9a; text-transform: uppercase;
+    margin-bottom: .15rem;
+  }
+  .chart .cell .val {
+    font-family: "IBM Plex Sans", sans-serif; font-weight: 500;
+    font-size: .92rem; color: #1a2a3a;
+  }
+  .chart .cell.live .val { color: #00ad8a; }
+  .chart .title-cell { padding: 0 .5rem; border-left: 2px solid #c4d8de; border-right: 2px solid #c4d8de; }
+  .chart .title-cell .ttl {
+    font-family: "IBM Plex Sans", sans-serif; font-weight: 600;
+    font-size: 1.1rem; color: #1a2a3a; letter-spacing: -.005em;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .chart .acts { display: flex; gap: .35rem; }
+  .chart .cb {
+    background: #fff;
+    border: 1px solid #c4d8de;
+    color: #1a2a3a; padding: .4rem .85rem;
+    font-family: "IBM Plex Sans", sans-serif; font-weight: 500;
+    font-size: .68rem; letter-spacing: .1em; text-transform: uppercase;
+    cursor: pointer; transition: all .15s;
+    border-radius: 3px;
+  }
+  .chart .cb:hover { background: #00ad8a; color: #fff; border-color: #00ad8a; }
+  .chart .cb.primary { background: #00ad8a; color: #fff; border-color: #00ad8a; }
+  .chart .cb.primary:hover { background: #008a6a; }
+
+  /* ============================================================
+     20 — BOUTIQUE  (luxury cosmetics: black + cream + gold foil)
+     ============================================================ */
+  .boutique {
+    background:
+      linear-gradient(180deg, #0a0808 0%, #1a1612 100%);
+    color: #e8d8b0; padding: 1.5rem 1.8rem;
+    font-family: "Cormorant Garamond", serif;
+    position: relative;
+  }
+  .boutique::before {
+    content: ''; position: absolute;
+    top: 0; left: 0; right: 0; height: 1px;
+    background: linear-gradient(90deg, transparent 0%, #d4a017 50%, transparent 100%);
+  }
+  .boutique::after {
+    content: ''; position: absolute;
+    bottom: 0; left: 0; right: 0; height: 1px;
+    background: linear-gradient(90deg, transparent 0%, #d4a017 50%, transparent 100%);
+  }
+  .boutique .monogram {
+    text-align: center;
+    font-family: "Cormorant Garamond", serif; font-weight: 300;
+    font-style: italic;
+    font-size: .68rem; letter-spacing: .55em;
+    color: #d4a017; text-transform: uppercase;
+    margin-bottom: 1.1rem;
+  }
+  .boutique .monogram::before { content: '— '; }
+  .boutique .monogram::after  { content: ' —'; }
+  .boutique .bar {
+    display: grid; grid-template-columns: 1fr auto 1fr;
+    gap: 2rem; align-items: center;
+  }
+  .boutique .left, .boutique .right {
+    display: flex; flex-direction: column; gap: .55rem;
+  }
+  .boutique .right { text-align: right; }
+  .boutique .meta { display: flex; flex-direction: column; gap: 0; }
+  .boutique .meta .lbl {
+    font-family: "Cormorant Garamond", serif; font-style: italic;
+    font-size: .58rem; letter-spacing: .45em; color: #8a7048;
+    text-transform: uppercase;
+  }
+  .boutique .meta .val {
+    font-family: "Cormorant Garamond", serif; font-weight: 400;
+    font-size: 1.05rem; color: #e8d8b0; letter-spacing: .04em;
+  }
+  .boutique .meta.role .val {
+    background: linear-gradient(135deg, #f5d99e 0%, #d4a017 100%);
+    -webkit-background-clip: text; background-clip: text;
+    color: transparent;
+  }
+  .boutique .center { text-align: center; }
+  .boutique .center .ttl {
+    font-family: "Cormorant Garamond", serif; font-style: italic;
+    font-weight: 300;
+    font-size: clamp(1.8rem, 3.6vw, 2.6rem); line-height: 1;
+    background: linear-gradient(135deg, #f5d99e 0%, #d4a017 50%, #a87f1a 100%);
+    -webkit-background-clip: text; background-clip: text;
+    color: transparent;
+  }
+  .boutique .center .super {
+    font-family: "Cormorant Garamond", serif; font-style: italic;
+    font-size: .62rem; letter-spacing: .42em; color: #8a7048;
+    text-transform: uppercase;
+    margin-bottom: .25rem;
+  }
+  .boutique .acts {
+    grid-column: 1 / -1; display: flex; gap: 1.5rem;
+    justify-content: center; margin-top: 1rem;
+    padding-top: .85rem;
+    border-top: 1px solid rgba(212,160,23,.25);
+  }
+  .boutique .lux {
+    font-family: "Cormorant Garamond", serif; font-style: italic;
+    font-size: .85rem; letter-spacing: .15em;
+    color: #e8d8b0; cursor: pointer;
+    border-bottom: 1px solid transparent;
+    padding-bottom: 2px; transition: all .25s;
+  }
+  .boutique .lux:hover { color: #d4a017; border-bottom-color: #d4a017; }
+  .boutique .lux.primary {
+    color: #d4a017;
+    border-bottom: 1px solid #d4a017;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: .35em;
+    font-style: normal;
+    font-size: .68rem;
+  }
+
+  /* ============================================================
+     21 — ORIGAMI  (folded paper facets, crisp shadows)
+     ============================================================ */
+  .origami {
+    background:
+      linear-gradient(135deg, #e8e2d4 0%, #c8c0b0 50%, #e8e2d4 100%);
+    color: #2a2620; padding: 1.3rem 1.6rem;
+    font-family: "DM Sans", sans-serif;
+  }
+  .origami .bar {
+    display: grid; grid-template-columns: minmax(0,auto) minmax(0,1fr) minmax(0,auto);
+    gap: .55rem; align-items: stretch;
+  }
+  .origami .fold {
+    background: linear-gradient(135deg, #f4ede0 0%, #c8c0b0 100%);
+    padding: .85rem 1.2rem;
+    clip-path: polygon(0 0, 100% 0, 100% 80%, 90% 100%, 0 100%);
+    display: flex; flex-direction: column; gap: .15rem;
+    box-shadow: 0 2px 4px rgba(0,0,0,.12);
+    position: relative;
+    min-width: 0;
+  }
+  .origami .fold::before {
+    content: ''; position: absolute;
+    right: 0; bottom: 0;
+    border-style: solid;
+    border-width: 0 0 20px 22px;
+    border-color: transparent transparent #a89880 transparent;
+  }
+  .origami .fold .lbl {
+    font-family: "DM Sans", sans-serif; font-weight: 400;
+    font-size: .55rem; letter-spacing: .3em; color: #7a6850;
+    text-transform: uppercase;
+  }
+  .origami .fold .val {
+    font-family: "DM Sans", sans-serif; font-weight: 500;
+    font-size: .9rem; color: #2a2620;
+  }
+  .origami .fold.role { background: linear-gradient(135deg, #d8a8a0 0%, #b8807a 100%); }
+  .origami .fold.role::before { border-color: transparent transparent #7a4a44 transparent; }
+  .origami .fold.role .lbl { color: #6a3a34; }
+  .origami .fold.role .val { color: #2a1a18; }
+  .origami .group { display: flex; gap: .3rem; }
+  .origami .title-fold {
+    background: linear-gradient(135deg, #2a2620 0%, #1a1612 100%);
+    color: #f4ede0;
+    padding: .85rem 1.5rem;
+    clip-path: polygon(0 0, 100% 0, 95% 100%, 5% 100%);
+    display: flex; flex-direction: column; justify-content: center;
+    min-width: 0;
+  }
+  .origami .title-fold .super {
+    font-family: "DM Sans", sans-serif; font-weight: 400;
+    font-size: .55rem; letter-spacing: .35em; color: #c8a878;
+    text-transform: uppercase;
+  }
+  .origami .title-fold .ttl {
+    font-family: "DM Sans", sans-serif; font-weight: 700;
+    font-size: clamp(1.1rem, 2.2vw, 1.7rem); line-height: 1;
+    color: #f4ede0; letter-spacing: -.015em;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .origami .ob {
+    background: linear-gradient(135deg, #f4ede0 0%, #c8c0b0 100%);
+    color: #2a2620; padding: 0 1.1rem;
+    clip-path: polygon(0 0, 100% 0, 100% 80%, 90% 100%, 0 100%);
+    font-family: "DM Sans", sans-serif; font-weight: 500;
+    font-size: .65rem; letter-spacing: .2em; text-transform: uppercase;
+    cursor: pointer; transition: all .2s;
+    display: inline-flex; align-items: center; gap: .35rem;
+    min-height: 100%;
+  }
+  .origami .ob:hover {
+    background: linear-gradient(135deg, #2a2620 0%, #1a1612 100%);
+    color: #f4ede0;
+  }
+  .origami .ob.primary {
+    background: linear-gradient(135deg, #d8a8a0 0%, #b8807a 100%);
+    color: #2a1a18;
+  }
+  .origami .ob.primary:hover {
+    background: linear-gradient(135deg, #b8807a 0%, #7a4a44 100%);
+    color: #f4ede0;
+  }
+  .origami .ob svg { width: 11px; height: 11px; fill: currentColor; }
 
 </style>
 </head>
 <body>
 <div class="page">
   <div class="page-head">
-    <h1>Top-bar mockups · ten directions</h1>
-    <p>02 (Console) is the keeper from the previous round. Nine new directions follow — each has its own typographic and color point of view but carries the same content slots.</p>
+    <h1>Top-bar mockups · twenty new directions</h1>
+    <p>Console (#01) is the keeper from the previous round. Twenty new directions follow — each with its own typography, color point of view, and structural personality.</p>
   </div>
 
-  <!-- 01 — NEON NOIR -->
+  <!-- 01 — CONSOLE (KEEP) -->
   <div class="mock">
     <div class="mock-label">
-      <span class="num">01</span>
-      <span>Neon Noir</span>
-      <span class="desc">Synthwave · chrome title, magenta + cyan glow, CRT scanlines</span>
-    </div>
-    <div class="preview noir">
-      <div class="bar">
-        <div style="display:flex">
-          <div class="neon role"><span class="lbl">Director</span><span class="val">Raw Socket</span></div>
-          <div class="neon"><span class="lbl">Bandwidth</span><span class="val">08.4 / 23 Mbps</span></div>
-          <div class="neon"><span class="lbl">Crew</span><span class="val">03 ONLINE</span></div>
-        </div>
-        <div class="title-cell">
-          <div class="super">FEATURE PRESENTATION</div>
-          <div class="ttl">Top Gun · Maverick</div>
-        </div>
-        <div style="display:flex">
-          <div class="act primary"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>RUN</div>
-          <div class="act"><svg viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7zm-2-4h2V7h3V5H5zm12 7h-3v2h5v-5h-2zm-3-12v2h3v3h2V5z"/></svg>FS</div>
-          <div class="act">LIB</div>
-          <div class="act">EJECT</div>
-        </div>
-      </div>
-      <div class="stage"><span class="frame-label">— picture begins —</span></div>
-    </div>
-  </div>
-
-  <!-- 02 — CONSOLE (KEPT) -->
-  <div class="mock">
-    <div class="mock-label">
-      <span class="num">02</span>
-      <span>Console</span>
-      <span class="keep">keep</span>
+      <span class="num">01</span><span>Console</span><span class="keep">keep</span>
       <span class="desc">Studio control room · brushed graphite, signal mint, LED switches</span>
     </div>
     <div class="preview console">
@@ -1173,268 +1567,546 @@
           <div class="switch warn"><span class="led"></span><svg viewBox="0 0 24 24"><path d="M4 6h14V4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h14v-2H4V6zm17 1l-5 5 5 5V7z"/></svg>Out</div>
         </div>
       </div>
-      <div class="stage"><span class="frame-label">— live feed routed here —</span></div>
     </div>
   </div>
 
-  <!-- 03 — CATALOG -->
+  <!-- 02 — VAPORWAVE -->
   <div class="mock">
-    <div class="mock-label">
-      <span class="num">03</span>
-      <span>Catalog</span>
-      <span class="desc">Library card · cream stock, typewriter, ink-stamped due-date</span>
-    </div>
-    <div class="preview catalog">
-      <div class="head-wrap">
-        <div class="topline">
-          <span>Late Show Archive · Card File</span>
-          <span class="accession">No. 0047-MAV-2022</span>
-        </div>
-        <div class="stamp">Now Showing<span class="date">May · 27 · 26</span></div>
-        <div class="row title"><span class="lbl">Title</span><span class="val">Top Gun: Maverick</span></div>
-        <div class="row"><span class="lbl">Director</span><span class="val">Raw Socket · checked out</span></div>
-        <div class="row"><span class="lbl">Reading rm.</span><span class="val">3 patrons · 8.4 / 23 Mbps</span></div>
-        <div class="bottombar">
-          <span class="act primary"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>Begin Reel</span>
-          <span class="act">Zoom</span>
-          <span class="act">Full screen</span>
-          <span class="act">Catalog</span>
-          <span class="act">Sign out</span>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- 04 — WATERCOLOR -->
-  <div class="mock">
-    <div class="mock-label">
-      <span class="num">04</span>
-      <span>Watercolor</span>
-      <span class="desc">Soft · warm cream wash, sage + coral, hand-lettered Caveat title</span>
-    </div>
-    <div class="preview water">
-      <div class="bar">
-        <div class="meta-strip">
-          <div class="chip role"><span class="lbl">Host</span><span class="val">Raw Socket</span></div>
-          <div class="chip"><span class="lbl">Bandwidth</span><span class="val">8.4 / 23 Mbps</span></div>
-          <div class="chip"><span class="lbl">In the room</span><span class="val">3 friends</span></div>
-          <div class="chip"><span class="lbl">Sync</span><span class="val">Locked in</span></div>
-        </div>
-        <div class="title-area">
-          <div class="ttl">Top Gun: Maverick</div>
-        </div>
-        <div class="acts">
-          <span class="bub primary"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>Play</span>
-          <span class="bub">Zoom</span>
-          <span class="bub">Fullscreen</span>
-          <span class="bub">Library</span>
-          <span class="bub">Sign out</span>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- 05 — CONSTRUCTIVIST -->
-  <div class="mock">
-    <div class="mock-label">
-      <span class="num">05</span>
-      <span>Constructivist</span>
-      <span class="desc">Bauhaus · red disc, yellow triangle, blue title block, Oswald display</span>
-    </div>
-    <div class="preview bauhaus">
-      <div class="bar">
-        <div style="display:flex">
-          <div class="blok role"><span class="lbl">Host</span><span class="val">Raw Socket</span></div>
-          <div class="blok"><span class="lbl">Bandwidth</span><span class="val">8.4/23 Mbps</span></div>
-          <div class="blok"><span class="lbl">Room</span><span class="val">3 viewers</span></div>
-        </div>
-        <div class="title-block">
-          <div class="super">NOW SHOWING</div>
-          <div class="ttl">Top Gun: Maverick</div>
-        </div>
-        <div class="acts">
-          <div class="act primary"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>Play</div>
-          <div class="act">Fit</div>
-          <div class="act">Full</div>
-          <div class="act">Exit</div>
-        </div>
-      </div>
-      <div class="stage"><span class="frame-label">— picture begins —</span></div>
-    </div>
-  </div>
-
-  <!-- 06 — BROADSHEET -->
-  <div class="mock">
-    <div class="mock-label">
-      <span class="num">06</span>
-      <span>Broadsheet</span>
-      <span class="desc">Newspaper · Fraktur masthead, ink rules, byline column</span>
-    </div>
-    <div class="preview broadsheet">
-      <div class="masthead">
-        <div class="title">The Late Show Gazette</div>
-        <div class="meta"><span class="vol">Vol. III · No. 47</span>Tuesday Evening Edition · May 27, 2026</div>
-      </div>
-      <div class="columns">
-        <div class="col-meta">
-          <span class="lbl">Host —</span><span class="val">Raw Socket</span>
-          <span class="lbl">Bandwidth —</span><span class="val">8.4 / 23 Mbps</span>
-          <span class="lbl">Audience —</span><span class="val">3 attending</span>
-          <span class="lbl">Sync —</span><span class="val">Locked</span>
-        </div>
-        <div class="feature">
-          <div class="super">Front Page · Feature Presentation</div>
-          <div class="ttl">Top Gun: Maverick</div>
-        </div>
-        <div class="byline">
-          <span class="col-act primary"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>Begin reading</span>
-          <span class="col-act">Full screen</span>
-          <span class="col-act">Archive</span>
-          <span class="col-act">Sign out</span>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- 07 — TERMINAL -->
-  <div class="mock">
-    <div class="mock-label">
-      <span class="num">07</span>
-      <span>Terminal</span>
-      <span class="desc">TUI · phosphor green on near-black, mono everywhere, blinking caret</span>
-    </div>
-    <div class="preview term">
-      <div class="row top">
-        <span class="crumb">[ wp@latshow ]</span>
-        <span class="crumb">~/movies/</span>
-        <span class="crumb active">top-gun-maverick.m3u8</span>
-        <span class="blink">_</span>
-      </div>
-      <div class="grid">
-        <div style="display:flex; gap: 1.2rem">
-          <span class="pair"><span class="k">role:</span><span class="v live">host</span></span>
-          <span class="pair"><span class="k">bw:</span><span class="v">8.4/23.1 mbps</span></span>
-          <span class="pair"><span class="k">peers:</span><span class="v">3</span></span>
-          <span class="pair"><span class="k">sync:</span><span class="v">locked</span></span>
-        </div>
-        <div class="feed">now playing: top gun maverick</div>
-        <div class="actions">
-          <button class="btn primary">▶ run</button>
-          <button class="btn">⛶ fs</button>
-          <button class="btn">≡ lib</button>
-          <button class="btn">⎋ out</button>
-        </div>
-      </div>
-      <div class="lower">
-        <span><span class="key">space</span> play/pause</span>
-        <span><span class="key">f</span> fullscreen</span>
-        <span><span class="key">m</span> mute</span>
-        <span><span class="key">↑↓</span> vol</span>
-        <span><span class="key">q</span> quit</span>
-      </div>
-    </div>
-  </div>
-
-  <!-- 08 — POLAROID -->
-  <div class="mock">
-    <div class="mock-label">
-      <span class="num">08</span>
-      <span>Polaroid</span>
-      <span class="desc">Scrapbook · tilted photo cards, masking tape, handwritten captions</span>
-    </div>
-    <div class="preview poly">
-      <div class="cards">
-        <div class="pgroup">
-          <div class="card tilt-l">
-            <span class="tape"></span>
-            <div class="photo">HOST</div>
-            <div class="caption">Raw Socket</div>
-            <div class="stat">running the room</div>
-          </div>
-          <div class="card tilt-r">
-            <div class="photo" style="background: linear-gradient(135deg, #6a7148 0%, #3d4a25 100%)">BW</div>
-            <div class="caption">8.4 / 23</div>
-            <div class="stat">Mbps · room</div>
-          </div>
-          <div class="card tilt-s">
-            <div class="photo" style="background: linear-gradient(135deg, #d4a017 0%, #8a6900 100%)">CREW</div>
-            <div class="caption">3 friends</div>
-            <div class="stat">all locked in</div>
-          </div>
-        </div>
-        <div class="title-card">
-          <span class="tape"></span>
-          <div class="super">tonight's pick</div>
-          <div class="ttl">Top Gun: Maverick</div>
-        </div>
-        <div class="pgroup">
-          <div class="act primary"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>roll it</div>
-          <div style="display:flex; flex-direction:column; gap: .25rem">
-            <span class="act">zoom</span>
-            <span class="act">full</span>
-            <span class="act">library</span>
-            <span class="act">sign out</span>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- 09 — BRUTALIST -->
-  <div class="mock">
-    <div class="mock-label">
-      <span class="num">09</span>
-      <span>Brutalist</span>
-      <span class="desc">Concrete grey, black slabs, highlighter yellow title block</span>
-    </div>
-    <div class="preview brut">
-      <div class="bar">
-        <div style="display:flex">
-          <div class="slab role"><span class="lbl">Role</span><span class="val">HOST</span></div>
-          <div class="slab"><span class="lbl">BW Mbps</span><span class="val">08.4/23.1</span></div>
-          <div class="slab"><span class="lbl">Audience</span><span class="val">003</span></div>
-          <div class="slab"><span class="lbl">Sync</span><span class="val">LOCK</span></div>
-        </div>
-        <div class="title-slab">
-          <div class="super">FEATURE</div>
-          <div class="ttl">Top Gun: Maverick</div>
-        </div>
-        <div class="acts">
-          <div class="act primary"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>PLAY</div>
-          <div class="act">FS</div>
-          <div class="act">LIB</div>
-          <div class="act">OUT</div>
-        </div>
-      </div>
-      <div class="stage"><span class="frame-label">— picture begins —</span></div>
-    </div>
-  </div>
-
-  <!-- 10 — BASS -->
-  <div class="mock">
-    <div class="mock-label">
-      <span class="num">10</span>
-      <span>Bass</span>
-      <span class="desc">Mid-century poster · cut-paper red wedge, Bebas Neue display, olive dot</span>
-    </div>
-    <div class="preview bass">
+    <div class="mock-label"><span class="num">02</span><span>Vaporwave</span>
+      <span class="desc">Dreamy pastel pink/cyan, layered drop-shadow title, ♡ accents</span></div>
+    <div class="preview vapor">
       <div class="bar">
         <div class="meta-row">
-          <div class="meta role"><span class="lbl">Host</span><span class="val">Raw Socket</span></div>
-          <div class="meta"><span class="lbl">Bandwidth</span><span class="val">8.4 / 23 Mbps</span></div>
-          <div class="meta"><span class="lbl">In the room</span><span class="val">3 viewers</span></div>
-          <div class="meta"><span class="lbl">Sync</span><span class="val">Locked</span></div>
+          <div class="chip role"><span class="lbl">host</span><span class="val">Raw Socket</span></div>
+          <div class="chip"><span class="lbl">bandwidth</span><span class="val">8.4 / 23 mbps</span></div>
+          <div class="chip"><span class="lbl">in the room</span><span class="val">3 friends</span></div>
+          <div class="chip"><span class="lbl">sync</span><span class="val">aesthetic</span></div>
         </div>
         <div class="title-area">
-          <div class="super">Tonight · Reel 04</div>
+          <div class="super">▼ now playing ▼</div>
           <div class="ttl">Top Gun: Maverick</div>
         </div>
         <div class="acts">
-          <span class="pill primary"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>Play</span>
-          <span class="pill">Fit</span>
-          <span class="pill">FS</span>
-          <span class="pill">Library</span>
-          <span class="pill">Out</span>
+          <span class="vbtn primary"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>play</span>
+          <span class="vbtn">zoom</span>
+          <span class="vbtn">full</span>
+          <span class="vbtn">library</span>
+          <span class="vbtn">sign out</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 03 — LETTERPRESS -->
+  <div class="mock">
+    <div class="mock-label"><span class="num">03</span><span>Letterpress</span>
+      <span class="desc">Heavy slab serif on cotton paper, debossed shadow, oxblood accent</span></div>
+    <div class="preview press">
+      <div class="bar">
+        <div class="meta-row">
+          <div class="label-pair role"><span class="lbl">Pressman</span><span class="val">Raw Socket</span></div>
+          <div class="label-pair"><span class="lbl">Run</span><span class="val">8.4 / 23 MBPS</span></div>
+          <div class="label-pair"><span class="lbl">Audience</span><span class="val">Three Seated</span></div>
+          <div class="label-pair"><span class="lbl">Sync</span><span class="val">Registered</span></div>
+        </div>
+        <div class="title-area">
+          <div class="ttl">Top Gun: Maverick</div>
+        </div>
+        <div class="acts">
+          <span class="pbtn primary"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>Run Press</span>
+          <div style="display:flex; gap: .35rem">
+            <span class="pbtn ghost">Fit</span>
+            <span class="pbtn ghost">Full</span>
+            <span class="pbtn ghost">Type Case</span>
+            <span class="pbtn ghost">Close</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 04 — SUBWAY -->
+  <div class="mock">
+    <div class="mock-label"><span class="num">04</span><span>Subway</span>
+      <span class="desc">MTA route bullets, station signage, Helvetica weight 700</span></div>
+    <div class="preview subway">
+      <div class="bar">
+        <div class="routes">
+          <div class="route-pair"><span class="bullet h">H</span><span class="stop-label">host</span></div>
+          <div class="route-pair"><span class="bullet bw">B</span><span class="stop-label">8.4/23</span></div>
+          <div class="route-pair"><span class="bullet txt-dark">3</span><span class="stop-label">guests</span></div>
+        </div>
+        <div>
+          <div class="station">Top Gun: Maverick</div>
+          <div class="station-meta">Now arriving · Track 1 · Reel 4</div>
+        </div>
+        <div class="acts">
+          <span class="sbtn primary"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>Depart</span>
+          <span class="sbtn">FS</span>
+          <span class="sbtn">Lib</span>
+          <span class="sbtn">Exit</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 05 — COMIC -->
+  <div class="mock">
+    <div class="mock-label"><span class="num">05</span><span>Comic</span>
+      <span class="desc">Ben-Day dots, POW burst, Bangers display, hard 3D shadow panels</span></div>
+    <div class="preview comic">
+      <div class="burst">POW!</div>
+      <div class="bar">
+        <div class="panel-group">
+          <div class="panel role"><span class="lbl">HERO</span><span class="val">Raw Socket</span></div>
+          <div class="panel"><span class="lbl">BW</span><span class="val">8.4 / 23</span></div>
+          <div class="panel"><span class="lbl">SQUAD</span><span class="val">3</span></div>
+        </div>
+        <div class="title-panel">
+          <div class="super">FEATURING</div>
+          <div class="ttl">Top Gun: Maverick</div>
+        </div>
+        <div class="acts">
+          <span class="cbtn primary"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>GO!</span>
+          <span class="cbtn">FS</span>
+          <span class="cbtn">Lib</span>
+          <span class="cbtn">Out</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 06 — HUD -->
+  <div class="mock">
+    <div class="mock-label"><span class="num">06</span><span>HUD</span>
+      <span class="desc">Tactical readout · hex-clipped cells, cyan glow, Orbitron + Share Tech</span></div>
+    <div class="preview hud">
+      <div class="bar">
+        <div class="row">
+          <div class="hex live"><span class="lbl">PILOT</span><span class="val">Raw Socket</span></div>
+          <div class="hex"><span class="lbl">UPLINK</span><span class="val">8.4 / 23</span></div>
+          <div class="hex"><span class="lbl">WING</span><span class="val">3 ACTIVE</span></div>
+        </div>
+        <div class="title-hex">
+          <div class="super">▸ FEATURE LOCKED ◂</div>
+          <div class="ttl">TOP GUN: MAVERICK</div>
+        </div>
+        <div class="row">
+          <button class="hbtn primary">▶ ENGAGE</button>
+          <button class="hbtn">FS</button>
+          <button class="hbtn">LIB</button>
+          <button class="hbtn">EJECT</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 07 — CASINO -->
+  <div class="mock">
+    <div class="mock-label"><span class="num">07</span><span>Casino</span>
+      <span class="desc">Vegas marquee · Allura script title, gold + crimson, light bulbs</span></div>
+    <div class="preview casino">
+      <div class="bulbs">
+        <span class="b"></span><span class="b off"></span><span class="b"></span><span class="b off"></span>
+        <span class="b"></span><span class="b off"></span><span class="b"></span><span class="b off"></span>
+        <span class="b"></span><span class="b off"></span><span class="b"></span><span class="b off"></span>
+        <span class="b"></span><span class="b off"></span><span class="b"></span><span class="b off"></span>
+        <span class="b"></span><span class="b off"></span><span class="b"></span><span class="b off"></span>
+        <span class="b"></span><span class="b off"></span><span class="b"></span><span class="b off"></span>
+      </div>
+      <div class="bar">
+        <div class="meta-row">
+          <div class="lp role"><span class="lbl">Pit Boss</span><span class="val">Raw Socket</span></div>
+          <div class="lp"><span class="lbl">House Take</span><span class="val">8.4 / 23 Mbps</span></div>
+          <div class="lp"><span class="lbl">At The Table</span><span class="val">Three Players</span></div>
+          <div class="lp"><span class="lbl">Sync</span><span class="val">Even Money</span></div>
+        </div>
+        <div class="title-area">
+          <div class="super">tonight only</div>
+          <div class="ttl">Top Gun: Maverick</div>
+        </div>
+        <div class="acts">
+          <div class="actrow">
+            <span class="casbtn primary"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>Deal</span>
+            <span class="casbtn">Fit</span>
+            <span class="casbtn">Full</span>
+            <span class="casbtn">Floor</span>
+            <span class="casbtn">Cash Out</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 08 — TAPE DECK -->
+  <div class="mock">
+    <div class="mock-label"><span class="num">08</span><span>Tape Deck</span>
+      <span class="desc">70s hi-fi · wood-grain cabinet, brushed silver face, VU meter</span></div>
+    <div class="preview deck">
+      <div class="bar">
+        <div style="display:flex; gap: .4rem">
+          <div class="vu live"><span class="lbl">HOST</span><div class="bar-track"><div class="bar-fill"></div></div><span class="val">Raw Socket</span></div>
+          <div class="vu"><span class="lbl">BW dB</span><div class="bar-track"><div class="bar-fill" style="width: 36%"></div></div><span class="val">-6 / 0</span></div>
+          <div class="vu"><span class="lbl">CH</span><div class="bar-track"><div class="bar-fill" style="width: 50%"></div></div><span class="val">3 PEERS</span></div>
+        </div>
+        <div class="title-block">
+          <div class="super">▸ Side A · Track 04</div>
+          <div class="ttl">Top Gun: Maverick</div>
+        </div>
+        <div class="knobs">
+          <div class="knob primary" style="position:relative"><span class="label">PLAY</span></div>
+          <div class="knob" style="position:relative"><span class="label">VOL</span></div>
+          <div class="knob" style="position:relative"><span class="label">EJECT</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 09 — VINYL -->
+  <div class="mock">
+    <div class="mock-label"><span class="num">09</span><span>Vinyl</span>
+      <span class="desc">LP sleeve · spinning disc on right, Anton display, orange label</span></div>
+    <div class="preview vinyl">
+      <div class="disc"></div>
+      <div class="bar">
+        <div class="side-strip">
+          <div class="ls role"><span class="lbl">A-SIDE</span><span class="val">Raw Socket</span></div>
+          <div class="ls"><span class="lbl">SPEED</span><span class="val">8.4 / 23 MBPS</span></div>
+          <div class="ls"><span class="lbl">CREW</span><span class="val">3 LISTENERS</span></div>
+          <div class="ls"><span class="lbl">CUT</span><span class="val">REEL 04</span></div>
+        </div>
+        <div class="sleeve">
+          <div class="super">LP · LATE SHOW PRESS</div>
+          <div class="ttl">TOP GUN<br>MAVERICK</div>
+        </div>
+        <div class="acts">
+          <span class="vbtn primary"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>SPIN</span>
+          <span class="vbtn">FIT</span>
+          <span class="vbtn">FS</span>
+          <span class="vbtn">SLEEVE</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 10 — PLAYBILL -->
+  <div class="mock">
+    <div class="mock-label"><span class="num">10</span><span>Playbill</span>
+      <span class="desc">Theater program · gold trim, Cormorant italic, three-act layout</span></div>
+    <div class="preview play">
+      <div class="masthead">
+        <div class="producers">Late Show Productions presents</div>
+        <div class="name">The Playbill</div>
+      </div>
+      <div class="bar">
+        <div class="cast-row">
+          <div class="cast"><div class="role-name">Director</div><div class="actor">Raw Socket</div></div>
+          <div class="cast"><div class="role-name">Stage</div><div class="actor">8.4 / 23 Mbps</div></div>
+          <div class="cast"><div class="role-name">Audience</div><div class="actor">Three patrons</div></div>
+          <div class="cast"><div class="role-name">Synchrony</div><div class="actor">Locked</div></div>
+        </div>
+        <div class="title-area">
+          <div class="ttl">Top Gun: Maverick</div>
+          <div class="acts-line">— A picture in three acts —</div>
+        </div>
+        <div class="ushers">
+          <span class="usher primary"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>Curtain Up</span>
+          <span class="usher">Fit</span>
+          <span class="usher">Full</span>
+          <span class="usher">Foyer</span>
+          <span class="usher">Exit</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 11 — VHS -->
+  <div class="mock">
+    <div class="mock-label"><span class="num">11</span><span>VHS</span>
+      <span class="desc">90s box art · Bungee + VT323, neon gradient, chunky offset shadows</span></div>
+    <div class="preview vhs">
+      <div class="bar">
+        <div class="stat-row">
+          <div class="stat role"><span class="lbl">VIEWER</span><span class="val">Raw Socket</span></div>
+          <div class="stat"><span class="lbl">SP / EP</span><span class="val">8.4 / 23</span></div>
+          <div class="stat"><span class="lbl">CREW</span><span class="val">003</span></div>
+          <div class="stat"><span class="lbl">SYNC</span><span class="val">TRACKING</span></div>
+        </div>
+        <div class="title-block">
+          <div class="super">FEATURE PRESENTATION</div>
+          <div class="ttl">Top Gun: Maverick</div>
+        </div>
+        <div class="acts">
+          <span class="tape-btn primary"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>PLAY</span>
+          <span class="tape-btn">FS</span>
+          <span class="tape-btn">LIB</span>
+          <span class="tape-btn">⏏ EJECT</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 12 — SPARTAN -->
+  <div class="mock">
+    <div class="mock-label"><span class="num">12</span><span>Spartan</span>
+      <span class="desc">Editorial minimalism · ultra-thin Cormorant, generous whitespace, single muted accent</span></div>
+    <div class="preview spartan">
+      <div class="bar">
+        <div class="col-meta">
+          <div class="row-meta role"><span class="lbl">Host</span><span class="val">Raw Socket</span></div>
+          <div class="row-meta"><span class="lbl">Bandwidth</span><span class="val">8.4 / 23 Mbps</span></div>
+          <div class="row-meta"><span class="lbl">In the room</span><span class="val">3 viewers</span></div>
+          <div class="row-meta"><span class="lbl">Sync</span><span class="val">Locked</span></div>
+        </div>
+        <div class="title-col">
+          <div class="num">Picture nº 04 — May 27</div>
+          <div class="ttl">Top Gun: Maverick</div>
+        </div>
+        <div class="acts">
+          <a class="link primary">Play</a>
+          <a class="link">Zoom</a>
+          <a class="link">Fullscreen</a>
+          <a class="link">Library</a>
+          <a class="link">Sign out</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 13 — Y2K -->
+  <div class="mock">
+    <div class="mock-label"><span class="num">13</span><span>Y2K</span>
+      <span class="desc">Frutiger Aero · glass bubble buttons, soft blue gradient, ✦ accents</span></div>
+    <div class="preview y2k">
+      <div class="bar">
+        <div class="br">
+          <div class="bubble role"><span class="lbl">user</span><span class="val">Raw Socket</span></div>
+          <div class="bubble"><span class="lbl">bandwidth</span><span class="val">8.4 / 23</span></div>
+          <div class="bubble"><span class="lbl">buddies</span><span class="val">3 online</span></div>
+        </div>
+        <div class="title-bubble">
+          <div class="super">★ now playing ★</div>
+          <div class="ttl">Top Gun: Maverick</div>
+        </div>
+        <div class="br">
+          <span class="yb primary"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>play</span>
+          <span class="yb">fs</span>
+          <span class="yb">lib</span>
+          <span class="yb">exit</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 14 — SKETCHBOOK -->
+  <div class="mock">
+    <div class="mock-label"><span class="num">14</span><span>Sketchbook</span>
+      <span class="desc">Architect's grid paper · Caveat title, hand-drawn rough button shapes</span></div>
+    <div class="preview sketch">
+      <div class="bar">
+        <div class="meta-row">
+          <div class="note role"><span class="lbl">— who</span><span class="val">Raw Socket</span></div>
+          <div class="note"><span class="lbl">— line</span><span class="val">8.4 / 23 Mbps</span></div>
+          <div class="note"><span class="lbl">— crew</span><span class="val">3 friends</span></div>
+          <div class="note"><span class="lbl">— sync</span><span class="val">all set</span></div>
+        </div>
+        <div class="title-area">
+          <div class="super">tonight's pick · sketch #04</div>
+          <div class="ttl">Top Gun: Maverick</div>
+        </div>
+        <div class="acts">
+          <span class="sk primary"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>roll it</span>
+          <div class="actrow">
+            <span class="sk">fit</span>
+            <span class="sk">full</span>
+            <span class="sk">library</span>
+            <span class="sk">out</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 15 — RISOGRAPH -->
+  <div class="mock">
+    <div class="mock-label"><span class="num">15</span><span>Risograph</span>
+      <span class="desc">Two-color overprint · pink + blue blobs, gritty texture, Bowlby One display</span></div>
+    <div class="preview riso">
+      <div class="bar">
+        <div class="stat-row">
+          <div class="s role"><span class="lbl">PRINTER</span><span class="val">Raw Socket</span></div>
+          <div class="s"><span class="lbl">INK</span><span class="val">8.4 / 23</span></div>
+          <div class="s"><span class="lbl">RUN</span><span class="val">3 COPIES</span></div>
+          <div class="s"><span class="lbl">REG.</span><span class="val">OFF / IDEAL</span></div>
+        </div>
+        <div class="title-area">
+          <div class="super">— LATE SHOW EDITION —</div>
+          <div class="ttl">TOP GUN MAVERICK</div>
+        </div>
+        <div class="acts">
+          <span class="rb primary"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>PRINT</span>
+          <div class="actrow"><span class="rb">FIT</span><span class="rb">FS</span><span class="rb">CATALOG</span><span class="rb">EXIT</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 16 — SOVIET -->
+  <div class="mock">
+    <div class="mock-label"><span class="num">16</span><span>Soviet</span>
+      <span class="desc">Propaganda poster · diagonal red field, heavy black silhouette, Oswald 700</span></div>
+    <div class="preview soviet">
+      <div class="bar">
+        <div class="left-meta">
+          <div class="row"><span class="lbl">Comrade</span><span class="val">Raw Socket</span></div>
+          <div class="row"><span class="lbl">Output</span><span class="val">8.4 / 23 Mbps</span></div>
+          <div class="row"><span class="lbl">Collective</span><span class="val">Three workers</span></div>
+        </div>
+        <div class="right-side">
+          <div class="super">A Picture of the People</div>
+          <div class="ttl">Top Gun:<br>Maverick</div>
+        </div>
+        <div class="acts">
+          <span class="sov primary"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>Forward</span>
+          <span class="sov">Fit</span>
+          <span class="sov">Full</span>
+          <span class="sov">Archive</span>
+          <span class="sov">Dismiss</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 17 — TAROT -->
+  <div class="mock">
+    <div class="mock-label"><span class="num">17</span><span>Tarot</span>
+      <span class="desc">Midnight + gold filigree · italic Garamond title, occult corner motifs</span></div>
+    <div class="preview tarot">
+      <div class="bar">
+        <div class="corner">
+          <div class="lbl">The Seer</div>
+          <div class="val">Raw Socket</div>
+        </div>
+        <div class="center">
+          <div class="arcana">Major Arcana · IV</div>
+          <div class="ttl">Top Gun: Maverick</div>
+        </div>
+        <div class="corner">
+          <div class="lbl">The Audience</div>
+          <div class="val">Three Souls</div>
+        </div>
+        <div class="stat-bar">
+          <span class="arcanum primary">Turn the Card</span>
+          <span class="arcanum">Reveal</span>
+          <span class="arcanum">Spread</span>
+          <span class="arcanum">Library</span>
+          <span class="arcanum">Close the Deck</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 18 — TICKER -->
+  <div class="mock">
+    <div class="mock-label"><span class="num">18</span><span>Ticker</span>
+      <span class="desc">Bloomberg-style · black + amber, multi-column tabular data, deltas</span></div>
+    <div class="preview ticker">
+      <div class="bar">
+        <div class="col-group">
+          <div class="col"><span class="lbl">HOST</span><span class="val">Raw Socket</span><span class="delta">▲ ACTIVE</span></div>
+          <div class="col"><span class="lbl">BW Mbps</span><span class="val">8.40</span><span class="delta">▲ 0.12</span></div>
+          <div class="col"><span class="lbl">SEATS</span><span class="val">3</span><span class="delta">▲ 1</span></div>
+          <div class="col"><span class="lbl">SYNC s</span><span class="val">0.04</span><span class="delta dn">▼ 0.01</span></div>
+        </div>
+        <div class="title-col">
+          <span class="lbl">FEED</span>
+          <span class="ttl">TOP GUN: MAVERICK</span>
+        </div>
+        <div class="acts">
+          <button class="tk primary">▶ RUN</button>
+          <button class="tk">FS</button>
+          <button class="tk">LIB</button>
+          <button class="tk">OUT</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 19 — CHART -->
+  <div class="mock">
+    <div class="mock-label"><span class="num">19</span><span>Chart</span>
+      <span class="desc">Clinical medical · pale teal palette, IBM Plex, ECG line motif at the foot</span></div>
+    <div class="preview chart">
+      <div class="header">
+        <div class="id">Patient ID · <span class="num">LS-0047-MAV</span></div>
+        <div class="status">Vitals normal</div>
+      </div>
+      <div class="grid">
+        <div class="cell live"><div class="lbl">Attending</div><div class="val">Dr. Raw Socket</div></div>
+        <div class="cell"><div class="lbl">Throughput</div><div class="val">8.4 / 23 Mbps</div></div>
+        <div class="cell"><div class="lbl">In Theatre</div><div class="val">3 observers</div></div>
+        <div class="cell"><div class="lbl">Sync</div><div class="val">0.04 s</div></div>
+        <div class="cell title-cell"><div class="lbl">Procedure</div><div class="ttl">Top Gun: Maverick</div></div>
+        <div class="acts">
+          <button class="cb primary">Begin</button>
+          <button class="cb">FS</button>
+          <button class="cb">Chart</button>
+          <button class="cb">Out</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 20 — BOUTIQUE -->
+  <div class="mock">
+    <div class="mock-label"><span class="num">20</span><span>Boutique</span>
+      <span class="desc">Luxury cosmetics · black + gold-foil title, monogram top, italic body</span></div>
+    <div class="preview boutique">
+      <div class="monogram">Maison · Late Show</div>
+      <div class="bar">
+        <div class="left">
+          <div class="meta role"><span class="lbl">Maître</span><span class="val">Raw Socket</span></div>
+          <div class="meta"><span class="lbl">Service</span><span class="val">8.4 / 23 Mbps</span></div>
+        </div>
+        <div class="center">
+          <div class="super">— Tonight's Selection —</div>
+          <div class="ttl">Top Gun: Maverick</div>
+        </div>
+        <div class="right">
+          <div class="meta"><span class="lbl">Salon</span><span class="val">Three guests</span></div>
+          <div class="meta"><span class="lbl">Tempo</span><span class="val">In accord</span></div>
+        </div>
+        <div class="acts">
+          <span class="lux primary">Open the Curtain</span>
+          <span class="lux">Fit</span>
+          <span class="lux">Plein Écran</span>
+          <span class="lux">Catalogue</span>
+          <span class="lux">Au Revoir</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 21 — ORIGAMI -->
+  <div class="mock">
+    <div class="mock-label"><span class="num">21</span><span>Origami</span>
+      <span class="desc">Folded paper · diagonal clip-paths, soft drop-shadow facets, blush accent</span></div>
+    <div class="preview origami">
+      <div class="bar">
+        <div class="group">
+          <div class="fold role"><span class="lbl">Folder</span><span class="val">Raw Socket</span></div>
+          <div class="fold"><span class="lbl">Crease</span><span class="val">8.4 / 23</span></div>
+          <div class="fold"><span class="lbl">Cranes</span><span class="val">3</span></div>
+        </div>
+        <div class="title-fold">
+          <span class="super">tonight · fold IV</span>
+          <span class="ttl">Top Gun: Maverick</span>
+        </div>
+        <div class="group">
+          <div class="ob primary"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>Unfold</div>
+          <div class="ob">FS</div>
+          <div class="ob">Lib</div>
+          <div class="ob">Out</div>
         </div>
       </div>
     </div>
