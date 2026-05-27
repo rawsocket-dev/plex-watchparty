@@ -121,15 +121,6 @@ func main() {
 	mux.HandleFunc("/login", auth.HandleLogin)
 	mux.HandleFunc("/logout", auth.HandleLogout)
 
-	// /mockups is the public design gallery — shared with outside
-	// friends for opinions on top-bar directions. No auth required;
-	// the page contains no movie metadata, no Plex token surface, no
-	// /control affordances. Pure HTML + CSS.
-	mux.HandleFunc("/mockups", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.Write(mockupsHTML)
-	})
-
 	// Everything else is behind the shared password.
 	protected := http.NewServeMux()
 
