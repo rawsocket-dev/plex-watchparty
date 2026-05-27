@@ -113,6 +113,24 @@ func (h *Hub) broadcastLoop() {
 	defer t.Stop()
 	for range t.C {
 		h.mu.Lock()
+		// Auto-pause at the end of the movie. Without this, a host
+		// who leaves a tab open in 'playing' state past the credits
+		// has the server extrapolating forever — overnight idles
+		// have produced PositionSec values in the tens of thousands
+		// of seconds, then the player can't seek there because it's
+		// outside the HLS playlist. Bake the clamp into h.state
+		// (not just snapshot()) so subsequent /control actions see
+		// the corrected position.
+		if h.state.Playing && h.state.DurationSec > 0 {
+			extrapolated := h.state.PositionSec + float64(nowMs()-h.state.UpdatedAtMs)/1000.0
+			if extrapolated >= h.state.DurationSec {
+				log.Printf("auto-pause: %q reached end at %.2fs (was %.2fs, dur %.2fs)",
+					h.state.Title, h.state.DurationSec, h.state.PositionSec, h.state.DurationSec)
+				h.state.PositionSec = h.state.DurationSec
+				h.state.Playing = false
+				h.state.UpdatedAtMs = nowMs()
+			}
+		}
 		if len(h.clients) > 0 {
 			h.broadcast()
 		}
@@ -322,6 +340,15 @@ func (h *Hub) snapshot() State {
 	if s.Playing {
 		s.PositionSec += float64(nowMs()-s.UpdatedAtMs) / 1000.0
 		s.UpdatedAtMs = nowMs()
+		// Clamp at the end of the movie. Without this, a host who
+		// leaves a tab open in 'playing' state past the credits keeps
+		// the server extrapolating forever — we've seen positions in
+		// the tens of thousands of seconds after an overnight idle.
+		// Subsequent /control actions then record that nonsense and
+		// the player can't seek to a position outside the playlist.
+		if s.DurationSec > 0 && s.PositionSec > s.DurationSec {
+			s.PositionSec = s.DurationSec
+		}
 	}
 	return s
 }
