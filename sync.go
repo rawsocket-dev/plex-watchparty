@@ -353,6 +353,34 @@ func (h *Hub) snapshot() State {
 	return s
 }
 
+// AutoRestartAtCurrentPosition restarts the active Plex session at
+// the host's current play position. Called by the segment proxy
+// after N consecutive Plex 4xx/5xx fetches suggest the session is
+// stuck. Reuses the same Hub.mu → release → session.Restart → Hub.mu
+// dance as the seek-with-restart path; bumps SessionToken so
+// connected clients destroy their hls.js and reattach with the
+// freshly-rewritten playlist.
+func (h *Hub) AutoRestartAtCurrentPosition() error {
+	h.mu.Lock()
+	if h.state.RatingKey == "" {
+		h.mu.Unlock()
+		return fmt.Errorf("no active session")
+	}
+	cur := h.snapshot()
+	h.mu.Unlock()
+	log.Printf("auto-restart: %d consecutive seg failures — restarting Plex at %.2fs",
+		segFailureThreshold, cur.PositionSec)
+	if err := h.session.Restart(cur.PositionSec); err != nil {
+		return fmt.Errorf("plex Restart: %w", err)
+	}
+	h.mu.Lock()
+	h.state.SessionToken = h.session.SessionToken()
+	h.state.UpdatedAtMs = nowMs()
+	h.broadcast()
+	h.mu.Unlock()
+	return nil
+}
+
 // Snapshot is the locked, public counterpart of snapshot(). Used by
 // HTTP handlers that need a one-shot view of current state (e.g. the
 // /api/state endpoint that drives the library's "Resume?" prompt).

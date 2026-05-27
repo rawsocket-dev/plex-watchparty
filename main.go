@@ -251,6 +251,7 @@ func main() {
 		// Cache hit: sendfile-fast path.
 		if path, ok := segCache.Get(key); ok {
 			http.ServeFile(cw, r, path)
+			plexSession.RecordSegmentSuccess()
 			return
 		}
 		// Cache miss: fetch from Plex, tee to cache + client.
@@ -267,12 +268,26 @@ func main() {
 				log.Printf("seg: plex failed (%v); serving overlapping cache entry [%d,%d] for request [%d,%d]",
 					err, fs, fe, ctx.StartMs, ctx.EndMs)
 				http.ServeFile(cw, r, fallback)
+				plexSession.RecordSegmentSuccess()
 				return
 			}
 			log.Printf("seg: fetch from plex failed: %v", err)
+			// Track consecutive failures. After N in a row, trigger
+			// an auto-restart at the current play position — covers
+			// "Plex's session got into a weird state we can't fetch
+			// out of" without the user having to manually intervene.
+			if plexSession.RecordSegmentFailure() {
+				go func() {
+					defer plexSession.ClearAutoRestart()
+					if err := hub.AutoRestartAtCurrentPosition(); err != nil {
+						log.Printf("auto-restart failed: %v", err)
+					}
+				}()
+			}
 			http.Error(cw, "plex segment: "+err.Error(), http.StatusBadGateway)
 			return
 		}
+		plexSession.RecordSegmentSuccess()
 		defer body.Close()
 		// pipe: write into cache while streaming to client.
 		pr, pw := io.Pipe()

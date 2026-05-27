@@ -28,7 +28,23 @@ type PlexSession struct {
 	playlistURL  string // Plex /transcode/universal/start URL with all params
 	offsetMs     int64  // movie time at which Plex's current session began
 	edgeMs       int64  // max segment-end time observed in Plex's playlist
+
+	// Auto-restart bookkeeping. failMu is independent of mu so the
+	// segment proxy can record failures while a Restart is mid-
+	// flight. consecutiveSegFails increments on Plex 4xx/5xx
+	// segment fetches; once it crosses segFailureThreshold the
+	// caller is told to kick off an auto-restart at the current
+	// play position. lastAutoRestartAt provides a cooldown window
+	// so the stale-URL fetches that follow a successful restart
+	// don't immediately re-trigger another spin.
+	failMu              sync.Mutex
+	consecutiveSegFails int
+	autoRestartActive   bool
+	lastAutoRestartAt   time.Time
 }
+
+const segFailureThreshold = 3
+const autoRestartCooldown = 10 * time.Second
 
 func NewPlexSession(p *Plex, transcodeKbps int) *PlexSession {
 	return &PlexSession{plex: p, transcodeKbps: transcodeKbps}
@@ -317,6 +333,50 @@ func (ps *PlexSession) OffsetMs() int64 {
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
 	return ps.offsetMs
+}
+
+// RecordSegmentFailure increments the consecutive-segment-failure
+// counter. Returns true if the caller should kick off an auto-
+// restart (counter just crossed segFailureThreshold AND no restart
+// is already in flight AND we're past the cooldown from the
+// previous one). The cooldown handles stale-URL fetches from hls.js
+// that linger briefly after the playlist re-attach.
+func (ps *PlexSession) RecordSegmentFailure() bool {
+	ps.failMu.Lock()
+	defer ps.failMu.Unlock()
+	if ps.autoRestartActive {
+		return false
+	}
+	if time.Since(ps.lastAutoRestartAt) < autoRestartCooldown {
+		return false
+	}
+	ps.consecutiveSegFails++
+	if ps.consecutiveSegFails < segFailureThreshold {
+		return false
+	}
+	ps.autoRestartActive = true
+	return true
+}
+
+// RecordSegmentSuccess resets the consecutive-failure counter — any
+// successful segment serve (Plex, cache hit, or cache fallback)
+// means we're not stuck.
+func (ps *PlexSession) RecordSegmentSuccess() {
+	ps.failMu.Lock()
+	defer ps.failMu.Unlock()
+	ps.consecutiveSegFails = 0
+}
+
+// ClearAutoRestart is called when the auto-restart goroutine
+// finishes (whether the Restart succeeded or failed). Stamps the
+// cooldown start NOW so the post-restart re-attach window doesn't
+// immediately re-trigger.
+func (ps *PlexSession) ClearAutoRestart() {
+	ps.failMu.Lock()
+	defer ps.failMu.Unlock()
+	ps.autoRestartActive = false
+	ps.consecutiveSegFails = 0
+	ps.lastAutoRestartAt = time.Now()
 }
 
 // FetchPlaylist GETs the current session's playlist from Plex. If Plex
