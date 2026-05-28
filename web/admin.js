@@ -36,11 +36,9 @@ function fmtPct(num, den) {
   if (!den) return '—';
   return ((num / den) * 100).toFixed(1) + '%';
 }
-function escapeHTML(s) {
-  return String(s).replace(/[&<>"']/g, c => ({
-    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;',
-  })[c]);
-}
+// escapeHTML is provided by /admin/static/common.js (loaded before
+// this script). Keep the local reference short for readability.
+const escapeHTML = window.escapeHTML;
 function setStatus(text, kind) {
   const el = $('footer-status');
   if (!el) return;

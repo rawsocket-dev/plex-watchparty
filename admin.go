@@ -49,6 +49,14 @@ func registerAdminRoutes(
 		w.Header().Set("Cache-Control", "no-cache")
 		w.Write(adminJS)
 	})))
+	// Same common.js as the player serves under /static/common.js —
+	// re-served under the admin tree so the admin panel doesn't need a
+	// watch-password session to fetch shared helpers (escapeHTML, etc).
+	mux.Handle("/admin/static/common.js", gated(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Write(commonJS)
+	})))
 
 	// --- JSON API ---
 	mux.Handle("/admin/api/whoami", gated(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

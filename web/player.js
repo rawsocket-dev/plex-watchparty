@@ -213,6 +213,10 @@ function commitScrubSeek() {
 
 // --- bandwidth poll ---------------------------------------------------------
 async function pollBandwidth() {
+  // Skip the round-trip when the tab is hidden — the UI it feeds
+  // isn't visible, and a bfcache'd / backgrounded tab racking up
+  // polls every 2 s wastes server work for nothing.
+  if (document.visibilityState === 'hidden') return;
   try {
     const r = await fetch('/api/bandwidth');
     if (!r.ok) return;
@@ -589,14 +593,13 @@ openLiveEvents((s) => applyState(s, 'sse'));
 // overlay can fall arbitrarily far behind by the time they click.
 // This tick re-applies the extrapolated state every 2 s while the
 // host is playing, hard-seeking when drift exceeds DRIFT.
-let tickCount = 0;
 setInterval(() => {
-  tickCount++;
-  if (!lastState) {
-    if (tickCount % 5 === 0) console.log('drift tick: no state yet');
-    return;
-  }
-  if (!lastState.ratingKey) return;
+  // Skip when the tab isn't visible — nothing on screen needs the
+  // indicator updated, and viewers in a hidden tab don't need their
+  // playhead aggressively re-aligned to a server we can't render
+  // for. Tab visible again = next tick catches up.
+  if (document.visibilityState === 'hidden') return;
+  if (!lastState || !lastState.ratingKey) return;
   if (!lastState.playing) {
     // Paused or idle. Still update the indicator so the user sees
     // the current intent, just don't try to correct anything.
@@ -623,35 +626,15 @@ setInterval(() => {
 
   // Host: never auto-correct. Host's v.currentTime is the source of
   // truth — if their 4K HEVC decoder is lagging, we DO NOT want to
-  // hard-seek forward (it'd cause visible skips). Instead, the
-  // broadcastHostPosition tick below pushes the host's actual
-  // position back to the server, so viewers sync to reality.
+  // hard-seek forward (it'd cause visible skips).
   if (isHost) return;
 
-  if (applying) {
-    if (tickCount % 5 === 0) console.log('drift tick: still applying, skip correction');
-    return;
-  }
-  if (v.paused) {
-    if (tickCount % 5 === 0) console.log('drift tick: v.paused but state.playing — autoplay blocked?');
-    return;
-  }
+  if (applying || v.paused) return;
   if (Math.abs(drift) > DRIFT) {
-    const seekable = [];
-    for (let i = 0; i < v.seekable.length; i++) {
-      seekable.push(v.seekable.start(i).toFixed(1) + '..' + v.seekable.end(i).toFixed(1));
-    }
-    const before = v.currentTime;
-    console.log('drift tick: correcting', drift.toFixed(2), 's → seek', target.toFixed(2),
-                ' (seekable=[' + seekable.join(', ') + '])');
+    console.log('drift tick: correcting', drift.toFixed(2), 's → seek', target.toFixed(2));
     applying = true;
     v.currentTime = target;
-    setTimeout(() => {
-      const after = v.currentTime;
-      console.log('drift tick: after seek currentTime=', after.toFixed(2),
-                  ' (moved by', (after - before).toFixed(2), 's)');
-      applying = false;
-    }, 250);
+    setTimeout(() => { applying = false; }, 250);
   }
 }, 2000);
 
