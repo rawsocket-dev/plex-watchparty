@@ -169,15 +169,15 @@ func (ps *PlexSession) SessionToken() int64 {
 // can stay tracked for a few seconds.
 func (ps *PlexSession) Start(ratingKey string, offsetSec float64) error {
 	ps.mu.Lock()
-	hadSession := ps.sessionID != ""
-	ps.stopLocked()
+	stopURL := ps.stopLocked()
 	ps.mu.Unlock()
-	// If a prior session was just stopped, give Plex's transcoder a
-	// beat to tear down before we ask it to spin up a new one under
-	// the same client identifier. Done OUTSIDE the lock so readers
-	// (RatingKey / SessionToken / PlaylistURL) aren't stalled. When
-	// there was no prior session, skip the cooldown entirely.
-	if hadSession {
+	// If a prior session was just stopped, hit Plex's /stop OUTSIDE
+	// the lock (readers stay unblocked) and then give the transcoder
+	// a beat to tear down before we ask it to spin up a new one under
+	// the same client identifier. Skip both when there was no prior
+	// session to stop.
+	if stopURL != "" {
+		ps.callStop(stopURL)
 		time.Sleep(400 * time.Millisecond)
 	}
 	ps.mu.Lock()
@@ -235,9 +235,11 @@ func (ps *PlexSession) Start(ratingKey string, offsetSec float64) error {
 }
 
 // callDecision GETs /transcode/universal/decision and returns nil if
-// Plex acknowledges the request (any 2xx). The body isn't read — we
-// only care that Plex registered the negotiation. Errors are kept
-// because a failed decision predicts a failed start.
+// Plex acknowledges the request (any 2xx). The body itself isn't
+// interesting — we only care that Plex registered the negotiation —
+// but it MUST be drained before close so Go's http.Transport can
+// reuse the underlying TCP connection on the next Plex call.
+// Errors are kept because a failed decision predicts a failed start.
 func (ps *PlexSession) callDecision(ratingKey, sessionID string, offsetSec float64) error {
 	u := ps.decisionURL(ratingKey, sessionID, offsetSec)
 	req, _ := http.NewRequest(http.MethodGet, u, nil)
@@ -251,31 +253,38 @@ func (ps *PlexSession) callDecision(ratingKey, sessionID string, offsetSec float
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
 		return fmt.Errorf("status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
+	_, _ = io.Copy(io.Discard, resp.Body)
 	return nil
 }
 
 // Stop tells Plex to terminate the current transcode session. Safe to
-// call when no session is active (no-op).
+// call when no session is active (no-op). The 400 ms cooldown only
+// fires when there was actually a session to tear down.
 func (ps *PlexSession) Stop() {
 	ps.mu.Lock()
-	ps.stopLocked()
+	stopURL := ps.stopLocked()
 	ps.mu.Unlock()
+	if stopURL == "" {
+		return // no active session — nothing to tear down or wait on
+	}
+	ps.callStop(stopURL)
 	// Plex's transcoder needs a beat to tear down before it'll accept
 	// a new session under the same client identifier; without this
 	// pause the next /start.m3u8 returns a bare 400 even with valid
-	// params. Done OUTSIDE the lock so reader methods (RatingKey,
-	// SessionToken, PlaylistURL) aren't stalled — the session-cleared
-	// invariant is already true the moment stopLocked returns.
+	// params. Lock already released — readers (RatingKey, SessionToken,
+	// PlaylistURL) aren't stalled.
 	time.Sleep(400 * time.Millisecond)
 }
 
-// stopLocked clears in-memory session state and asynchronously notifies
-// Plex to terminate the transcode session. Must be called with ps.mu
-// held. Does NOT sleep — that's left to the caller so the cooldown
-// can happen with the lock released.
-func (ps *PlexSession) stopLocked() {
+// stopLocked clears the in-memory session state and returns the Plex
+// /stop URL to call. Must be called with ps.mu held. The caller MUST
+// release ps.mu before invoking callStop(stopURL) — Plex's /stop is
+// the unreliable "sometimes hangs hundreds of ms" endpoint, and every
+// session-field reader would block on the lock while we wait. Returns
+// "" if there was no active session to stop.
+func (ps *PlexSession) stopLocked() string {
 	if ps.sessionID == "" {
-		return
+		return ""
 	}
 	// /stop needs the same client identifier as the request that
 	// started the session — without it Plex's session manager doesn't
@@ -286,20 +295,30 @@ func (ps *PlexSession) stopLocked() {
 	q.Set("X-Plex-Client-Identifier", plexClientID)
 	q.Set("X-Plex-Token", ps.plex.Token)
 	stopURL := ps.plex.BaseURL + "/video/:/transcode/universal/stop?" + q.Encode()
-	req, _ := http.NewRequest(http.MethodGet, stopURL, nil)
-	if resp, err := ps.plex.Do(req); err == nil {
-		resp.Body.Close()
-	}
 	ps.ratingKey = ""
 	ps.sessionID = ""
 	ps.playlistURL = ""
 	ps.offsetMs = 0
 	ps.edgeMs = 0
+	return stopURL
+}
+
+// callStop fires the /stop request synchronously. ps.mu MUST be
+// released by the caller before invoking this — the HTTP round-trip
+// can stall hundreds of ms and we don't want readers blocking on it.
+// Errors are logged-and-eaten — Plex's /stop is best-effort; the in-
+// memory state has already been cleared.
+func (ps *PlexSession) callStop(stopURL string) {
+	req, _ := http.NewRequest(http.MethodGet, stopURL, nil)
+	if resp, err := ps.plex.Do(req); err == nil {
+		resp.Body.Close()
+	}
 }
 
 // Restart stops the current Plex session and starts a new one at the
 // given offset. Used when the host seeks forward into untranscoded
-// territory. Atomic under ps.mu: concurrent restarts serialize.
+// territory. The HTTP /stop call happens with ps.mu released so
+// concurrent readers (segment proxy, scrub bar) aren't stalled.
 func (ps *PlexSession) Restart(offsetSec float64) error {
 	ps.mu.Lock()
 	ratingKey := ps.ratingKey
@@ -307,11 +326,14 @@ func (ps *PlexSession) Restart(offsetSec float64) error {
 		ps.mu.Unlock()
 		return fmt.Errorf("Restart with no active session")
 	}
-	ps.stopLocked()
+	stopURL := ps.stopLocked()
 	ps.mu.Unlock()
-	// Same teardown cooldown as Stop() — outside the lock so reader
-	// methods aren't blocked while Plex catches up.
-	time.Sleep(400 * time.Millisecond)
+	if stopURL != "" {
+		ps.callStop(stopURL)
+		// Same teardown cooldown as Stop() — Plex needs a beat before
+		// it'll accept a new session under our client identifier.
+		time.Sleep(400 * time.Millisecond)
+	}
 	return ps.Start(ratingKey, offsetSec)
 }
 

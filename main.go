@@ -83,8 +83,9 @@ func main() {
 	if err := segCache.LoadFromDisk(); err != nil {
 		log.Printf("cache: LoadFromDisk warning: %v", err)
 	}
+	cs := segCache.Stats()
 	log.Printf("cache: %d entries loaded, %d MB on disk, cap %d GB",
-		len(segCache.entries), segCache.totalBytes/1024/1024, cacheGB)
+		cs.Entries, cs.TotalBytes/1024/1024, cacheGB)
 
 	plexSession := NewPlexSession(plex, transcodeKbps)
 	// Startup health check. On success we log the friendly identity;
