@@ -255,7 +255,7 @@ body.viewer .role-cell .r-viewer { display: inline; }
   box-shadow: 0 0 10px rgba(240,168,48,.7);
 }
 .cell-btn.warn:hover { color: var(--warn); }
-#fullscreen { font-size: .65rem; letter-spacing: .25em; }
+#fullscreen { font-size: 1.05rem; letter-spacing: 0; }
 #wrap.fill #zoom { color: var(--signal); }
 #wrap.fill #zoom .led {
   background: var(--signal);
