@@ -193,32 +193,21 @@ function commitScrubSeek() {
     scrubPendingPct = null;
     return;
   }
-  let target = scrubPendingPct * dur;
+  const target = scrubPendingPct * dur;
   scrubPendingPct = null;
-  // Clamp to the currently-seekable range. Clamp 0.5s in from each
-  // edge so we don't land exactly on the boundary (which Chrome can
-  // interpret as out-of-range).
-  let clampedTo = null;
-  if (v.seekable.length > 0) {
-    const lo = v.seekable.start(0) + 0.5;
-    const hi = v.seekable.end(v.seekable.length - 1) - 0.5;
-    if (target < lo) { clampedTo = 'start'; target = lo; }
-    else if (target > hi) { clampedTo = 'end'; target = hi; }
-  }
-  const seekableRanges = [];
-  for (let i = 0; i < v.seekable.length; i++) {
-    seekableRanges.push(v.seekable.start(i).toFixed(1) + '..' + v.seekable.end(i).toFixed(1));
-  }
-  console.log('scrub commit:',
-              ' target=', target.toFixed(2), 's',
-              ' dur=', dur.toFixed(0),
-              ' clamped=', clampedTo,
-              ' v.currentTime(before)=', v.currentTime.toFixed(2),
-              ' v.duration=', v.duration,
-              ' v.seekable=[', seekableRanges.join(', '), ']');
+  // Post the RAW target — do NOT clamp to v.seekable. v.seekable
+  // reflects only the current Plex transcode session's range, not the
+  // full movie length. Clamping here would silently downgrade any
+  // forward seek past the transcoded edge into "seek to the edge" and
+  // the server would never see a target that triggers a Restart. The
+  // server (HandleControl) is the authority: target > EdgeSec() and
+  // not in cache → Restart + bump SessionToken → client reattaches
+  // with a new playlist starting at the requested position. Setting
+  // v.currentTime to a value outside v.seekable lets the browser
+  // silently clamp locally; the reattach moves us to the real target
+  // once the new playlist arrives.
   lastLocalActionMs = Date.now();
   v.currentTime = target;
-  console.log('   v.currentTime(after assign)=', v.currentTime.toFixed(2));
   post('seek', { positionSec: target });
 }
 
@@ -291,6 +280,19 @@ joinEl.addEventListener('click', () => {
       v.currentTime = target;
       setTimeout(() => { applying = false; }, 250);
     }
+  }
+  // The 'play' event only fires once v.play() actually resolves —
+  // which can be a second or two after the click, while hls.js
+  // buffers its first segment. In that gap a 3 s broadcast tick
+  // carrying the still-Playing=false server state can sneak in,
+  // run applyState's post-join sync, and v.pause() us right as
+  // playback was about to begin. Stamping lastLocalActionMs makes
+  // applyState reject those stale broadcasts; the optimistic
+  // post('play') tells the server NOW so the very next broadcast
+  // already carries Playing=true. Host-only; viewers can't drive.
+  lastLocalActionMs = Date.now();
+  if (isHost && lastState && lastState.ratingKey && !lastState.playing) {
+    post('play');
   }
   v.play().catch(() => {});
   dismissJoin();
