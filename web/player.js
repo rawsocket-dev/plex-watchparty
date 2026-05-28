@@ -545,13 +545,20 @@ function applyState(s, reason) {
     v.currentTime = target;
   }
   firstStateApplied = true;
-  // First-visit autoplay attempt (only fires while the overlay is up;
-  // gated on media-ready + state.playing inside maybeAutoplay).
-  maybeAutoplay();
-  // Ongoing v ↔ server sync. After the user has joined, this keeps
-  // v's play/pause state aligned with what the host wants.
-  if (s.playing && v.paused) v.play().catch(() => {});
-  if (!s.playing && !v.paused) v.pause();
+  // Two paths, deliberately exclusive:
+  //   Pre-join (overlay still up): maybeAutoplay() is the only path
+  //     that calls v.play() — it bundles dismissJoin() on success so
+  //     the overlay actually goes away when autoplay is allowed.
+  //     Calling v.play() outside of that path would race with the
+  //     canplay-triggered maybeAutoplay and leave the overlay up
+  //     over playing video.
+  //   Post-join: keep v ↔ server state aligned.
+  if (!userJoined) {
+    maybeAutoplay();
+  } else {
+    if (s.playing && v.paused) v.play().catch(() => {});
+    if (!s.playing && !v.paused) v.pause();
+  }
   setTimeout(() => { applying = false; }, 250);
 
   const drift = v.currentTime - target;
