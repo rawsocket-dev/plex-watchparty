@@ -52,8 +52,9 @@ func newHubTestFixture(t *testing.T) *hubTestFixture {
 	plex := NewPlex(mock.URL, "tok", filepath.Join(dir, "lib.json"))
 	cache := NewSegmentCache(filepath.Join(dir, "cache"), 1<<30)
 	recent := NewRecentMovies(filepath.Join(dir, "recent.json"))
+	store := NewStateStore(filepath.Join(dir, "state.json"))
 	session := NewPlexSession(plex, 12000)
-	hub := NewHub(plex, session, cache, recent)
+	hub := NewHub(plex, session, cache, recent, store)
 	return &hubTestFixture{hub: hub, mock: mock, cache: cache, dir: dir}
 }
 

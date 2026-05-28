@@ -522,3 +522,105 @@ body.guest ul.films button:hover::before { transform: scaleY(0); }
   transition: color .2s ease;
 }
 #resume-cancel:hover { color: var(--paper); }
+
+/* --- Resume-after-restart banner ----------------------------------------- */
+#resume-banner {
+  max-width: 1240px;
+  margin: 0 auto 1.5rem;
+  padding: 0 clamp(1.25rem, 3vw, 2.5rem);
+}
+#resume-banner.hidden { display: none; }
+#resume-banner .rb-card {
+  border: 1px solid var(--signal);
+  background:
+    linear-gradient(180deg, rgba(159,230,173,0.06) 0%, rgba(159,230,173,0.02) 100%),
+    var(--ink-2);
+  padding: 1rem 1.25rem;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas:
+    "eyebrow buttons"
+    "title   buttons"
+    "subtitle buttons";
+  gap: .35rem 1.5rem;
+  align-items: center;
+}
+#resume-banner .rb-eyebrow {
+  grid-area: eyebrow;
+  font-family: var(--mono);
+  font-size: .6rem;
+  letter-spacing: .28em;
+  text-transform: uppercase;
+  color: var(--signal);
+}
+#resume-banner .rb-title {
+  grid-area: title;
+  font-family: var(--serif, Georgia, serif);
+  font-size: 1.55rem;
+  font-style: italic;
+  font-weight: 500;
+  color: var(--paper);
+  letter-spacing: .005em;
+  line-height: 1.1;
+}
+#resume-banner .rb-subtitle {
+  grid-area: subtitle;
+  font-family: var(--mono);
+  font-size: .68rem;
+  letter-spacing: .12em;
+  color: var(--paper-mute);
+  font-variant-numeric: tabular-nums;
+}
+#resume-banner .rb-subtitle #rb-position {
+  color: var(--paper);
+  font-weight: 500;
+}
+#resume-banner .rb-buttons {
+  grid-area: buttons;
+  display: flex;
+  flex-direction: column;
+  gap: .5rem;
+  min-width: 11rem;
+}
+#resume-banner .rb-buttons button {
+  font-family: var(--mono);
+  font-size: .65rem;
+  letter-spacing: .22em;
+  text-transform: uppercase;
+  padding: .65rem 1.1rem;
+  border: 1px solid var(--rule);
+  background: linear-gradient(180deg, #1f242c 0%, #15191f 100%);
+  color: var(--paper);
+  cursor: pointer;
+  transition: all .15s ease;
+}
+#resume-banner .rb-buttons button:hover {
+  border-color: var(--signal);
+  color: var(--signal);
+}
+#resume-banner .rb-buttons .primary {
+  background: linear-gradient(180deg, #9fe6ad 0%, #6ab37d 100%);
+  color: var(--ink);
+  border-color: var(--signal);
+  font-weight: 600;
+}
+#resume-banner .rb-buttons .primary:hover {
+  background: linear-gradient(180deg, #b8efc4 0%, #7ec491 100%);
+  color: var(--ink);
+}
+#resume-banner .rb-buttons .ghost {
+  background: none;
+  border-color: transparent;
+  color: var(--paper-mute);
+  font-size: .58rem;
+}
+#resume-banner .rb-buttons .ghost:hover {
+  background: none;
+  border-color: var(--rule);
+  color: var(--paper);
+}
+body.viewer #resume-banner .rb-buttons { display: none; }
+body.viewer #resume-banner .rb-eyebrow::after {
+  content: " · host can resume";
+  color: var(--paper-mute);
+}

@@ -27,6 +27,84 @@ function bucketFor(title) {
 
 let isHost = true; // optimistic until /api/whoami answers
 
+// --- Resume-after-restart banner --------------------------------------------
+// Asks the server "is there a persisted resume hint?" — populated after a
+// container restart or idle shutdown when state.ratingKey is empty but a
+// prior session left a state.json. Host buttons trigger a /control load at
+// the saved offset (Resume) or 0 (Start over); the Dismiss button hides
+// the banner client-side for this tab only (the server hint persists).
+const resumeBanner    = document.getElementById('resume-banner');
+const resumeBannerTitle    = document.getElementById('rb-title');
+const resumeBannerPosition = document.getElementById('rb-position');
+const resumeBannerSaved    = document.getElementById('rb-saved');
+const resumeBannerResume   = document.getElementById('rb-resume');
+const resumeBannerRestart  = document.getElementById('rb-restart');
+const resumeBannerDismiss  = document.getElementById('rb-dismiss');
+let resumeHint = null;
+
+function fmtHMS(s) {
+  if (!isFinite(s) || s < 0) return '0:00';
+  s = Math.floor(s);
+  const h = Math.floor(s/3600);
+  const m = Math.floor((s%3600)/60);
+  const ss = s%60;
+  const p = (n) => String(n).padStart(2, '0');
+  return h > 0 ? h + ':' + p(m) + ':' + p(ss) : m + ':' + p(ss);
+}
+function fmtSavedAgo(savedAtUnix) {
+  if (!savedAtUnix) return '—';
+  const sec = Math.max(0, Math.floor(Date.now() / 1000) - savedAtUnix);
+  if (sec < 60)    return sec + 's ago';
+  if (sec < 3600)  return Math.floor(sec / 60) + ' min ago';
+  if (sec < 86400) return Math.floor(sec / 3600) + ' h ago';
+  return Math.floor(sec / 86400) + ' d ago';
+}
+function showResumeBanner(hint) {
+  resumeHint = hint;
+  resumeBannerTitle.textContent    = hint.title || hint.ratingKey;
+  resumeBannerPosition.textContent = 'paused at ' + fmtHMS(hint.positionSec);
+  if (hint.durationSec > 0) {
+    resumeBannerPosition.textContent += ' of ' + fmtHMS(hint.durationSec);
+  }
+  resumeBannerSaved.textContent = fmtSavedAgo(hint.savedAtUnix);
+  resumeBanner.classList.remove('hidden');
+}
+function hideResumeBanner() {
+  resumeBanner.classList.add('hidden');
+  resumeHint = null;
+}
+async function doResumeAction(restart) {
+  if (!resumeHint || !isHost) return;
+  const btn = restart ? resumeBannerRestart : resumeBannerResume;
+  btn.disabled = true;
+  const orig = btn.textContent;
+  btn.textContent = 'cueing…';
+  try {
+    const body = { action: 'load', ratingKey: resumeHint.ratingKey };
+    if (!restart) body.positionSec = resumeHint.positionSec;
+    const r = await fetch('/control', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) throw new Error(await r.text());
+    location.href = '/watch';
+  } catch (e) {
+    btn.disabled = false;
+    btn.textContent = orig + ' · retry';
+    console.error('resume:', e);
+  }
+}
+resumeBannerResume.addEventListener('click',  () => doResumeAction(false));
+resumeBannerRestart.addEventListener('click', () => doResumeAction(true));
+resumeBannerDismiss.addEventListener('click', hideResumeBanner);
+
+// Probe initial state for a resume hint at page load. Doesn't need to
+// wait for SSE — the snapshot endpoint reflects the same data.
+fetch('/api/state').then(r => r.ok ? r.json() : null).then(st => {
+  if (st && !st.ratingKey && st.resume) showResumeBanner(st.resume);
+}).catch(() => {});
+
 // Time formatter used in the resume modal subtitle. Hours-aware but
 // drops the leading 0:00:0X for sub-hour positions to match the
 // scrub-bar formatting on /watch.

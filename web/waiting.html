@@ -251,6 +251,68 @@
     color: var(--paper-mute);
     font-variant-numeric: tabular-nums;
   }
+  /* Resume-after-restart card — shown when state.resume is set. */
+  .resume-banner {
+    margin: 1rem auto 2rem;
+    max-width: 36rem;
+    padding: 1.1rem 1.4rem;
+    border: 1px solid var(--signal);
+    background:
+      linear-gradient(180deg, rgba(159,230,173,0.07) 0%, rgba(159,230,173,0.02) 100%),
+      var(--ink-2, #15191f);
+    display: flex; flex-direction: column; gap: .35rem;
+    box-shadow: 0 0 18px rgba(159,230,173,.08), inset 0 0 14px rgba(0,0,0,.4);
+  }
+  .resume-banner .rb-eyebrow {
+    font-family: var(--mono); font-weight: 500;
+    font-size: .58rem; letter-spacing: .28em;
+    text-transform: uppercase;
+    color: var(--signal);
+  }
+  .resume-banner .rb-title {
+    font-family: var(--serif, Georgia, serif);
+    font-style: italic; font-weight: 500;
+    font-size: 1.3rem; color: var(--paper);
+  }
+  .resume-banner .rb-subtitle {
+    font-family: var(--mono); font-size: .65rem;
+    letter-spacing: .12em;
+    color: var(--paper-mute);
+    font-variant-numeric: tabular-nums;
+  }
+  .resume-banner .rb-subtitle #rb-position { color: var(--paper); font-weight: 500; }
+  .resume-banner .rb-buttons {
+    display: flex; gap: .65rem; margin-top: .5rem;
+  }
+  .resume-banner .rb-buttons button {
+    font-family: var(--mono);
+    font-size: .6rem; letter-spacing: .22em;
+    text-transform: uppercase;
+    padding: .55rem 1rem;
+    border: 1px solid var(--rule);
+    background: linear-gradient(180deg, #1f242c 0%, #15191f 100%);
+    color: var(--paper); cursor: pointer;
+    transition: all .15s ease;
+  }
+  .resume-banner .rb-buttons button:hover {
+    border-color: var(--signal); color: var(--signal);
+  }
+  .resume-banner .rb-buttons #rb-resume {
+    background: linear-gradient(180deg, #9fe6ad 0%, #6ab37d 100%);
+    color: var(--ink, #050403); border-color: var(--signal);
+    font-weight: 600;
+  }
+  .resume-banner .rb-buttons #rb-resume:hover {
+    background: linear-gradient(180deg, #b8efc4 0%, #7ec491 100%);
+    color: var(--ink, #050403);
+  }
+  /* Viewers see the banner but can't act on it — the host drives. */
+  body:not(.host) .resume-banner .rb-buttons { display: none; }
+  body:not(.host) .resume-banner .rb-eyebrow::after {
+    content: ' · host can resume';
+    color: var(--paper-mute);
+  }
+
   body.host .reel-item { cursor: pointer; }
   body.host .reel-item:hover {
     border-color: var(--signal);
@@ -285,6 +347,16 @@
 
   <div class="role">// you are operating the console</div>
 
+  <div class="resume-banner" id="resume-banner" hidden>
+    <div class="rb-eyebrow">// Pick up where you left off</div>
+    <div class="rb-title" id="rb-title">—</div>
+    <div class="rb-subtitle"><span id="rb-position">—</span> · saved <span id="rb-saved">—</span></div>
+    <div class="rb-buttons">
+      <button id="rb-resume" type="button">Resume from here</button>
+      <button id="rb-restart" type="button">Start over</button>
+    </div>
+  </div>
+
   <div class="reel" id="reel">
     <div class="reel-title">previously routed</div>
     <div class="reel-list" id="reel-list"></div>
@@ -313,13 +385,80 @@
     if (d && d.role === 'host') document.body.classList.add('host');
   });
 
+  // Resume-after-restart wiring. The server tags every state broadcast
+  // with `resume` when no live session is active but a persisted hint
+  // exists (state.json on disk). Show a banner; hosts can act on it.
+  const rb         = document.getElementById('resume-banner');
+  const rbTitle    = document.getElementById('rb-title');
+  const rbPosition = document.getElementById('rb-position');
+  const rbSaved    = document.getElementById('rb-saved');
+  const rbResume   = document.getElementById('rb-resume');
+  const rbRestart  = document.getElementById('rb-restart');
+  let resumeHint = null;
+  function fmtHMS(s) {
+    if (!isFinite(s) || s < 0) return '0:00';
+    s = Math.floor(s);
+    const h = Math.floor(s/3600);
+    const m = Math.floor((s%3600)/60);
+    const ss = s%60;
+    const p = (n) => String(n).padStart(2, '0');
+    return h > 0 ? h + ':' + p(m) + ':' + p(ss) : m + ':' + p(ss);
+  }
+  function fmtSavedAgo(t) {
+    if (!t) return '—';
+    const sec = Math.max(0, Math.floor(Date.now() / 1000) - t);
+    if (sec < 60)    return sec + 's ago';
+    if (sec < 3600)  return Math.floor(sec/60) + ' min ago';
+    if (sec < 86400) return Math.floor(sec/3600) + ' h ago';
+    return Math.floor(sec/86400) + ' d ago';
+  }
+  function paintResumeHint(hint) {
+    resumeHint = hint;
+    rbTitle.textContent    = hint.title || hint.ratingKey;
+    let pos = 'paused at ' + fmtHMS(hint.positionSec);
+    if (hint.durationSec > 0) pos += ' of ' + fmtHMS(hint.durationSec);
+    rbPosition.textContent = pos;
+    rbSaved.textContent    = fmtSavedAgo(hint.savedAtUnix);
+    rb.hidden = false;
+  }
+  async function doResume(restart) {
+    if (!resumeHint || !document.body.classList.contains('host')) return;
+    const btn = restart ? rbRestart : rbResume;
+    btn.disabled = true;
+    const orig = btn.textContent;
+    btn.textContent = 'cueing source…';
+    try {
+      const body = { action: 'load', ratingKey: resumeHint.ratingKey };
+      if (!restart) body.positionSec = resumeHint.positionSec;
+      const r = await fetch('/control', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(body),
+      });
+      if (!r.ok) throw new Error(await r.text());
+      window.location.href = '/watch';
+    } catch (err) {
+      btn.disabled = false;
+      btn.textContent = orig + ' · retry';
+      console.error(err);
+    }
+  }
+  rbResume.addEventListener('click',  () => doResume(false));
+  rbRestart.addEventListener('click', () => doResume(true));
+
   // The waiting room is a live page: when a movie loads, we reload /watch
-  // which then serves the actual player.
+  // which then serves the actual player. The resume hint comes in on the
+  // SAME state broadcasts — refresh the banner each tick so the "saved N
+  // minutes ago" line stays accurate.
   openLiveEvents((s) => {
     if (s && s.ratingKey) {
       // Tiny visual handoff so it feels intentional, not a hard cut.
       document.body.classList.add('opening');
       setTimeout(() => { window.location.href = '/watch'; }, 350);
+      return;
+    }
+    if (s && s.resume) {
+      paintResumeHint(s.resume);
     }
   });
 

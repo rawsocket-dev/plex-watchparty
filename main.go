@@ -181,7 +181,14 @@ func main() {
 	recent := NewRecentMovies(recentPath)
 	recent.Load()
 
-	hub := NewHub(plex, plexSession, segCache, recent)
+	// Resume hint store: small JSON file capturing the last known
+	// playback state, refreshed on every broadcast. Lets us offer
+	// "Resume where you left off?" after a container restart or
+	// idle shutdown. Sits next to recent.json.
+	statePath := filepath.Join(filepath.Dir(workDir), "state.json")
+	stateStore := NewStateStore(statePath)
+
+	hub := NewHub(plex, plexSession, segCache, recent, stateStore)
 	auth := NewAuth(password, hostPassword)
 	bw := newBwTracker()
 

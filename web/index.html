@@ -38,6 +38,26 @@
   </div>
 </div>
 <div id="status">Loading the library…</div>
+
+<!-- Resume-after-restart banner. Visible only when the server reports
+     a persisted resume hint AND there's no active session — i.e. the
+     container restarted (or the idle timer fired) while a movie was
+     loaded. Click "Resume" to relaunch the Plex session at the saved
+     position; "Start over" to relaunch from 0. Hosts get clickable
+     buttons; viewers get the same banner as informational text. -->
+<div id="resume-banner" class="hidden">
+  <div class="rb-card">
+    <div class="rb-eyebrow">// Resume where you left off</div>
+    <div class="rb-title" id="rb-title">—</div>
+    <div class="rb-subtitle"><span id="rb-position">—</span> · saved <span id="rb-saved">—</span></div>
+    <div class="rb-buttons">
+      <button id="rb-resume" class="primary">Resume from here</button>
+      <button id="rb-restart">Start over</button>
+      <button id="rb-dismiss" class="ghost" title="Hide this banner">Dismiss</button>
+    </div>
+  </div>
+</div>
+
 <div id="groups"></div>
 <footer>· intermission · grab a drink · <a href="/logout">log out</a> ·</footer>
 

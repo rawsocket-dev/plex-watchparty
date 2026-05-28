@@ -39,6 +39,12 @@ type State struct {
 	// Refreshed on every broadcast so the player's "who's here" tooltip
 	// can update as people join / leave.
 	Viewers []ViewerInfo `json:"viewers,omitempty"`
+	// Resume is the persisted "last known" playback state, surfaced
+	// only when there is NO active session (RatingKey == ""). The
+	// waiting room and library render it as a "Resume where you left
+	// off?" affordance after a container restart or idle shutdown.
+	// Populated by snapshot() / broadcast() from Hub.lastKnown.
+	Resume *ResumeHint `json:"resume,omitempty"`
 }
 
 // ViewerInfo is the per-connection identity surfaced to clients in
@@ -103,9 +109,15 @@ type Hub struct {
 	session *PlexSession
 	cache   *SegmentCache
 	recent  *RecentMovies
+	store   *StateStore
 
 	mu    sync.Mutex
 	state State
+	// lastKnown is the persisted resume hint. Populated from disk at
+	// startup; refreshed on every broadcast that has a live RatingKey
+	// (so it's always current). Surfaced as State.Resume whenever
+	// h.state.RatingKey is empty. Cleared by SendEveryoneToLobby.
+	lastKnown *ResumeHint
 	// clients keyed by the per-connection send channel so disconnect
 	// lookups stay O(1). Role tracking pauses the room when the last
 	// host leaves; name tracking populates the "who's here" roster.
@@ -139,14 +151,25 @@ const idleGrace = 60 * time.Second
 // just "host clicks play again," not "plex session killed."
 const hostExitGrace = 10 * time.Second
 
-func NewHub(plex *Plex, session *PlexSession, cache *SegmentCache, recent *RecentMovies) *Hub {
+func NewHub(plex *Plex, session *PlexSession, cache *SegmentCache, recent *RecentMovies, store *StateStore) *Hub {
 	h := &Hub{
 		plex:          plex,
 		session:       session,
 		cache:         cache,
 		recent:        recent,
+		store:         store,
 		clients:       make(map[*clientEntry]struct{}),
 		broadcastWake: make(chan struct{}, 1),
+	}
+	if store != nil {
+		// Resume hint from prior process. Snapshot includes it in
+		// every State broadcast until a fresh load overwrites it.
+		if hint := store.Load(); hint != nil {
+			h.lastKnown = hint
+			log.Printf("state: loaded resume hint %q @ %.2fs (saved %s ago)",
+				hint.Title, hint.PositionSec,
+				time.Since(time.Unix(hint.SavedAtUnix, 0)).Round(time.Second))
+		}
 	}
 	// Periodic state re-broadcast. Two goals: (1) Safari's EventSource
 	// closes the SSE if it goes ~10–20 s without an actual data event
@@ -532,24 +555,50 @@ func (h *Hub) RecoverSegmentForRange(startMs, endMs int64) ([]byte, error) {
 // Snapshot is the locked, public counterpart of snapshot(). Used by
 // HTTP handlers that need a one-shot view of current state (e.g. the
 // /api/state endpoint that drives the library's "Resume?" prompt).
-// Includes the current viewer roster so callers don't see a stale
-// list between broadcast ticks.
+// Includes the current viewer roster + Resume hint so callers don't
+// see a stale list between broadcast ticks.
 func (h *Hub) Snapshot() State {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	s := h.snapshot()
 	s.Viewers = h.viewerList()
+	if s.RatingKey == "" && h.lastKnown != nil {
+		s.Resume = h.lastKnown
+	}
 	return s
 }
 
 // broadcast marshals the current snapshot once and fans the bytes out
-// to every connected viewer. Stays out of h.state (CachedRanges and
-// Viewers are computed per-broadcast and stamped onto the snapshot
-// only — the authoritative h.state is unchanged).
+// to every connected viewer. Stays out of h.state (CachedRanges,
+// Viewers, Resume are computed per-broadcast and stamped onto the
+// snapshot only — the authoritative h.state is unchanged).
+//
+// Side effect: persists the resume hint whenever there's an active
+// RatingKey. The persist is fire-and-forget on a goroutine so the
+// broadcast doesn't block on a slow filesystem.
 func (h *Hub) broadcast() {
 	s := h.snapshot()
-	if s.RatingKey != "" && h.cache != nil {
-		s.CachedRanges = h.cache.RangesFor(s.RatingKey)
+	if s.RatingKey != "" {
+		if h.cache != nil {
+			s.CachedRanges = h.cache.RangesFor(s.RatingKey)
+		}
+		// Refresh the in-memory hint AND persist. snapshot() already
+		// extrapolated PositionSec, so a crash here loses at most
+		// the last broadcast tick (~3 s) of advance.
+		hint := ResumeHint{
+			RatingKey:   s.RatingKey,
+			Title:       s.Title,
+			PositionSec: s.PositionSec,
+			DurationSec: s.DurationSec,
+		}
+		h.lastKnown = &hint
+		if h.store != nil {
+			go h.store.Save(hint)
+		}
+	} else if h.lastKnown != nil {
+		// No active session — surface the resume hint so waiting
+		// room / library can offer "Resume where you left off?"
+		s.Resume = h.lastKnown
 	}
 	s.Viewers = h.viewerList()
 	b, err := json.Marshal(s)
@@ -610,6 +659,8 @@ func (h *Hub) HandleEvents(w http.ResponseWriter, r *http.Request, isHost bool) 
 	init := h.snapshot()
 	if init.RatingKey != "" && h.cache != nil {
 		init.CachedRanges = h.cache.RangesFor(init.RatingKey)
+	} else if init.RatingKey == "" && h.lastKnown != nil {
+		init.Resume = h.lastKnown
 	}
 	// snapshot() doesn't refresh Viewers — that only happens in
 	// broadcast(). For a freshly-connected client this matters:
@@ -746,12 +797,24 @@ func (h *Hub) HandleControl(w http.ResponseWriter, r *http.Request) {
 		listMs := time.Since(tList).Milliseconds()
 
 		tStart := time.Now()
+		// Resume target: respect req.PositionSec when the caller sent
+		// one (waiting-room "Resume?" button, library Resume modal).
+		// Clamp to [0, duration-2s] so we don't try to start the
+		// transcoder past the end of the file — Plex returns 4xx for
+		// out-of-range offsets.
+		offsetSec := req.PositionSec
+		if offsetSec < 0 {
+			offsetSec = 0
+		}
+		if dur := float64(si.Duration) / 1000.0; dur > 0 && offsetSec > dur-2 {
+			offsetSec = 0
+		}
 		// A host-initiated load wins over any in-flight auto-restart —
 		// signal the auto-restart goroutine to abort before we call
 		// Start. Without this both could call /stop+/start in quick
 		// succession and Plex would see overlapping sessions.
 		h.session.SuppressAutoRestart()
-		if err := h.session.Start(req.RatingKey, 0); err != nil {
+		if err := h.session.Start(req.RatingKey, offsetSec); err != nil {
 			log.Printf("control: plex Start failed ip=%s ratingKey=%s err=%v",
 				clientIP(r), req.RatingKey, err)
 			http.Error(w, "plex start: "+err.Error(), http.StatusBadGateway)
@@ -760,8 +823,8 @@ func (h *Hub) HandleControl(w http.ResponseWriter, r *http.Request) {
 		startMs := time.Since(tStart).Milliseconds()
 		totalMs := time.Since(t0).Milliseconds()
 
-		log.Printf("load %q: resolve=%dms list=%dms plexStart=%dms total=%dms",
-			title, resolveMs, listMs, startMs, totalMs)
+		log.Printf("load %q: resolve=%dms list=%dms plexStart=%dms total=%dms offset=%.2fs",
+			title, resolveMs, listMs, startMs, totalMs, offsetSec)
 		log.Printf("media %q: %s %s · %dx%d @ %s · %d kbps · %s",
 			title, orDash(si.VideoCodec), orDash(si.VideoProfile),
 			si.Width, si.Height, orDash(si.FrameRate), si.Bitrate,
@@ -773,7 +836,7 @@ func (h *Hub) HandleControl(w http.ResponseWriter, r *http.Request) {
 			RatingKey:    req.RatingKey,
 			Title:        title,
 			Playing:      false,
-			PositionSec:  0,
+			PositionSec:  offsetSec,
 			DurationSec:  float64(si.Duration) / 1000.0,
 			SessionToken: h.session.SessionToken(),
 			UpdatedAtMs:  nowMs(),
@@ -919,6 +982,13 @@ func (h *Hub) SendEveryoneToLobby() {
 	h.session.Stop()
 	h.mu.Lock()
 	h.state = State{UpdatedAtMs: nowMs()}
+	// Admin "Send to lobby" is the explicit "we're done with this
+	// movie" signal — wipe the resume hint so the next viewer
+	// landing on /watch isn't offered to pick it back up.
+	h.lastKnown = nil
+	if h.store != nil {
+		h.store.Clear()
+	}
 	h.broadcast()
 	h.mu.Unlock()
 	log.Printf("admin lobby: tore down session %q", title)
