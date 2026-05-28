@@ -683,7 +683,14 @@ setInterval(() => {
 // natural playback drift.
 document.getElementById('play').onclick  = () => { if (isHost) post('play'); };
 document.getElementById('pause').onclick = () => { if (isHost) post('pause'); };
-v.addEventListener('play',  () => { if (isHost && !applying && !reattaching) post('play');  });
+// 'play' echoes are NOT suppressed during reattaching. The
+// reattaching flag exists to swallow the synchronous v.pause() that
+// hls.destroy() fires; nothing in the attach path emits a synthetic
+// 'play' event. Suppressing legitimate plays (e.g. the user clicking
+// the join overlay right after a fresh load, while the 8s reattaching
+// timer is still active) leaves the server thinking Playing=false
+// and the next broadcast pauses the player.
+v.addEventListener('play',  () => { if (isHost && !applying) post('play');  });
 v.addEventListener('pause', () => { if (isHost && !applying && !reattaching) post('pause'); });
 
 // Click anywhere on the video to toggle play/pause (host only) — the
