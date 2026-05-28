@@ -139,6 +139,13 @@ type Hub struct {
 	// pause so viewers stop where the host did. Reconnects during the
 	// grace window (page refresh, network blip) cancel the pause.
 	hostExitTimer *time.Timer
+
+	// Shutdown plumbing. done is closed once (guarded by closeOnce) to
+	// signal broadcastLoop + timelineReportLoop to exit; loopsWG lets
+	// Close wait for them to return. See Close.
+	done      chan struct{}
+	closeOnce sync.Once
+	loopsWG   sync.WaitGroup
 }
 
 // idleGrace is how long we keep the plex session alive after the last viewer
@@ -160,6 +167,7 @@ func NewHub(plex *Plex, session *PlexSession, cache *SegmentCache, recent *Recen
 		store:         store,
 		clients:       make(map[*clientEntry]struct{}),
 		broadcastWake: make(chan struct{}, 1),
+		done:          make(chan struct{}),
 	}
 	if store != nil {
 		// Resume hint from prior process. Snapshot includes it in
@@ -177,6 +185,7 @@ func NewHub(plex *Plex, session *PlexSession, cache *SegmentCache, recent *Recen
 	// gets a fresh extrapolated position on a steady cadence so the
 	// drift correction in the player has up-to-date state even
 	// between play/pause/seek changes.
+	h.loopsWG.Add(2)
 	go h.broadcastLoop()
 	// Plex timeline reporting. Makes us look like a normal Plex
 	// client (web app, iOS, etc.) by POSTing our position + state
@@ -187,20 +196,55 @@ func NewHub(plex *Plex, session *PlexSession, cache *SegmentCache, recent *Recen
 	return h
 }
 
+// Close stops the Hub's background loops and one-shot timers and drains
+// any in-flight state persistence. Idempotent and safe to call from any
+// goroutine.
+//
+// Ordering respects the documented lock hierarchy (Hub.mu →
+// PlexSession.mu / SegmentCache.mu, which never call back into Hub): it
+// closes the done channel and waits on the loop WaitGroup with no lock
+// held — so a loop mid-Hub.mu-section can finish and exit without
+// deadlocking — then takes Hub.mu only to stop the timers (no nested
+// locks), then drains the store.
+func (h *Hub) Close() {
+	h.closeOnce.Do(func() { close(h.done) })
+	h.loopsWG.Wait()
+	h.mu.Lock()
+	if h.idleTimer != nil {
+		h.idleTimer.Stop()
+		h.idleTimer = nil
+	}
+	if h.hostExitTimer != nil {
+		h.hostExitTimer.Stop()
+		h.hostExitTimer = nil
+	}
+	h.mu.Unlock()
+	if h.store != nil {
+		h.store.Wait()
+	}
+}
+
 func (h *Hub) broadcastLoop() {
+	defer h.loopsWG.Done()
 	for {
 		h.mu.Lock()
 		hasClients := len(h.clients) > 0
 		h.mu.Unlock()
 		if !hasClients {
-			// Empty room — block until someone joins. No point
-			// re-broadcasting state to nobody every 3s.
-			<-h.broadcastWake
-			continue
+			// Empty room — block until someone joins (or shutdown). No
+			// point re-broadcasting state to nobody every 3s.
+			select {
+			case <-h.broadcastWake:
+				continue
+			case <-h.done:
+				return
+			}
 		}
 		select {
 		case <-time.After(3 * time.Second):
 		case <-h.broadcastWake:
+		case <-h.done:
+			return
 		}
 		h.mu.Lock()
 		// Auto-pause at the end of the movie. Without this, a host
@@ -238,10 +282,16 @@ const timelineReportInterval = 5 * time.Second
 // so each report carries the actual playhead, not a stale value
 // from the last play/pause.
 func (h *Hub) timelineReportLoop() {
+	defer h.loopsWG.Done()
 	t := time.NewTicker(timelineReportInterval)
 	defer t.Stop()
-	for range t.C {
-		h.reportTimelineNow()
+	for {
+		select {
+		case <-t.C:
+			h.reportTimelineNow()
+		case <-h.done:
+			return
+		}
 	}
 }
 

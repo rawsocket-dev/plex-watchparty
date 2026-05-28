@@ -55,12 +55,12 @@ func newHubTestFixture(t *testing.T) *hubTestFixture {
 	store := NewStateStore(filepath.Join(dir, "state.json"))
 	session := NewPlexSession(plex, 12000)
 	hub := NewHub(plex, session, cache, recent, store)
-	// State persistence is fire-and-forget on a goroutine. Drain any
-	// in-flight writes before t.TempDir's RemoveAll runs — cleanups
-	// are LIFO, so registering this after t.TempDir() makes it run
-	// first. Without it a late Save recreates a file (its MkdirAll
-	// even recreates the dir) mid-removal → "directory not empty".
-	t.Cleanup(store.Wait)
+	// Stop the Hub's background loops/timers and drain pending state
+	// writes before t.TempDir's RemoveAll runs — cleanups are LIFO, so
+	// registering this after t.TempDir() makes it run first. Without it
+	// a late Save recreates a file (its MkdirAll even recreates the dir)
+	// mid-removal → "directory not empty". Close subsumes store.Wait().
+	t.Cleanup(hub.Close)
 	return &hubTestFixture{hub: hub, mock: mock, cache: cache, dir: dir}
 }
 
@@ -183,6 +183,25 @@ func TestHubLoadPopulatesRecent(t *testing.T) {
 	if got[0].RatingKey != "rk1" || got[0].Title != "Test Movie" || got[0].Year != 2024 {
 		t.Errorf("recent[0] = %+v, want rk1/Test Movie/2024", got[0])
 	}
+}
+
+func TestHubCloseStopsLoops(t *testing.T) {
+	f := newHubTestFixture(t)
+
+	// Close must return promptly: both background loops have to observe
+	// the done signal and exit, and the WaitGroup wait must not deadlock.
+	done := make(chan struct{})
+	go func() { f.hub.Close(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Close did not return within 2s — a loop failed to observe done")
+	}
+
+	// Idempotent: a second Close must not panic (double channel close)
+	// or hang. The fixture's t.Cleanup also calls Close, exercising a
+	// third call.
+	f.hub.Close()
 }
 
 func TestHubHandleEventsReportsViewer(t *testing.T) {
