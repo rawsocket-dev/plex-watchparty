@@ -12,10 +12,23 @@ import (
 // bwTracker counts /hls/* bytes-served per client over a rolling window so
 // the player can show "you X kbps / room Y kbps / N viewers". Clients are
 // keyed by best-effort IP (X-Forwarded-For / X-Real-IP / RemoteAddr).
+//
+// bwTracker also keeps a per-second total-kbps ring buffer for the admin
+// panel's bandwidth sparkline. Sized to historyBuckets seconds (default
+// 120 = a 2-minute window) — the ring index is now/sec % len so writes
+// are O(1).
 type bwTracker struct {
 	mu      sync.Mutex
 	clients map[string][]bwSample
 	window  time.Duration
+
+	// History ring. history[i] holds the total bytes served at second
+	// timestamps[i]; total kbps for the second is history[i]*8/1000.
+	// We compute the second-aggregate lazily at snapshot/history read
+	// time so record() stays cheap.
+	history     []int64
+	timestamps  []int64 // unix-seconds; aligned with history index
+	historyHead int     // most-recently-written slot (clockwise)
 }
 
 type bwSample struct {
@@ -23,10 +36,14 @@ type bwSample struct {
 	bytes int64
 }
 
+const historyBuckets = 120 // 2 minutes at 1-second resolution
+
 func newBwTracker() *bwTracker {
 	return &bwTracker{
-		clients: make(map[string][]bwSample),
-		window:  10 * time.Second,
+		clients:    make(map[string][]bwSample),
+		window:     10 * time.Second,
+		history:    make([]int64, historyBuckets),
+		timestamps: make([]int64, historyBuckets),
 	}
 }
 
@@ -58,6 +75,59 @@ func (b *bwTracker) record(ip string, bytes int64) {
 		samples = kept
 	}
 	b.clients[ip] = append(samples, bwSample{at: now, bytes: bytes})
+
+	// Update the per-second history ring. New second = advance head
+	// and seed; same second as last write = accumulate into the
+	// current slot. The ring wraps at historyBuckets so the oldest
+	// slot is naturally overwritten without bookkeeping.
+	sec := now.Unix()
+	if b.timestamps[b.historyHead] != sec {
+		b.historyHead = (b.historyHead + 1) % len(b.history)
+		b.timestamps[b.historyHead] = sec
+		b.history[b.historyHead] = 0
+	}
+	b.history[b.historyHead] += bytes
+}
+
+// BwHistorySample is one second's total throughput for the
+// /admin/api/bandwidth/history sparkline. Ts is unix-seconds; Kbps is
+// computed from bytes*8/1000.
+type BwHistorySample struct {
+	Ts   int64 `json:"ts"`
+	Kbps int64 `json:"kbps"`
+}
+
+// History returns the per-second total-kbps ring buffer, ordered
+// oldest-first. Slots with no traffic (no record() call that second)
+// are returned with Kbps=0 — the timeline is dense so the sparkline
+// renders contiguously. Pads to historyBuckets so the caller always
+// sees a fixed-width window.
+func (b *bwTracker) History() []BwHistorySample {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	now := time.Now().Unix()
+	out := make([]BwHistorySample, historyBuckets)
+	// Walk back from "now" filling each second slot. If the slot in
+	// the ring matches the second we're looking for, use its bytes;
+	// otherwise it's a zero second.
+	for i := 0; i < historyBuckets; i++ {
+		ts := now - int64(historyBuckets-1-i) // oldest first
+		// Scan a few slots back from head to find a match. With dense
+		// traffic this is O(1) since head is right next to current.
+		var bytes int64
+		for j := 0; j < len(b.history); j++ {
+			idx := (b.historyHead - j + len(b.history)) % len(b.history)
+			if b.timestamps[idx] == ts {
+				bytes = b.history[idx]
+				break
+			}
+			if b.timestamps[idx] < ts {
+				break // slots only get older as we walk back
+			}
+		}
+		out[i] = BwHistorySample{Ts: ts, Kbps: bytes * 8 / 1000}
+	}
+	return out
 }
 
 // snapshot returns this caller's current kbps, the room total, and the

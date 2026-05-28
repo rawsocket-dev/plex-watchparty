@@ -243,3 +243,22 @@ footer {
 }
 footer #footer-status .ok { color: var(--signal); }
 footer #footer-status .err { color: var(--danger); }
+
+/* --- sparkline ------------------------------------------------------------ */
+.sparkline {
+  display: block; width: 100%; height: 80px;
+  margin: 0 0 .75rem;
+  background:
+    linear-gradient(180deg, transparent 0%, rgba(159,230,173,0.02) 100%),
+    var(--ink-3);
+  border: 1px solid var(--rule);
+}
+.sparkline .bw-line {
+  stroke: var(--signal);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+.sparkline .bw-fill {
+  fill: var(--signal);
+  opacity: 0.12;
+}

@@ -64,8 +64,12 @@ async function api(path, opts) {
 
 async function refresh() {
   try {
-    const s = await api('/admin/api/stats');
+    const [s, bw] = await Promise.all([
+      api('/admin/api/stats'),
+      api('/admin/api/bandwidth/history'),
+    ]);
     renderSession(s.session);
+    renderBandwidth(bw.samples);
     renderCache(s.cache);
     renderLibrary(s.library);
     renderViewers(s.viewers);
@@ -74,6 +78,41 @@ async function refresh() {
     setStatus('error: ' + err.message, 'err');
     console.error('refresh:', err);
   }
+}
+
+function fmtKbps(k) {
+  if (!k || k <= 0) return '0 kbps';
+  if (k >= 1000) return (k/1000).toFixed(1) + ' Mbps';
+  return k + ' kbps';
+}
+
+function renderBandwidth(samples) {
+  if (!Array.isArray(samples) || samples.length === 0) return;
+  const now    = samples[samples.length - 1].kbps;
+  const peak   = samples.reduce((m, s) => s.kbps > m ? s.kbps : m, 0);
+  const sum    = samples.reduce((a, s) => a + s.kbps, 0);
+  const avg    = Math.round(sum / samples.length);
+  $('bw-now').textContent  = fmtKbps(now);
+  $('bw-peak').textContent = fmtKbps(peak);
+  $('bw-avg').textContent  = fmtKbps(avg);
+
+  // Build the polyline + fill polygon. SVG viewBox is 600×80; we
+  // map sample index → x (0..600) and kbps → y (80..0, inverted).
+  // Y axis scales to peak (or a 1-Mbps floor so a quiet room
+  // doesn't render a noise floor that fills the chart).
+  const svg = $('bw-spark');
+  const line = svg.querySelector('.bw-line');
+  const fill = svg.querySelector('.bw-fill');
+  const W = 600, H = 80;
+  const yMax = Math.max(peak, 1000); // 1 Mbps floor
+  const pts = samples.map((s, i) => {
+    const x = (i / (samples.length - 1)) * W;
+    const y = H - (s.kbps / yMax) * (H - 2) - 1; // 1px padding top/bottom
+    return x.toFixed(1) + ',' + y.toFixed(1);
+  });
+  line.setAttribute('points', pts.join(' '));
+  // Polygon = polyline + bottom-right + bottom-left to close the fill.
+  fill.setAttribute('points', pts.join(' ') + ' ' + W + ',' + H + ' 0,' + H);
 }
 
 function renderSession(s) {

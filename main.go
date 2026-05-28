@@ -212,7 +212,7 @@ func main() {
 	// Admin surface — Google OAuth gate, separate cookie. Opt-in via
 	// env vars; if not configured, /admin routes simply don't exist.
 	if oauth.Configured() {
-		registerAdminRoutes(mux, oauth, auth, plex, segCache, plexSession, hub)
+		registerAdminRoutes(mux, oauth, auth, plex, segCache, plexSession, hub, bw)
 	}
 
 	// Everything else is behind the shared password.

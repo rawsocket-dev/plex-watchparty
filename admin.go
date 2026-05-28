@@ -18,6 +18,7 @@ func registerAdminRoutes(
 	segCache *SegmentCache,
 	plexSession *PlexSession,
 	hub *Hub,
+	bw *bwTracker,
 ) {
 	// --- public sign-in surface ---
 	mux.HandleFunc("/admin/login", oauth.HandleLogin)
@@ -147,6 +148,12 @@ func registerAdminRoutes(
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
+	})))
+
+	mux.Handle("/admin/api/bandwidth/history", gated(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, map[string]any{
+			"samples": bw.History(),
+		})
 	})))
 
 	mux.Handle("/admin/api/viewers/kick", gated(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

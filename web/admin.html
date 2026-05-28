@@ -39,7 +39,21 @@
   </section>
 
   <section class="panel">
-    <h2><span class="prefix">02</span>Cache</h2>
+    <h2><span class="prefix">02</span>Bandwidth</h2>
+    <div class="kv">
+      <div class="row"><span class="k">Now</span><span class="v mono" id="bw-now">—</span></div>
+      <div class="row"><span class="k">Peak (2 min)</span><span class="v mono" id="bw-peak">—</span></div>
+      <div class="row"><span class="k">Avg (2 min)</span><span class="v mono" id="bw-avg">—</span></div>
+    </div>
+    <svg id="bw-spark" class="sparkline" viewBox="0 0 600 80" preserveAspectRatio="none" aria-label="Last 2 minutes of room bandwidth">
+      <polyline class="bw-line" fill="none" />
+      <polygon class="bw-fill" />
+    </svg>
+    <div class="hint">Total /hls bytes served to all viewers, sampled per second, last 120 s.</div>
+  </section>
+
+  <section class="panel">
+    <h2><span class="prefix">03</span>Cache</h2>
     <div class="kv">
       <div class="row"><span class="k">Entries</span><span class="v mono" id="cache-entries">—</span></div>
       <div class="row"><span class="k">On disk</span><span class="v mono" id="cache-bytes">—</span></div>
@@ -63,7 +77,7 @@
   </section>
 
   <section class="panel">
-    <h2><span class="prefix">03</span>Library</h2>
+    <h2><span class="prefix">04</span>Library</h2>
     <div class="kv">
       <div class="row"><span class="k">Titles</span><span class="v mono" id="lib-titles">—</span></div>
       <div class="row"><span class="k">Cached at</span><span class="v mono" id="lib-cached">—</span></div>
@@ -77,7 +91,7 @@
   </section>
 
   <section class="panel">
-    <h2><span class="prefix">04</span>Viewers</h2>
+    <h2><span class="prefix">05</span>Viewers</h2>
     <table class="viewers">
       <thead>
         <tr><th>Role</th><th>Name</th><th>IP</th><th>Connected</th><th>ID</th><th></th></tr>
