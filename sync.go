@@ -206,6 +206,13 @@ func NewHub(plex *Plex, session *PlexSession, cache *SegmentCache, recent *Recen
 // held — so a loop mid-Hub.mu-section can finish and exit without
 // deadlocking — then takes Hub.mu only to stop the timers (no nested
 // locks), then drains the store.
+//
+// Close is a barrier for the long-lived loops, not for every goroutine
+// the Hub ever spawned: an AfterFunc timer callback that has already
+// fired (and may be blocked on Hub.mu) can still complete after Close
+// returns, and one-shot reportTimelineNow goroutines are not awaited.
+// Both only touch state under Hub.mu or the network — neither writes
+// the store — so they can't outlive-write the on-disk state dir.
 func (h *Hub) Close() {
 	h.closeOnce.Do(func() { close(h.done) })
 	h.loopsWG.Wait()
