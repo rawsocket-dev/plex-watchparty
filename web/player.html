@@ -6,7 +6,7 @@
 <title>Now Playing · Late Show</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT@0,9..144,300..700,0..100;1,9..144,300..700,0..100&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/player.css">
 </head>
 <body>
@@ -14,7 +14,7 @@
   <div id="bar">
     <div class="cell-group">
       <div class="cell role-cell">
-        <div class="lbl">Role</div>
+        <div class="lbl">Op_001 · Role</div>
         <div class="v">
           <span class="r-host">Host</span><span class="r-viewer">Viewer</span>
         </div>
@@ -24,21 +24,22 @@
         <div class="v" id="sync">listening</div>
       </div>
       <div class="cell bw-cell" id="bw" hidden>
-        <div class="lbl">You / Room</div>
+        <div class="lbl">Bw_out · L01</div>
         <div class="v"></div>
       </div>
       <div class="cell viewers-cell" id="viewers" hidden>
-        <div class="lbl">Viewers</div>
+        <div class="lbl">Ch_audience</div>
         <div class="v"><span class="count"></span></div>
         <div class="roster" role="tooltip"></div>
       </div>
     </div>
     <div class="cell title-cell">
+      <div class="lbl">Feed_Live · Source 01</div>
       <div class="v idle" id="title">awaiting the host…</div>
     </div>
     <div class="cell-group">
-      <button class="cell-btn primary" id="play">Play</button>
-      <button class="cell-btn" id="pause">Pause</button>
+      <button class="cell-btn primary" id="play"><span class="led"></span>Run</button>
+      <button class="cell-btn" id="pause"><span class="led"></span>Pause</button>
       <div class="cell-btn vol-cell" id="volume" tabindex="0" title="Volume (click to mute, scroll to adjust)">
         <svg class="vol-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
           <path class="vol-base" d="M3 9v6h4l5 4V5L7 9H3z"/>
@@ -51,9 +52,9 @@
           <div class="vol-value"><span id="vol-readout">100</span><span class="vol-unit">%</span></div>
         </div>
       </div>
-      <button class="cell-btn" id="zoom" title="Zoom (fit / fill)">Fit</button>
-      <button class="cell-btn" id="fullscreen" title="Fullscreen">⛶</button>
-      <a class="cell-btn" id="library-link" href="/">Exit</a>
+      <button class="cell-btn" id="zoom" title="Zoom (fit / fill)"><span class="led"></span>Fit</button>
+      <button class="cell-btn" id="fullscreen" title="Fullscreen"><span class="led"></span>FS</button>
+      <a class="cell-btn warn" id="library-link" href="/"><span class="led"></span>Out</a>
     </div>
   </div>
   <div id="scrub" aria-label="Playback position">
