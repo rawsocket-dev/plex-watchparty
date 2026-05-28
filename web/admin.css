@@ -76,6 +76,11 @@ main {
 }
 @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
 
+/* Full-width panel spans both grid columns. Used by the Viewers
+   table so the row content (role, name, IP, kbps, position,
+   connected, id, kick) has enough horizontal room without wrapping. */
+.panel.full { grid-column: 1 / -1; }
+
 .panel {
   background:
     repeating-linear-gradient(90deg, rgba(255,255,255,.012) 0 1px, transparent 1px 3px),

@@ -99,13 +99,16 @@ type BwHistorySample struct {
 
 // historySmoothing is the rolling-window size used by History() to
 // produce a smooth per-second rate from sparse arrivals. HLS
-// segments are ~4 s apart, so any single second has either ~one
-// segment's worth of bytes OR zero — emitting raw per-second
-// values makes the sparkline strobe between huge spikes and
-// zero. Averaging over historySmoothing seconds gives a stable
-// reading that matches the actual transport rate (12 Mbps stream
-// → ~12 Mbps shown), at the cost of a small lag on rate changes.
-const historySmoothing = 5
+// segments are ~4 s apart and arrive bursty (hls.js fills the
+// buffer then waits), so any single second has either a full
+// segment's worth of bytes OR zero. A 5 s window strobes between
+// 1 and 2 segments depending on phase (9.6 vs 19.2 Mbps for a
+// 12 Mbps stream); 10 s catches 2–3 segments, narrowing the
+// reported range to ~9.6–14.4 Mbps for the same nominal rate.
+// Matches the 10 s window the bwTracker.snapshot() uses for the
+// player's own bandwidth meter, so the admin reading and the
+// player reading should agree.
+const historySmoothing = 10
 
 // History returns one BwHistorySample per second for the last
 // historyBuckets seconds, ordered oldest-first. Each sample is the
