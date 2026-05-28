@@ -326,16 +326,29 @@ func main() {
 				return
 			}
 			log.Printf("seg: fetch from plex failed: %v", err)
-			// Track consecutive failures. After N in a row, trigger
-			// an auto-restart at the current play position — covers
-			// "Plex's session got into a weird state we can't fetch
-			// out of" without the user having to manually intervene.
+			// Server-side recovery: we control the stream, Plex 404'd
+			// a segment we need, restart the transcode at this segment's
+			// time and serve a substitute from the new session. The
+			// SessionToken bump goes out via SSE so the host reattaches
+			// for SUBSEQUENT segments; THIS in-flight request gets
+			// satisfied with the freshly-transcoded bytes.
+			if data, rerr := hub.RecoverSegmentForRange(ctx.StartMs, ctx.EndMs); rerr == nil {
+				if _, perr := segCache.Put(key, bytes.NewReader(data)); perr != nil {
+					log.Printf("recover: cache write failed: %v (segment still served)", perr)
+				}
+				cw.Write(data)
+				plexSession.RecordSegmentSuccess()
+				return
+			} else {
+				log.Printf("seg: server-side recovery failed: %v", rerr)
+			}
+			// Recovery itself failed. Track the streak; the existing
+			// safety net handles "Plex is fundamentally wedged" by
+			// running its own restart at the current play position
+			// after segFailureThreshold consecutive misses.
 			if plexSession.RecordSegmentFailure() {
 				go func() {
 					defer plexSession.ClearAutoRestart()
-					// A host seek-with-restart can flip autoRestart
-					// inactive between RecordSegmentFailure and us
-					// running. If so, bail — the host's intent wins.
 					if !plexSession.AutoRestartShouldProceed() {
 						log.Printf("auto-restart: superseded by host action, skipping")
 						return

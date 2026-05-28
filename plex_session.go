@@ -41,6 +41,15 @@ type PlexSession struct {
 	consecutiveSegFails int
 	autoRestartActive   bool
 	lastAutoRestartAt   time.Time
+
+	// recoverMu serializes server-side segment-recovery attempts. When
+	// Plex 404s a segment, the /hls/seg handler calls RecoverSegmentBytes
+	// to restart Plex + refetch from the new session. Without this mutex,
+	// N viewers all hitting the same bad segment at the same time would
+	// stack N concurrent Restart calls; one taking ps.mu, the others
+	// queuing behind it for redundant work. recoverMu collapses them
+	// into "the first goroutine restarts, the rest re-use that work."
+	recoverMu sync.Mutex
 }
 
 const segFailureThreshold = 3
@@ -527,4 +536,97 @@ func (ps *PlexSession) FetchSegment(segURL string) (io.ReadCloser, error) {
 	}
 	return nil, fmt.Errorf("plex segment %s: status %d (after retry)",
 		redactedURL(segURL), lastStatus)
+}
+
+// RecoverSegmentBytes is the "Plex 404'd a segment we need" rescue
+// path. The current session was unable to serve [startMs, endMs];
+// instead of forwarding the failure to hls.js (which would stall
+// playback on a single bad fragment) we control the stream — restart
+// Plex at this segment's start time, fetch the new session's
+// playlist, find the segment in that playlist whose time range
+// overlaps the requested window, and return its bytes.
+//
+// Plex's transcoder is invoked with copyts=1, so every TS chunk
+// carries absolute movie-time PCRs. Swapping segment N from session
+// A for segment M from session B that covers the same movie second
+// is decoder-safe — hls.js appends them to the same buffer position
+// without noticing the substitution.
+//
+// recoverMu serializes attempts so a thundering herd of viewers
+// hitting the same bad segment doesn't trigger N parallel Restarts.
+// A goroutine that arrives after someone else already restarted
+// (sessionToken advanced) skips the Restart and fetches from the
+// freshly-running session directly.
+func (ps *PlexSession) RecoverSegmentBytes(startMs, endMs int64) ([]byte, error) {
+	tokenBefore := ps.SessionToken()
+
+	ps.recoverMu.Lock()
+	defer ps.recoverMu.Unlock()
+
+	if ps.SessionToken() == tokenBefore {
+		offsetSec := float64(startMs) / 1000.0
+		log.Printf("recover: Plex unable to serve [%d,%d]ms; restarting at %.2fs",
+			startMs, endMs, offsetSec)
+		// Mark the auto-restart cooldown so the per-failure counter
+		// doesn't fire a redundant restart on top of this one.
+		ps.SuppressAutoRestart()
+		if err := ps.Restart(offsetSec); err != nil {
+			return nil, fmt.Errorf("recover restart: %w", err)
+		}
+	} else {
+		log.Printf("recover: another goroutine restarted while we waited (token %d→%d); reusing",
+			tokenBefore, ps.SessionToken())
+	}
+
+	body, baseURL, err := ps.FetchPlaylist()
+	if err != nil {
+		return nil, fmt.Errorf("recover playlist: %w", err)
+	}
+	ps.mu.Lock()
+	ratingKey := ps.ratingKey
+	sessionOffsetMs := ps.offsetMs
+	ps.mu.Unlock()
+	_, segs, err := rewritePlaylist(body, baseURL, sessionOffsetMs, ratingKey)
+	if err != nil {
+		return nil, fmt.Errorf("recover parse playlist: %w", err)
+	}
+	// Pick the segment whose movie-time range overlaps most with the
+	// requested window. With copyts=1 the new session emits frames at
+	// the same absolute clock as the old one, so substitution is safe.
+	var best *playlistSeg
+	var bestOverlap int64
+	for i := range segs {
+		s := &segs[i]
+		if s.EndMs < startMs || s.StartMs > endMs {
+			continue
+		}
+		lo := startMs
+		if s.StartMs > lo {
+			lo = s.StartMs
+		}
+		hi := endMs
+		if s.EndMs < hi {
+			hi = s.EndMs
+		}
+		ov := hi - lo
+		if ov > bestOverlap {
+			bestOverlap = ov
+			best = s
+		}
+	}
+	if best == nil {
+		return nil, fmt.Errorf("recover: no segment in new playlist covers [%d,%d]ms", startMs, endMs)
+	}
+	log.Printf("recover: serving substitute segment [%d,%d]ms (requested [%d,%d]ms)",
+		best.StartMs, best.EndMs, startMs, endMs)
+	r, err := ps.FetchSegment(best.OrigURL)
+	if err != nil {
+		return nil, fmt.Errorf("recover fetch segment: %w", err)
+	}
+	defer r.Close()
+	data, err := io.ReadAll(r)
+	if err != nil {
+		return nil, fmt.Errorf("recover read segment: %w", err)
+	}
+	return data, nil
 }

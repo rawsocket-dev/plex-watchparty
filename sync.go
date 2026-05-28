@@ -436,6 +436,27 @@ func (h *Hub) AutoRestartAtCurrentPosition() error {
 	return nil
 }
 
+// RecoverSegmentForRange asks the session to substitute a segment
+// covering the requested movie-time window after Plex 404'd the
+// original. Internally the session may restart Plex at that offset
+// (bumping SessionToken) — on success we stamp the new token onto
+// h.state and broadcast so connected clients reattach with the
+// fresh playlist for SUBSEQUENT segments. The bytes returned here
+// satisfy the in-flight segment request without the client ever
+// seeing the failure.
+func (h *Hub) RecoverSegmentForRange(startMs, endMs int64) ([]byte, error) {
+	data, err := h.session.RecoverSegmentBytes(startMs, endMs)
+	if err != nil {
+		return nil, err
+	}
+	h.mu.Lock()
+	h.state.SessionToken = h.session.SessionToken()
+	h.state.UpdatedAtMs = nowMs()
+	h.broadcast()
+	h.mu.Unlock()
+	return data, nil
+}
+
 // Snapshot is the locked, public counterpart of snapshot(). Used by
 // HTTP handlers that need a one-shot view of current state (e.g. the
 // /api/state endpoint that drives the library's "Resume?" prompt).
