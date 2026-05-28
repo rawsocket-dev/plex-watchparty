@@ -327,6 +327,13 @@ joinEl.classList.add('ready');
 let loadedKey = null;       // ratingKey currently attached to the <video>
 let lastSessionToken = 0;  // Plex session token last seen; used to detect transcoder restarts
 let applying = false;      // suppress echo while we apply server state
+// reattaching covers the gap from "hls.destroy() fires v.pause()" to
+// "new hls.js instance is actually playing." Without it, the
+// browser-driven pause that destroy() emits would echo to /control
+// and the server would record an unsolicited pause. Cleared by the
+// first 'playing' event after the reattach; the 8s safety timer is
+// a backstop for the case where the new instance never plays.
+let reattaching = false;
 const DRIFT = 0.75;        // seconds of tolerable drift before a hard seek
 
 function setStatus(text, kind) {
@@ -360,6 +367,12 @@ v.addEventListener('playing', () => {
   if (restartPending) {
     restartPending = false;
     joinEl.classList.add('hidden');
+  }
+  // First 'playing' after a reattach means the new hls.js instance is
+  // settled. Re-arm pause/play echoes so subsequent user actions land
+  // on the server as expected.
+  if (reattaching) {
+    reattaching = false;
   }
 });
 
@@ -479,6 +492,13 @@ function applyState(s, reason) {
   if (ratingKeyChanged || sessionTokenChanged) {
     loadedKey = s.ratingKey;
     if (s.sessionToken) lastSessionToken = s.sessionToken;
+    // Suppress echo BEFORE destroying — destroy() synchronously calls
+    // v.pause() which fires the 'pause' event listener. Without this
+    // guard the listener would POST an unsolicited pause to /control
+    // and the host's player would lock up at whatever position the
+    // reattach happened.
+    reattaching = true;
+    setTimeout(() => { reattaching = false; }, 8000);
     if (hlsInstance) {
       try { hlsInstance.destroy(); } catch (e) {}
       hlsInstance = null;
@@ -628,8 +648,8 @@ setInterval(() => {
 // natural playback drift.
 document.getElementById('play').onclick  = () => { if (isHost) post('play'); };
 document.getElementById('pause').onclick = () => { if (isHost) post('pause'); };
-v.addEventListener('play',  () => { if (isHost && !applying) post('play');  });
-v.addEventListener('pause', () => { if (isHost && !applying) post('pause'); });
+v.addEventListener('play',  () => { if (isHost && !applying && !reattaching) post('play');  });
+v.addEventListener('pause', () => { if (isHost && !applying && !reattaching) post('pause'); });
 
 // Click anywhere on the video to toggle play/pause (host only) — the
 // join overlay catches the first click pre-join, so this only fires
