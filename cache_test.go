@@ -259,13 +259,14 @@ func TestCachePruneByAge(t *testing.T) {
 			t.Fatalf("Put: %v", err)
 		}
 	}
-	// Reach into one of them and backdate its file mtime.
+	// Reach into one of them and backdate its mtime. Prune compares
+	// against the in-memory mtime (no syscalls on the hot path), so
+	// mutate it directly; the on-disk file mtime is informational.
 	for k, e := range c.entries {
 		if k.startMs == 0 {
 			old := time.Now().Add(-72 * time.Hour)
-			if err := os.Chtimes(e.path, old, old); err != nil {
-				t.Fatalf("Chtimes: %v", err)
-			}
+			e.mtime = old
+			_ = os.Chtimes(e.path, old, old) // keep disk in sync for completeness
 			break
 		}
 	}

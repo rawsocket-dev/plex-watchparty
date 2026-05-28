@@ -30,8 +30,11 @@ func newBwTracker() *bwTracker {
 	}
 }
 
-// record appends a sample for ip. Empty IPs and zero-byte writes are dropped.
-// Samples older than the window are pruned in-place to bound memory.
+// record appends a sample for ip. Empty IPs and zero-byte writes are
+// dropped. Samples older than the window are pruned lazily — only when
+// the slice grows past a soft cap — so the common case is a tiny O(1)
+// append. snapshot() filters by age at read time so a never-pruned
+// tail can't inflate reported kbps.
 func (b *bwTracker) record(ip string, bytes int64) {
 	if bytes <= 0 || ip == "" {
 		return
@@ -39,16 +42,22 @@ func (b *bwTracker) record(ip string, bytes int64) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	now := time.Now()
-	cutoff := now.Add(-b.window)
 	samples := b.clients[ip]
-	keep := samples[:0]
-	for _, s := range samples {
-		if s.at.After(cutoff) {
-			keep = append(keep, s)
+	// Lazy prune: ~4 samples per window is typical (one per ~2.5s
+	// segment at ~10s window); 32 leaves 8× headroom before we walk
+	// the slice. Bounds memory at ~1KB per active IP in the worst
+	// case (sample is 24 bytes + slice overhead).
+	if len(samples) > 32 {
+		cutoff := now.Add(-b.window)
+		kept := samples[:0]
+		for _, s := range samples {
+			if s.at.After(cutoff) {
+				kept = append(kept, s)
+			}
 		}
+		samples = kept
 	}
-	keep = append(keep, bwSample{at: now, bytes: bytes})
-	b.clients[ip] = keep
+	b.clients[ip] = append(samples, bwSample{at: now, bytes: bytes})
 }
 
 // snapshot returns this caller's current kbps, the room total, and the

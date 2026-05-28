@@ -42,6 +42,12 @@ type cacheEntry struct {
 	key   cacheKey
 	path  string
 	bytes int64
+	// mtime is the file's modification timestamp, stamped at Put or
+	// recovered from os.Stat during LoadFromDisk. Stored on the entry
+	// itself so Stats() can compute per-movie ages without an os.Stat
+	// per entry — at a full 20 GB / ~5–10k entries that's thousands
+	// of syscalls per admin poll otherwise.
+	mtime time.Time
 	elem  *list.Element
 }
 
@@ -163,7 +169,7 @@ func (c *SegmentCache) Put(key cacheKey, src io.Reader) (string, error) {
 		c.totalBytes -= oe.bytes
 		c.invalidateRangesLocked(oe.key.ratingKey)
 	}
-	e := &cacheEntry{key: key, path: finalPath, bytes: n}
+	e := &cacheEntry{key: key, path: finalPath, bytes: n, mtime: time.Now()}
 	e.elem = c.lru.PushFront(e)
 	c.entries[key] = e
 	c.totalBytes += n
@@ -255,7 +261,7 @@ func (c *SegmentCache) LoadFromDisk() error {
 				continue
 			}
 			key := cacheKey{ratingKey: ratingKey, startMs: startMs, endMs: endMs}
-			e := &cacheEntry{key: key, path: full, bytes: info.Size()}
+			e := &cacheEntry{key: key, path: full, bytes: info.Size(), mtime: info.ModTime()}
 			e.elem = c.lru.PushBack(e) // back = oldest; LoadFromDisk creates LRU as old
 			c.entries[key] = e
 			c.totalBytes += e.bytes
@@ -304,21 +310,17 @@ type CacheStats struct {
 	PerMovie   []CacheMovieStat `json:"perMovie"`
 }
 
-// Stats returns a per-movie aggregate snapshot of the cache. Walks
-// the index under c.mu and stats each file once to capture ages.
+// Stats returns a per-movie aggregate snapshot of the cache. All ages
+// come from the in-memory mtime stamped at Put / LoadFromDisk time —
+// no filesystem syscalls on the hot path. (Previous version os.Stat'd
+// every entry, which at admin-panel polling of a full 20 GB cache
+// meant 5 000+ stats per second.)
 func (c *SegmentCache) Stats() CacheStats {
 	c.mu.Lock()
-	entries := make(map[cacheKey]*cacheEntry, len(c.entries))
-	for k, v := range c.entries {
-		entries[k] = v
-	}
-	total := c.totalBytes
-	maxBytes := c.maxBytes
-	c.mu.Unlock()
-
+	defer c.mu.Unlock()
 	now := time.Now()
 	per := make(map[string]*CacheMovieStat)
-	for k, e := range entries {
+	for k, e := range c.entries {
 		st, ok := per[k.ratingKey]
 		if !ok {
 			st = &CacheMovieStat{RatingKey: k.ratingKey}
@@ -326,16 +328,12 @@ func (c *SegmentCache) Stats() CacheStats {
 		}
 		st.Entries++
 		st.Bytes += e.bytes
-		// File-mtime drives age. Skip silently on stat failure — a
-		// missing file gets eviction on the next touch.
-		if info, err := os.Stat(e.path); err == nil {
-			age := now.Sub(info.ModTime()).Seconds()
-			if age > st.OldestAge {
-				st.OldestAge = age
-			}
-			if st.NewestAge == 0 || age < st.NewestAge {
-				st.NewestAge = age
-			}
+		age := now.Sub(e.mtime).Seconds()
+		if age > st.OldestAge {
+			st.OldestAge = age
+		}
+		if st.NewestAge == 0 || age < st.NewestAge {
+			st.NewestAge = age
 		}
 	}
 	out := make([]CacheMovieStat, 0, len(per))
@@ -344,9 +342,9 @@ func (c *SegmentCache) Stats() CacheStats {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Bytes > out[j].Bytes })
 	return CacheStats{
-		Entries:    len(entries),
-		TotalBytes: total,
-		MaxBytes:   maxBytes,
+		Entries:    len(c.entries),
+		TotalBytes: c.totalBytes,
+		MaxBytes:   c.maxBytes,
 		PerMovie:   out,
 	}
 }
@@ -394,28 +392,20 @@ func (c *SegmentCache) ClearMovie(ratingKey string) (entries int, bytes int64) {
 	return entries, bytes
 }
 
-// Prune removes cache entries whose file mtime is older than the
-// given duration. Useful for "clear anything older than 30 days" style
+// Prune removes cache entries whose mtime is older than the given
+// duration. Useful for "clear anything older than 30 days" style
 // maintenance. The LRU usually keeps things fresh enough on its own,
 // but an explicit prune is the right tool when the cache hasn't hit
-// the size cap yet still has stale junk.
+// the size cap yet still has stale junk. Compares against the in-
+// memory mtime stamped at Put / LoadFromDisk — no syscalls during
+// the decision pass.
 func (c *SegmentCache) Prune(olderThan time.Duration) (entries int, bytes int64) {
 	cutoff := time.Now().Add(-olderThan)
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	affectedMovies := make(map[string]struct{})
 	for k, e := range c.entries {
-		info, err := os.Stat(e.path)
-		if err != nil {
-			// Missing file — drop the index entry, no eviction count
-			// because the bytes were never recoverable.
-			c.lru.Remove(e.elem)
-			delete(c.entries, k)
-			c.totalBytes -= e.bytes
-			affectedMovies[k.ratingKey] = struct{}{}
-			continue
-		}
-		if !info.ModTime().Before(cutoff) {
+		if !e.mtime.Before(cutoff) {
 			continue
 		}
 		_ = os.Remove(e.path)
