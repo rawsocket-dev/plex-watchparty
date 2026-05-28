@@ -114,3 +114,86 @@ func TestAuthHandleLogoutClears(t *testing.T) {
 		}
 	}
 }
+
+func TestAdminCookieRoundTrip(t *testing.T) {
+	a := NewAuth("watchpw", "hostpw")
+	w := httptest.NewRecorder()
+	a.SetAdminCookie(w, "Op@Example.COM")
+	var cookie *http.Cookie
+	for _, c := range w.Result().Cookies() {
+		if c.Name == adminCookie {
+			cookie = c
+			break
+		}
+	}
+	if cookie == nil {
+		t.Fatal("admin cookie not set")
+	}
+	r := httptest.NewRequest("GET", "/admin", nil)
+	r.AddCookie(cookie)
+	if got := a.AdminEmail(r); got != "op@example.com" {
+		t.Errorf("AdminEmail = %q, want normalized lowercase", got)
+	}
+}
+
+func TestAdminCookieRejectsTamper(t *testing.T) {
+	a := NewAuth("watchpw", "hostpw")
+	w := httptest.NewRecorder()
+	a.SetAdminCookie(w, "ok@example.com")
+	var cookie *http.Cookie
+	for _, c := range w.Result().Cookies() {
+		if c.Name == adminCookie {
+			cookie = c
+			break
+		}
+	}
+	if cookie == nil {
+		t.Fatal("admin cookie not set")
+	}
+	// Swap the email but keep the HMAC; the HMAC should refuse to verify.
+	parts := strings.SplitN(cookie.Value, ":", 2)
+	tampered := "evil@example.com:" + parts[1]
+	r := httptest.NewRequest("GET", "/admin", nil)
+	r.AddCookie(&http.Cookie{Name: adminCookie, Value: tampered})
+	if got := a.AdminEmail(r); got != "" {
+		t.Errorf("tampered cookie accepted as %q, want empty", got)
+	}
+}
+
+func TestRequireAdminGatesAccess(t *testing.T) {
+	a := NewAuth("watchpw", "hostpw")
+	called := false
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { called = true })
+
+	// No cookie → redirect for /admin, 401 for /admin/api/.
+	r := httptest.NewRequest("GET", "/admin", nil)
+	w := httptest.NewRecorder()
+	a.RequireAdmin(next).ServeHTTP(w, r)
+	if called {
+		t.Error("RequireAdmin passed through without cookie")
+	}
+	if w.Code != http.StatusSeeOther {
+		t.Errorf("status = %d, want 303", w.Code)
+	}
+
+	r = httptest.NewRequest("GET", "/admin/api/stats", nil)
+	w = httptest.NewRecorder()
+	a.RequireAdmin(next).ServeHTTP(w, r)
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("api status = %d, want 401", w.Code)
+	}
+
+	// With a valid cookie, passes through.
+	called = false
+	w = httptest.NewRecorder()
+	a.SetAdminCookie(w, "ok@example.com")
+	cookies := w.Result().Cookies()
+	r = httptest.NewRequest("GET", "/admin", nil)
+	for _, c := range cookies {
+		r.AddCookie(c)
+	}
+	a.RequireAdmin(next).ServeHTTP(httptest.NewRecorder(), r)
+	if !called {
+		t.Error("RequireAdmin blocked a valid admin cookie")
+	}
+}

@@ -107,6 +107,17 @@ func main() {
 	hub := NewHub(plex, plexSession, segCache, recent)
 	auth := NewAuth(password, hostPassword)
 	bw := newBwTracker()
+
+	// Optional Google OAuth gate for /admin. All four env vars must
+	// be set for the admin surface to wire up; with any missing the
+	// /admin routes are simply not registered and the panel is 404.
+	oauth := NewOAuth(
+		os.Getenv("ADMIN_GOOGLE_CLIENT_ID"),
+		os.Getenv("ADMIN_GOOGLE_CLIENT_SECRET"),
+		os.Getenv("ADMIN_GOOGLE_REDIRECT_URL"),
+		os.Getenv("ADMIN_GOOGLE_ALLOWED_EMAILS"),
+		auth,
+	)
 	if auth.HostEnabled() {
 		log.Printf("auth: host role enabled — viewers cannot pick / drive playback")
 	} else {
@@ -120,6 +131,12 @@ func main() {
 	// lands cleanly on /login instead of bouncing through the Guard.
 	mux.HandleFunc("/login", auth.HandleLogin)
 	mux.HandleFunc("/logout", auth.HandleLogout)
+
+	// Admin surface — Google OAuth gate, separate cookie. Opt-in via
+	// env vars; if not configured, /admin routes simply don't exist.
+	if oauth.Configured() {
+		registerAdminRoutes(mux, oauth, auth, plex, segCache, plexSession, hub)
+	}
 
 	// Everything else is behind the shared password.
 	protected := http.NewServeMux()

@@ -131,6 +131,10 @@ go run .
 | `CACHE_MAX_GB`                    | no       | `20`                     | Disk cap for HLS segment cache in GB. Cached segments survive restarts; LRU eviction kicks in when cap is hit. Estimate ~10 GB per typical 2hr movie at 12 Mbps. |
 | `LISTEN_ADDR`                     | no       | `:8080`                  | Listen address (e.g., `:8080` or `0.0.0.0:8080`) |
 | `WORK_DIR`                        | no       | `$TMPDIR/plexwatchparty` | Root data directory for cache and work files |
+| `ADMIN_GOOGLE_CLIENT_ID`          | no       | unset (= /admin disabled) | Google OAuth 2.0 Client ID for the admin panel |
+| `ADMIN_GOOGLE_CLIENT_SECRET`      | no       | unset                    | Matching client secret |
+| `ADMIN_GOOGLE_REDIRECT_URL`       | no       | unset                    | Public callback URL, e.g. `https://watch.example.com/admin/oauth/callback` |
+| `ADMIN_GOOGLE_ALLOWED_EMAILS`     | no       | unset                    | Comma-separated email allowlist. Required when the three above are set, otherwise admin sign-in is disabled. |
 
 **HOST_PASSWORD behavior:**
 
@@ -142,6 +146,41 @@ unset (or equals `WATCH_PASSWORD`), the original "any friend can drive"
 behaviour is preserved.
 
 [Finding your Plex token.](https://support.plex.tv/articles/204059436-finding-an-authentication-token-x-plex-token/)
+
+## Admin panel (`/admin`)
+
+A small maintenance console gated by Google sign-in. Opt-in — disabled
+by default. When configured, sign in at `/admin/login` and you get a
+panel covering: current Plex session info + manual restart, segment
+cache stats with clear-all / clear-one-movie / prune-older-than-N-days,
+library cache age + manual refresh, and a live SSE viewer roster with
+kick.
+
+### Google Cloud setup
+
+1. Go to the [Google Cloud Console](https://console.cloud.google.com/),
+   create (or pick) a project.
+2. **APIs & Services → Credentials → Create credentials → OAuth client ID.**
+3. Application type: **Web application**. Add the deployed callback URL
+   under *Authorized redirect URIs*, e.g.
+   `https://watch.example.com/admin/oauth/callback`. (For local dev
+   you can add `http://localhost:8080/admin/oauth/callback` too.)
+4. Save. Google shows you the **Client ID** and **Client secret**.
+5. **APIs & Services → OAuth consent screen.** Pick *External* (or
+   *Internal* if you're on Google Workspace). Fill in the basic app
+   info; the *email* scope is automatically included.
+6. Set the four env vars on the watchparty container:
+
+   ```
+   ADMIN_GOOGLE_CLIENT_ID=…apps.googleusercontent.com
+   ADMIN_GOOGLE_CLIENT_SECRET=…
+   ADMIN_GOOGLE_REDIRECT_URL=https://watch.example.com/admin/oauth/callback
+   ADMIN_GOOGLE_ALLOWED_EMAILS=you@example.com,partner@example.com
+   ```
+
+If any of `CLIENT_ID` / `CLIENT_SECRET` / `REDIRECT_URL` are missing,
+or `ALLOWED_EMAILS` is empty when they are present, the `/admin`
+routes are not registered and the panel is a 404.
 
 ## Reverse proxy
 

@@ -14,6 +14,18 @@ import (
 
 const sessionCookie = "wp_session"
 
+// adminCookie carries the email of a Google-authenticated admin
+// alongside an HMAC over the email. Independent of sessionCookie so
+// the operator can be signed in as host AND admin simultaneously
+// (watching a movie while running maintenance from the same browser).
+const adminCookie = "wp_admin"
+
+// adminCookieTTL bounds how long an admin sign-in stays valid before
+// the operator must re-authenticate through Google. Maintenance is
+// not an everyday activity — short-ish lifetime is fine and limits
+// blast radius if a session cookie ever leaks.
+const adminCookieTTL = 12 * time.Hour
+
 // Role is who the viewer is in the watch party.
 type Role int
 
@@ -224,4 +236,79 @@ func (a *Auth) HandleLogout(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	http.Redirect(w, r, "/login", http.StatusSeeOther)
+}
+
+// adminTokenFor mints the admin cookie value for the given email.
+// Format: "<email>:<hmac(email)>" — email visible so logs/UI can show
+// "Signed in as foo@bar.com" without re-decoding anything, but the
+// HMAC is what makes the cookie unforgeable.
+func (a *Auth) adminTokenFor(email string) string {
+	email = strings.ToLower(strings.TrimSpace(email))
+	mac := hmac.New(sha256.New, a.secret)
+	mac.Write([]byte("admin:"))
+	mac.Write([]byte(email))
+	return email + ":" + hex.EncodeToString(mac.Sum(nil))
+}
+
+// AdminEmail returns the verified admin email for the request, or ""
+// if no valid admin cookie is present. Constant-time HMAC compare so
+// timing leaks don't reveal which characters of the email match.
+func (a *Auth) AdminEmail(r *http.Request) string {
+	c, err := r.Cookie(adminCookie)
+	if err != nil || c.Value == "" {
+		return ""
+	}
+	email, _, ok := strings.Cut(c.Value, ":")
+	if !ok || email == "" {
+		return ""
+	}
+	want := a.adminTokenFor(email)
+	if subtle.ConstantTimeCompare([]byte(c.Value), []byte(want)) != 1 {
+		return ""
+	}
+	return email
+}
+
+// SetAdminCookie writes the signed admin session cookie for the given
+// email. Called by the OAuth callback after Google has confirmed the
+// email and the allowlist check has passed.
+func (a *Auth) SetAdminCookie(w http.ResponseWriter, email string) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     adminCookie,
+		Value:    a.adminTokenFor(email),
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		Expires:  time.Now().Add(adminCookieTTL),
+	})
+}
+
+// ClearAdminCookie expires the admin cookie. Safe to call when no
+// cookie is present.
+func (a *Auth) ClearAdminCookie(w http.ResponseWriter) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     adminCookie,
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		SameSite: http.SameSiteLaxMode,
+	})
+}
+
+// RequireAdmin wraps a handler so only requests with a valid admin
+// cookie pass through. Browser navigations get a 303 to /admin/login
+// (the Google sign-in landing page); API calls get a 401 so the
+// admin panel's JS can detect expiry and re-auth.
+func (a *Auth) RequireAdmin(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if a.AdminEmail(r) != "" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		if strings.HasPrefix(r.URL.Path, "/admin/api/") {
+			http.Error(w, "admin only", http.StatusUnauthorized)
+			return
+		}
+		http.Redirect(w, r, "/admin/login", http.StatusSeeOther)
+	})
 }

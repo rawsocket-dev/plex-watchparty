@@ -1,10 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestSegmentCachePutGetRoundTrip(t *testing.T) {
@@ -191,5 +193,107 @@ func TestSegmentCacheLoadFromDisk(t *testing.T) {
 	// .tmp file should be cleaned up.
 	if _, err := os.Stat(filepath.Join(dir, "rk1", "seg_0_6000.ts.tmp")); !os.IsNotExist(err) {
 		t.Errorf("expected .tmp cleaned, stat err = %v", err)
+	}
+}
+
+func TestCacheClearAll(t *testing.T) {
+	dir := t.TempDir()
+	c := NewSegmentCache(dir, 10<<20)
+	for i := int64(0); i < 5; i++ {
+		_, err := c.Put(cacheKey{ratingKey: "m1", startMs: i * 1000, endMs: (i + 1) * 1000},
+			bytes.NewReader([]byte("xxxxxxxx")))
+		if err != nil {
+			t.Fatalf("Put: %v", err)
+		}
+	}
+	if c.totalBytes == 0 {
+		t.Fatal("expected cache to have bytes before Clear")
+	}
+	entries, n := c.Clear()
+	if entries != 5 {
+		t.Errorf("Clear returned entries=%d, want 5", entries)
+	}
+	if n == 0 {
+		t.Error("Clear returned bytes=0, want >0")
+	}
+	if c.totalBytes != 0 || len(c.entries) != 0 {
+		t.Errorf("after Clear: totalBytes=%d entries=%d, want both 0",
+			c.totalBytes, len(c.entries))
+	}
+}
+
+func TestCacheClearMovie(t *testing.T) {
+	dir := t.TempDir()
+	c := NewSegmentCache(dir, 10<<20)
+	for _, rk := range []string{"a", "b"} {
+		for i := int64(0); i < 3; i++ {
+			_, err := c.Put(cacheKey{ratingKey: rk, startMs: i * 1000, endMs: (i + 1) * 1000},
+				bytes.NewReader([]byte("yyyyy")))
+			if err != nil {
+				t.Fatalf("Put: %v", err)
+			}
+		}
+	}
+	entries, _ := c.ClearMovie("a")
+	if entries != 3 {
+		t.Errorf("ClearMovie(a) entries = %d, want 3", entries)
+	}
+	if got := len(c.entries); got != 3 {
+		t.Errorf("remaining entries = %d, want 3 (movie b only)", got)
+	}
+	for k := range c.entries {
+		if k.ratingKey != "b" {
+			t.Errorf("after ClearMovie(a), found entry for %q", k.ratingKey)
+		}
+	}
+}
+
+func TestCachePruneByAge(t *testing.T) {
+	dir := t.TempDir()
+	c := NewSegmentCache(dir, 10<<20)
+	// Two entries written now.
+	for i := int64(0); i < 2; i++ {
+		_, err := c.Put(cacheKey{ratingKey: "m1", startMs: i * 1000, endMs: (i + 1) * 1000},
+			bytes.NewReader([]byte("zzzz")))
+		if err != nil {
+			t.Fatalf("Put: %v", err)
+		}
+	}
+	// Reach into one of them and backdate its file mtime.
+	for k, e := range c.entries {
+		if k.startMs == 0 {
+			old := time.Now().Add(-72 * time.Hour)
+			if err := os.Chtimes(e.path, old, old); err != nil {
+				t.Fatalf("Chtimes: %v", err)
+			}
+			break
+		}
+	}
+	entries, _ := c.Prune(24 * time.Hour)
+	if entries != 1 {
+		t.Errorf("Prune(24h) entries = %d, want 1", entries)
+	}
+	if got := len(c.entries); got != 1 {
+		t.Errorf("after Prune, remaining = %d, want 1", got)
+	}
+}
+
+func TestCacheStats(t *testing.T) {
+	dir := t.TempDir()
+	c := NewSegmentCache(dir, 10<<20)
+	_, _ = c.Put(cacheKey{ratingKey: "a", startMs: 0, endMs: 1000},
+		bytes.NewReader([]byte("hello")))
+	_, _ = c.Put(cacheKey{ratingKey: "b", startMs: 0, endMs: 1000},
+		bytes.NewReader([]byte("hello world")))
+	st := c.Stats()
+	if st.Entries != 2 {
+		t.Errorf("entries = %d, want 2", st.Entries)
+	}
+	if len(st.PerMovie) != 2 {
+		t.Fatalf("perMovie = %d, want 2", len(st.PerMovie))
+	}
+	// PerMovie sorts by bytes desc, so "b" (11 bytes) should come first.
+	if st.PerMovie[0].RatingKey != "b" {
+		t.Errorf("top movie = %s, want b (largest by bytes)", st.PerMovie[0].RatingKey)
 	}
 }

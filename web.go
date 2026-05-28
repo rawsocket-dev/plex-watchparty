@@ -28,3 +28,15 @@ var indexCSS []byte
 
 //go:embed web/index.js
 var indexJS []byte
+
+//go:embed web/admin_login.html
+var adminLoginHTML []byte
+
+//go:embed web/admin.html
+var adminHTML []byte
+
+//go:embed web/admin.css
+var adminCSS []byte
+
+//go:embed web/admin.js
+var adminJS []byte

@@ -53,10 +53,31 @@ type ViewerInfo struct {
 // The channel carries pre-marshaled JSON so broadcast can serialize
 // State once and fan it out byte-identical to every connected viewer
 // — at 8 viewers that's ~7 fewer json.Marshal calls per tick.
+//
+// id is the short random handle the admin panel uses to reference a
+// specific connection (kick). ip / connectedAt are stamped at join
+// time for the admin roster API. kill is the per-entry abort
+// channel; closing it unblocks the HandleEvents select loop and
+// terminates that one connection without touching the others.
 type clientEntry struct {
-	host bool
-	name string
-	send chan []byte
+	id          string
+	host        bool
+	name        string
+	ip          string
+	connectedAt time.Time
+	send        chan []byte
+	kill        chan struct{}
+}
+
+// AdminViewer is the per-connection record surfaced to the admin
+// panel. Includes the kick handle + the IP + when the connection
+// joined — fields we deliberately don't put on the public ViewerInfo.
+type AdminViewer struct {
+	ID           string `json:"id"`
+	Name         string `json:"name"`
+	Host         bool   `json:"host"`
+	IP           string `json:"ip"`
+	ConnectedSec int64  `json:"connectedSec"`
 }
 
 type Hub struct {
@@ -472,9 +493,17 @@ func (h *Hub) HandleEvents(w http.ResponseWriter, r *http.Request, isHost bool) 
 	// proxy side. Other proxies (Caddy, Traefik) ignore it harmlessly.
 	w.Header().Set("X-Accel-Buffering", "no")
 
-	entry := &clientEntry{host: isHost, name: name, send: make(chan []byte, 8)}
 	ip := clientIP(r)
 	connectedAt := time.Now()
+	entry := &clientEntry{
+		id:          randomHex(8),
+		host:        isHost,
+		name:        name,
+		ip:          ip,
+		connectedAt: connectedAt,
+		send:        make(chan []byte, 8),
+		kill:        make(chan struct{}),
+	}
 	h.mu.Lock()
 	wasEmpty := len(h.clients) == 0
 	h.clients[entry] = struct{}{}
@@ -530,6 +559,10 @@ func (h *Hub) HandleEvents(w http.ResponseWriter, r *http.Request, isHost bool) 
 	for {
 		select {
 		case <-r.Context().Done():
+			return
+		case <-entry.kill:
+			log.Printf("sse: kicked ip=%s role=%s after=%s",
+				ip, role, time.Since(connectedAt).Round(time.Second))
 			return
 		case b := <-entry.send:
 			writeBytes(b)
@@ -743,4 +776,58 @@ func (h *Hub) HandleControl(w http.ResponseWriter, r *http.Request) {
 	h.state = cur
 	h.broadcast()
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// AdminRoster returns a snapshot of currently connected SSE clients
+// with the fields the admin panel needs (id for kick, ip, name, role,
+// connected-since seconds). Sorted host-first then by IP for a stable
+// display order.
+func (h *Hub) AdminRoster() []AdminViewer {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	now := time.Now()
+	out := make([]AdminViewer, 0, len(h.clients))
+	for c := range h.clients {
+		out = append(out, AdminViewer{
+			ID:           c.id,
+			Name:         c.name,
+			Host:         c.host,
+			IP:           c.ip,
+			ConnectedSec: int64(now.Sub(c.connectedAt).Seconds()),
+		})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Host != out[j].Host {
+			return out[i].Host
+		}
+		return out[i].IP < out[j].IP
+	})
+	return out
+}
+
+// KickClient closes the kill channel of the matching connection so its
+// HandleEvents writer-loop returns. Returns true if a connection was
+// found and signalled. The viewer's browser will reconnect almost
+// immediately via EventSource auto-retry — kick is "drop this socket,"
+// not "ban this user."
+func (h *Hub) KickClient(id string) bool {
+	h.mu.Lock()
+	var target *clientEntry
+	for c := range h.clients {
+		if c.id == id {
+			target = c
+			break
+		}
+	}
+	h.mu.Unlock()
+	if target == nil {
+		return false
+	}
+	select {
+	case <-target.kill:
+		// already closed
+	default:
+		close(target.kill)
+	}
+	return true
 }

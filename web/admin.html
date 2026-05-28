@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Late Show · admin console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/admin/static/admin.css">
+</head>
+<body>
+<header>
+  <div class="brand">
+    <span class="one">// Admin Console</span>
+    <span class="two">Late Show · Maintenance Panel</span>
+  </div>
+  <div class="ident">
+    <span class="lbl">Signed in</span>
+    <span class="val" id="who-email">—</span>
+    <a class="signout" href="/admin/logout">Sign out</a>
+  </div>
+</header>
+
+<main>
+  <section class="panel">
+    <h2><span class="prefix">01</span>Session</h2>
+    <div class="kv">
+      <div class="row"><span class="k">Now playing</span><span class="v" id="sess-title">—</span></div>
+      <div class="row"><span class="k">Rating key</span><span class="v mono" id="sess-key">—</span></div>
+      <div class="row"><span class="k">Position</span><span class="v mono" id="sess-pos">—</span></div>
+      <div class="row"><span class="k">Playing</span><span class="v" id="sess-playing">—</span></div>
+      <div class="row"><span class="k">Session token</span><span class="v mono" id="sess-token">—</span></div>
+    </div>
+    <div class="actions">
+      <button class="primary" id="btn-session-restart">Restart Plex session at current position</button>
+    </div>
+    <div class="hint">Drops the current transcode and starts a fresh one at the host's position. Equivalent to the auto-restart safety net firing manually.</div>
+  </section>
+
+  <section class="panel">
+    <h2><span class="prefix">02</span>Cache</h2>
+    <div class="kv">
+      <div class="row"><span class="k">Entries</span><span class="v mono" id="cache-entries">—</span></div>
+      <div class="row"><span class="k">On disk</span><span class="v mono" id="cache-bytes">—</span></div>
+      <div class="row"><span class="k">Cap</span><span class="v mono" id="cache-max">—</span></div>
+      <div class="row"><span class="k">Fill</span><span class="v mono" id="cache-fill">—</span></div>
+    </div>
+    <div class="actions">
+      <button id="btn-cache-clear">Clear all</button>
+      <span class="prune">
+        <input type="number" id="prune-days" min="1" max="365" value="30" aria-label="Prune older than (days)">
+        <span class="unit">days</span>
+        <button id="btn-cache-prune">Prune older</button>
+      </span>
+    </div>
+    <table class="per-movie">
+      <thead>
+        <tr><th>Rating key</th><th>Entries</th><th>Bytes</th><th>Newest</th><th>Oldest</th><th></th></tr>
+      </thead>
+      <tbody id="cache-rows"></tbody>
+    </table>
+  </section>
+
+  <section class="panel">
+    <h2><span class="prefix">03</span>Library</h2>
+    <div class="kv">
+      <div class="row"><span class="k">Titles</span><span class="v mono" id="lib-titles">—</span></div>
+      <div class="row"><span class="k">Cached at</span><span class="v mono" id="lib-cached">—</span></div>
+      <div class="row"><span class="k">Age</span><span class="v mono" id="lib-age">—</span></div>
+      <div class="row"><span class="k">Plex health</span><span class="v" id="lib-health">—</span></div>
+    </div>
+    <div class="actions">
+      <button class="primary" id="btn-library-refresh">Refresh library now</button>
+    </div>
+    <div class="hint">Invalidates the in-memory library cache and immediately re-fetches from Plex. Use after adding new titles to your Plex library.</div>
+  </section>
+
+  <section class="panel">
+    <h2><span class="prefix">04</span>Viewers</h2>
+    <table class="viewers">
+      <thead>
+        <tr><th>Role</th><th>Name</th><th>IP</th><th>Connected</th><th>ID</th><th></th></tr>
+      </thead>
+      <tbody id="viewer-rows"></tbody>
+    </table>
+    <div class="hint">Kicking drops the SSE socket; the viewer's browser will auto-reconnect almost immediately. Use to recover stuck connections — not as a ban hammer.</div>
+  </section>
+</main>
+
+<footer>
+  <span>Late Show · Console · Admin</span>
+  <span id="footer-status">— · ready</span>
+</footer>
+
+<script src="/admin/static/admin.js"></script>
+</body>
+</html>

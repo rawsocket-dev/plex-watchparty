@@ -35,6 +35,16 @@ services:
       # Root data directory for cache and work files. Persisted outside
       # the container layer so cached segments survive restarts.
       WORK_DIR: /data/sessions
+      # Optional Google OAuth gate for the /admin maintenance panel.
+      # Set all four to enable; if any are blank, /admin routes are not
+      # registered and the panel is 404. See README for the Google Cloud
+      # console steps to create the OAuth 2.0 Client ID.
+      ADMIN_GOOGLE_CLIENT_ID:       "${ADMIN_GOOGLE_CLIENT_ID:-}"
+      ADMIN_GOOGLE_CLIENT_SECRET:   "${ADMIN_GOOGLE_CLIENT_SECRET:-}"
+      ADMIN_GOOGLE_REDIRECT_URL:    "${ADMIN_GOOGLE_REDIRECT_URL:-}"
+      # Comma-separated email allowlist (lowercased server-side).
+      # Anyone NOT in this list gets a 403 after Google sign-in.
+      ADMIN_GOOGLE_ALLOWED_EMAILS:  "${ADMIN_GOOGLE_ALLOWED_EMAILS:-}"
     volumes:
       - ./data:/data
     restart: unless-stopped

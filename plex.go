@@ -281,6 +281,47 @@ func (p *Plex) saveCacheToDisk() {
 	}
 }
 
+// LibraryStats is the snapshot of the in-memory library cache used by
+// the admin panel.
+type LibraryStats struct {
+	Titles     int       `json:"titles"`
+	CachedAt   time.Time `json:"cachedAt"`
+	AgeSec     float64   `json:"ageSec"`
+	Healthy    bool      `json:"healthy"`
+	Identifier string    `json:"identifier"`
+}
+
+// Stats returns a snapshot of the library cache + current Plex
+// health. Used by /admin/api/stats.
+func (p *Plex) Stats() LibraryStats {
+	p.moviesMu.Lock()
+	titles := len(p.moviesVal)
+	at := p.moviesAt
+	p.moviesMu.Unlock()
+	age := 0.0
+	if !at.IsZero() {
+		age = time.Since(at).Seconds()
+	}
+	return LibraryStats{
+		Titles:   titles,
+		CachedAt: at,
+		AgeSec:   age,
+		Healthy:  p.IsHealthy(),
+	}
+}
+
+// RefreshLibrary invalidates the in-memory library cache so the next
+// ListMovies call hits Plex and repopulates. The persisted disk cache
+// is left alone — if Plex is currently down, ListMovies will still
+// return the old slice rather than failing, because moviesVal isn't
+// cleared, just moviesAt is rewound past the TTL.
+func (p *Plex) RefreshLibrary() {
+	p.moviesMu.Lock()
+	p.moviesAt = time.Time{} // forces TTL check to miss on next ListMovies
+	p.moviesMu.Unlock()
+	log.Printf("library: cache invalidated; next ListMovies will refetch from Plex")
+}
+
 // ListMovies returns every item across all movie-type library sections.
 // Cached in-memory + on disk for `moviesCacheTTL`.
 func (p *Plex) ListMovies() ([]Movie, error) {
