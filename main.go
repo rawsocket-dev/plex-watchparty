@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -10,13 +11,88 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"golang.org/x/sync/singleflight"
 )
+
+// segFlight collapses concurrent cold-misses for the same segment
+// (rk, startMs, endMs) into a single upstream fetch. N viewers all
+// landing on the same fresh segment trigger one Plex round-trip,
+// one cache write, and N copies of the in-memory bytes — instead of
+// N parallel Plex fetches racing each other into the same Put.
+var segFlight singleflight.Group
 
 func env(key, def string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
 	}
 	return def
+}
+
+// fetchOrRecoverSegment is the cold-miss path: try Plex → on failure
+// try the overlap-cache fallback → on failure try server-side
+// recovery → on failure return the original Plex error. Wrapped in
+// singleflight by the /hls/seg handler so N viewers cold-missing the
+// same segment make ONE upstream call. On success, the segment is
+// cached and the bytes returned for the caller (and any followers)
+// to serve.
+//
+// Reads the full Plex body into memory before caching: the previous
+// tee-via-pipe pattern committed a truncated cache entry whenever a
+// client TCP-closed mid-stream (io.MultiWriter halts on first writer
+// error, pipe closes, partial .tmp got renamed in). Buffering ~1–3
+// MB per segment on a LAN is cheap and gives us an atomic "I have
+// all the bytes" decision point.
+func fetchOrRecoverSegment(
+	ctx *segCtx,
+	key cacheKey,
+	plexSession *PlexSession,
+	segCache *SegmentCache,
+	hub *Hub,
+) ([]byte, error) {
+	// Plex first.
+	if body, err := plexSession.FetchSegment(ctx.PlexURL); err == nil {
+		defer body.Close()
+		data, rerr := io.ReadAll(body)
+		if rerr != nil {
+			log.Printf("seg: read from plex aborted: %v", rerr)
+			return nil, fmt.Errorf("plex read: %w", rerr)
+		}
+		if _, perr := segCache.Put(key, bytes.NewReader(data)); perr != nil {
+			log.Printf("seg: cache write failed: %v (segment still served)", perr)
+		}
+		return data, nil
+	} else {
+		// Plex 4xx/5xx. Try cheaper recoveries before kicking off a
+		// full server-side Restart.
+		plexErr := err
+		// Overlap-cache fallback: Plex sometimes 404s a segment it
+		// already produced, or segment boundaries drift by a few ms
+		// across sessions so the exact (startMs, endMs) key misses
+		// while a near-identical segment is on disk.
+		if fallback, fs, fe, ok := segCache.FindOverlapping(ctx.Rating, ctx.StartMs, ctx.EndMs); ok {
+			log.Printf("seg: plex failed (%v); serving overlapping cache entry [%d,%d] for request [%d,%d]",
+				plexErr, fs, fe, ctx.StartMs, ctx.EndMs)
+			if data, ferr := os.ReadFile(fallback); ferr == nil {
+				return data, nil
+			} else {
+				log.Printf("seg: overlap file read failed: %v", ferr)
+			}
+		}
+		log.Printf("seg: fetch from plex failed: %v", plexErr)
+		// Server-side recovery: we control the stream, Plex 404'd a
+		// segment we need, restart the transcode at this segment's
+		// time and serve a substitute from the new session.
+		if data, rerr := hub.RecoverSegmentForRange(ctx.StartMs, ctx.EndMs); rerr == nil {
+			if _, perr := segCache.Put(key, bytes.NewReader(data)); perr != nil {
+				log.Printf("recover: cache write failed: %v (segment still served)", perr)
+			}
+			return data, nil
+		} else {
+			log.Printf("seg: server-side recovery failed: %v", rerr)
+		}
+		return nil, plexErr
+	}
 }
 
 // writeJSON is the standard one-shot JSON response: application/json
@@ -309,40 +385,15 @@ func main() {
 			plexSession.RecordSegmentSuccess()
 			return
 		}
-		// Cache miss: fetch from Plex, tee to cache + client.
-		body, err := plexSession.FetchSegment(ctx.PlexURL)
-		if err != nil {
-			// Last-resort: Plex sometimes 404s a segment it already
-			// produced (in-session cache eviction), and segment
-			// boundaries can drift by a few ms across sessions so
-			// the exact (startMs, endMs) key misses while a near-
-			// identical segment is on disk. Check for any cached
-			// segment whose window overlaps the requested range and
-			// serve that instead of forwarding the 404.
-			if fallback, fs, fe, ok := segCache.FindOverlapping(ctx.Rating, ctx.StartMs, ctx.EndMs); ok {
-				log.Printf("seg: plex failed (%v); serving overlapping cache entry [%d,%d] for request [%d,%d]",
-					err, fs, fe, ctx.StartMs, ctx.EndMs)
-				http.ServeFile(cw, r, fallback)
-				plexSession.RecordSegmentSuccess()
-				return
-			}
-			log.Printf("seg: fetch from plex failed: %v", err)
-			// Server-side recovery: we control the stream, Plex 404'd
-			// a segment we need, restart the transcode at this segment's
-			// time and serve a substitute from the new session. The
-			// SessionToken bump goes out via SSE so the host reattaches
-			// for SUBSEQUENT segments; THIS in-flight request gets
-			// satisfied with the freshly-transcoded bytes.
-			if data, rerr := hub.RecoverSegmentForRange(ctx.StartMs, ctx.EndMs); rerr == nil {
-				if _, perr := segCache.Put(key, bytes.NewReader(data)); perr != nil {
-					log.Printf("recover: cache write failed: %v (segment still served)", perr)
-				}
-				cw.Write(data)
-				plexSession.RecordSegmentSuccess()
-				return
-			} else {
-				log.Printf("seg: server-side recovery failed: %v", rerr)
-			}
+		// Cache miss: singleflight'd Plex fetch + recovery cascade.
+		// Multiple viewers cold-missing the same segment collapse to
+		// one upstream request; followers reuse the leader's bytes.
+		flightKey := fmt.Sprintf("%s:%d:%d", ctx.Rating, ctx.StartMs, ctx.EndMs)
+		v, ferr, _ := segFlight.Do(flightKey, func() (interface{}, error) {
+			return fetchOrRecoverSegment(ctx, key, plexSession, segCache, hub)
+		})
+		if ferr != nil {
+			log.Printf("seg: cold-miss path failed: %v", ferr)
 			// Recovery itself failed. Track the streak; the existing
 			// safety net handles "Plex is fundamentally wedged" by
 			// running its own restart at the current play position
@@ -359,45 +410,11 @@ func main() {
 					}
 				}()
 			}
-			http.Error(cw, "plex segment: "+err.Error(), http.StatusBadGateway)
-			return
-		}
-		defer body.Close()
-		// Read the full Plex segment into memory before serving OR
-		// caching. The previous tee-via-pipe pattern would commit a
-		// truncated cache entry whenever the client TCP-closed mid-
-		// stream: io.MultiWriter halts on the first writer error, the
-		// pipe goroutine closes the pipe early, and Put renamed a
-		// partial .tmp into the cache forever. Buffering ~1-3 MB per
-		// segment on a LAN is cheap (sub-100ms on gigabit) and gives
-		// us an atomic "I have all the bytes" decision point.
-		data, err := io.ReadAll(body)
-		if err != nil {
-			log.Printf("seg: read from plex aborted: %v", err)
-			if plexSession.RecordSegmentFailure() {
-				go func() {
-					defer plexSession.ClearAutoRestart()
-					if !plexSession.AutoRestartShouldProceed() {
-						log.Printf("auto-restart: superseded by host action, skipping")
-						return
-					}
-					if err := hub.AutoRestartAtCurrentPosition(); err != nil {
-						log.Printf("auto-restart failed: %v", err)
-					}
-				}()
-			}
-			http.Error(cw, "plex segment read: "+err.Error(), http.StatusBadGateway)
+			http.Error(cw, "plex segment: "+ferr.Error(), http.StatusBadGateway)
 			return
 		}
 		plexSession.RecordSegmentSuccess()
-		// Cache first — quick local disk write — so a slow client
-		// disconnect during cw.Write can't keep the entry out of
-		// cache. The cache is the value here; serving the byte to
-		// THIS client is incidental.
-		if _, err := segCache.Put(key, bytes.NewReader(data)); err != nil {
-			log.Printf("seg: cache write failed: %v (segment still served)", err)
-		}
-		_, _ = cw.Write(data)
+		_, _ = cw.Write(v.([]byte))
 	})
 
 	protected.HandleFunc("/api/bandwidth", func(w http.ResponseWriter, r *http.Request) {
