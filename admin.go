@@ -65,7 +65,7 @@ func registerAdminRoutes(
 	})))
 
 	mux.Handle("/admin/api/stats", gated(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		st := adminSnapshot(plex, segCache, plexSession, hub)
+		st := adminSnapshot(plex, segCache, plexSession, hub, bw)
 		writeJSON(w, st)
 	})))
 
@@ -143,7 +143,7 @@ func registerAdminRoutes(
 		// Suppress any in-flight auto-restart racing in from the seg
 		// proxy — admin intent wins.
 		plexSession.SuppressAutoRestart()
-		if err := hub.AutoRestartAtCurrentPosition(); err != nil {
+		if err := hub.RestartAtCurrentPosition(RestartByAdmin); err != nil {
 			http.Error(w, "restart failed: "+err.Error(), http.StatusBadGateway)
 			return
 		}
@@ -154,6 +154,23 @@ func registerAdminRoutes(
 		writeJSON(w, map[string]any{
 			"samples": bw.History(),
 		})
+	})))
+
+	mux.Handle("/admin/api/session/stop", gated(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "POST only", http.StatusMethodNotAllowed)
+			return
+		}
+		if plexSession.RatingKey() == "" {
+			http.Error(w, "no active session", http.StatusBadRequest)
+			return
+		}
+		log.Printf("admin: %s sent room to lobby", auth.AdminEmail(r))
+		// Final timeline report before the session goes away, then
+		// tear down. The hub's state.RatingKey going blank triggers
+		// every connected /watch page to reload into the waiting room.
+		hub.SendEveryoneToLobby()
+		w.WriteHeader(http.StatusNoContent)
 	})))
 
 	mux.Handle("/admin/api/viewers/kick", gated(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -176,13 +193,14 @@ func registerAdminRoutes(
 	})))
 }
 
-// AdminSnapshot bundles the four data sources the admin panel
-// displays in one round-trip.
+// AdminSnapshot bundles the data sources the admin panel displays in
+// one round-trip.
 type AdminSnapshot struct {
-	Cache   CacheStats     `json:"cache"`
-	Library LibraryStats   `json:"library"`
-	Session SessionSummary `json:"session"`
-	Viewers []AdminViewer  `json:"viewers"`
+	Cache     CacheStats            `json:"cache"`
+	Library   LibraryStats          `json:"library"`
+	Session   SessionSummary        `json:"session"`
+	Lifecycle SessionLifecycleStats `json:"lifecycle"`
+	Viewers   []AdminViewer         `json:"viewers"`
 }
 
 // SessionSummary is the slice of Plex session state surfaced to the
@@ -197,8 +215,7 @@ type SessionSummary struct {
 	SessionToken int64   `json:"sessionToken"`
 }
 
-func adminSnapshot(plex *Plex, cache *SegmentCache, sess *PlexSession, hub *Hub) AdminSnapshot {
-	_ = sess
+func adminSnapshot(plex *Plex, cache *SegmentCache, sess *PlexSession, hub *Hub, bw *bwTracker) AdminSnapshot {
 	state := hub.Snapshot()
 	return AdminSnapshot{
 		Cache:   cache.Stats(),
@@ -211,6 +228,7 @@ func adminSnapshot(plex *Plex, cache *SegmentCache, sess *PlexSession, hub *Hub)
 			DurationSec:  state.DurationSec,
 			SessionToken: state.SessionToken,
 		},
-		Viewers: hub.AdminRoster(),
+		Lifecycle: sess.LifecycleStats(),
+		Viewers:   hub.AdminRoster(bw),
 	}
 }

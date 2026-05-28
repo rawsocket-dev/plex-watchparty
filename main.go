@@ -381,10 +381,12 @@ func main() {
 
 		// Cache hit: sendfile-fast path.
 		if path, ok := segCache.Get(key); ok {
+			segCache.RecordHit()
 			http.ServeFile(cw, r, path)
 			plexSession.RecordSegmentSuccess()
 			return
 		}
+		segCache.RecordMiss()
 		// Cache miss: singleflight'd Plex fetch + recovery cascade.
 		// Multiple viewers cold-missing the same segment collapse to
 		// one upstream request; followers reuse the leader's bytes.
@@ -405,7 +407,7 @@ func main() {
 						log.Printf("auto-restart: superseded by host action, skipping")
 						return
 					}
-					if err := hub.AutoRestartAtCurrentPosition(); err != nil {
+					if err := hub.RestartAtCurrentPosition(RestartByAuto); err != nil {
 						log.Printf("auto-restart failed: %v", err)
 					}
 				}()

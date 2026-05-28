@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -50,6 +51,17 @@ type PlexSession struct {
 	// queuing behind it for redundant work. recoverMu collapses them
 	// into "the first goroutine restarts, the rest re-use that work."
 	recoverMu sync.Mutex
+
+	// Lifecycle counters surfaced to the admin panel. Atomic so the
+	// hot path doesn't need ps.mu. Counts are lifetime since process
+	// start; lastStartAt is the wall-clock time of the most recent
+	// successful Start (set under ps.mu inside Start).
+	startsTotal       atomic.Int64
+	restartsBySeek    atomic.Int64
+	restartsByAuto    atomic.Int64
+	restartsByRecover atomic.Int64
+	restartsByAdmin   atomic.Int64
+	lastStartAt       atomic.Int64 // unix-nano, 0 = no session ever
 }
 
 const segFailureThreshold = 3
@@ -217,6 +229,8 @@ func (ps *PlexSession) Start(ratingKey string, offsetSec float64) error {
 			ps.playlistURL = playlistURL
 			ps.sessionID = sessionID
 			ps.sessionToken++
+			ps.startsTotal.Add(1)
+			ps.lastStartAt.Store(time.Now().UnixNano())
 			if attempt > 1 {
 				log.Printf("plex start: succeeded on attempt %d", attempt)
 			}
@@ -315,6 +329,58 @@ func (ps *PlexSession) callStop(stopURL string) {
 	}
 }
 
+// RestartReason classifies why we asked Plex to spin up a fresh
+// transcode. Carried through to the admin panel's session lifecycle
+// stats so an operator can tell "is auto-restart firing a lot?" from
+// "the host keeps seeking past the edge."
+type RestartReason int
+
+const (
+	RestartUnknown RestartReason = iota
+	RestartBySeek
+	RestartByAuto
+	RestartByRecover
+	RestartByAdmin
+)
+
+// String makes RestartReason loggable.
+func (r RestartReason) String() string {
+	switch r {
+	case RestartBySeek:
+		return "seek"
+	case RestartByAuto:
+		return "auto"
+	case RestartByRecover:
+		return "recover"
+	case RestartByAdmin:
+		return "admin"
+	}
+	return "unknown"
+}
+
+// RestartFor is the public restart entry-point that records the
+// reason. Internally calls Restart() — same teardown + cooldown +
+// Start sequence — and bumps the matching atomic counter on
+// success. Use this instead of Restart() unless you really mean
+// "anonymous restart" (currently only the Restart-from-recovery
+// path that's inside this file).
+func (ps *PlexSession) RestartFor(reason RestartReason, offsetSec float64) error {
+	if err := ps.Restart(offsetSec); err != nil {
+		return err
+	}
+	switch reason {
+	case RestartBySeek:
+		ps.restartsBySeek.Add(1)
+	case RestartByAuto:
+		ps.restartsByAuto.Add(1)
+	case RestartByRecover:
+		ps.restartsByRecover.Add(1)
+	case RestartByAdmin:
+		ps.restartsByAdmin.Add(1)
+	}
+	return nil
+}
+
 // Restart stops the current Plex session and starts a new one at the
 // given offset. Used when the host seeks forward into untranscoded
 // territory. The HTTP /stop call happens with ps.mu released so
@@ -368,6 +434,45 @@ func (ps *PlexSession) PlaylistURL() string {
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
 	return ps.playlistURL
+}
+
+// SessionLifecycleStats is the snapshot of /admin/api/stats session
+// data not derivable from Hub state — counts of how Plex sessions
+// have been spun up over the life of this process. Useful for
+// confirming "Plex was acting up" vs "we're fine."
+type SessionLifecycleStats struct {
+	StartsTotal       int64 `json:"startsTotal"`
+	RestartsBySeek    int64 `json:"restartsBySeek"`
+	RestartsByAuto    int64 `json:"restartsByAuto"`
+	RestartsByRecover int64 `json:"restartsByRecover"`
+	RestartsByAdmin   int64 `json:"restartsByAdmin"`
+	// SessionAgeSec is wall-clock seconds since the most recent
+	// successful Start. -1 if no session has ever started.
+	SessionAgeSec float64 `json:"sessionAgeSec"`
+}
+
+// LifecycleStats returns a snapshot of the session-counter atomics
+// and the current session's age. Cheap; safe to call from any
+// goroutine.
+func (ps *PlexSession) LifecycleStats() SessionLifecycleStats {
+	stats := SessionLifecycleStats{
+		StartsTotal:       ps.startsTotal.Load(),
+		RestartsBySeek:    ps.restartsBySeek.Load(),
+		RestartsByAuto:    ps.restartsByAuto.Load(),
+		RestartsByRecover: ps.restartsByRecover.Load(),
+		RestartsByAdmin:   ps.restartsByAdmin.Load(),
+		SessionAgeSec:     -1,
+	}
+	if at := ps.lastStartAt.Load(); at != 0 {
+		// Only report age while a session is actively held — RatingKey
+		// goes blank when Stop() runs, but the lastStartAt timestamp
+		// stays. Tying age to "still has a session" keeps the displayed
+		// number meaningful.
+		if ps.RatingKey() != "" {
+			stats.SessionAgeSec = time.Since(time.Unix(0, at)).Seconds()
+		}
+	}
+	return stats
 }
 
 // OffsetMs reports the movie time at which the current Plex session
@@ -592,7 +697,7 @@ func (ps *PlexSession) RecoverSegmentBytes(startMs, endMs int64) ([]byte, error)
 		// Mark the auto-restart cooldown so the per-failure counter
 		// doesn't fire a redundant restart on top of this one.
 		ps.SuppressAutoRestart()
-		if err := ps.Restart(offsetSec); err != nil {
+		if err := ps.RestartFor(RestartByRecover, offsetSec); err != nil {
 			return nil, fmt.Errorf("recover restart: %w", err)
 		}
 	} else {

@@ -160,6 +160,29 @@ func (b *bwTracker) snapshot(forIP string) (mineKbps, totalKbps int64, viewers i
 	return
 }
 
+// KbpsForIP returns the rolling-window kbps for one IP. 0 if the IP
+// has no samples within the window. Used by the admin roster so each
+// viewer row carries its own current throughput.
+func (b *bwTracker) KbpsForIP(ip string) int64 {
+	if ip == "" {
+		return 0
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	cutoff := time.Now().Add(-b.window)
+	windowSec := int64(b.window.Seconds())
+	if windowSec == 0 {
+		windowSec = 1
+	}
+	var bytes int64
+	for _, s := range b.clients[ip] {
+		if s.at.After(cutoff) {
+			bytes += s.bytes
+		}
+	}
+	return bytes * 8 / windowSec / 1000
+}
+
 // clientIP returns the most plausible source IP, honoring the common
 // reverse-proxy headers when present.
 func clientIP(r *http.Request) string {

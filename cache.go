@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -30,6 +31,13 @@ type SegmentCache struct {
 	// the cache holds thousands of segments and the linear scan + sort
 	// is non-trivial. Invalidated on every Put / evict / LoadFromDisk.
 	rangesCache map[string][][2]float64
+
+	// Lifetime hit-rate counters (incremented atomically by the seg
+	// handler via RecordHit / RecordMiss). Surfaced through Stats()
+	// for the admin panel — useful for confirming the cache is doing
+	// real work on a particular movie session.
+	hits   atomic.Int64
+	misses atomic.Int64
 }
 
 type cacheKey struct {
@@ -302,13 +310,28 @@ type CacheMovieStat struct {
 
 // CacheStats is the snapshot of cache state returned to the admin
 // panel. PerMovie is sorted by Bytes descending so the heaviest
-// titles surface first.
+// titles surface first. Hits/Misses are lifetime counters since
+// process start, useful for confirming the cache is doing real work.
 type CacheStats struct {
 	Entries    int              `json:"entries"`
 	TotalBytes int64            `json:"totalBytes"`
 	MaxBytes   int64            `json:"maxBytes"`
+	Hits       int64            `json:"hits"`
+	Misses     int64            `json:"misses"`
+	// FreeBytes / DiskTotal report the underlying filesystem
+	// capacity at the cache dir. Helps catch "the host disk is full"
+	// before LRU eviction starts thrashing. Zero if the platform
+	// doesn't support statfs (i.e. Windows).
+	FreeBytes  int64            `json:"freeBytes"`
+	DiskTotal  int64            `json:"diskTotalBytes"`
 	PerMovie   []CacheMovieStat `json:"perMovie"`
 }
+
+// RecordHit / RecordMiss are called by the /hls/seg handler. The
+// counters are atomic so we don't need the cache mutex on the
+// segment hot path. Lifetime, never reset.
+func (c *SegmentCache) RecordHit()  { c.hits.Add(1) }
+func (c *SegmentCache) RecordMiss() { c.misses.Add(1) }
 
 // Stats returns a per-movie aggregate snapshot of the cache. All ages
 // come from the in-memory mtime stamped at Put / LoadFromDisk time —
@@ -341,10 +364,15 @@ func (c *SegmentCache) Stats() CacheStats {
 		out = append(out, *st)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Bytes > out[j].Bytes })
+	free, total := diskUsage(c.dir)
 	return CacheStats{
 		Entries:    len(c.entries),
 		TotalBytes: c.totalBytes,
 		MaxBytes:   c.maxBytes,
+		Hits:       c.hits.Load(),
+		Misses:     c.misses.Load(),
+		FreeBytes:  free,
+		DiskTotal:  total,
 		PerMovie:   out,
 	}
 }

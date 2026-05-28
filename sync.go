@@ -72,12 +72,15 @@ type clientEntry struct {
 // AdminViewer is the per-connection record surfaced to the admin
 // panel. Includes the kick handle + the IP + when the connection
 // joined — fields we deliberately don't put on the public ViewerInfo.
+// Kbps is each viewer's current rolling-window throughput, joined in
+// by IP from bwTracker so the panel can show "who's buffering."
 type AdminViewer struct {
 	ID           string `json:"id"`
 	Name         string `json:"name"`
 	Host         bool   `json:"host"`
 	IP           string `json:"ip"`
 	ConnectedSec int64  `json:"connectedSec"`
+	Kbps         int64  `json:"kbps"`
 }
 
 type Hub struct {
@@ -459,14 +462,16 @@ func (h *Hub) snapshot() State {
 	return s
 }
 
-// AutoRestartAtCurrentPosition restarts the active Plex session at
-// the host's current play position. Called by the segment proxy
-// after N consecutive Plex 4xx/5xx fetches suggest the session is
-// stuck. Reuses the same Hub.mu → release → session.Restart → Hub.mu
-// dance as the seek-with-restart path; bumps SessionToken so
-// connected clients destroy their hls.js and reattach with the
-// freshly-rewritten playlist.
-func (h *Hub) AutoRestartAtCurrentPosition() error {
+// RestartAtCurrentPosition restarts the active Plex session at the
+// host's current play position. Called by the segment proxy's auto-
+// restart goroutine (after N consecutive Plex 4xx/5xx fetches) and
+// by the admin "Restart Plex session" button. Reuses the same
+// Hub.mu → release → session.RestartFor → Hub.mu dance as the seek-
+// with-restart path; bumps SessionToken so connected clients destroy
+// their hls.js and reattach with the freshly-rewritten playlist.
+//
+// reason classifies the call site for the admin lifecycle counters.
+func (h *Hub) RestartAtCurrentPosition(reason RestartReason) error {
 	h.mu.Lock()
 	if h.state.RatingKey == "" {
 		h.mu.Unlock()
@@ -474,9 +479,8 @@ func (h *Hub) AutoRestartAtCurrentPosition() error {
 	}
 	cur := h.snapshot()
 	h.mu.Unlock()
-	log.Printf("auto-restart: %d consecutive seg failures — restarting Plex at %.2fs",
-		segFailureThreshold, cur.PositionSec)
-	if err := h.session.Restart(cur.PositionSec); err != nil {
+	log.Printf("restart: %v — restarting Plex at %.2fs", reason, cur.PositionSec)
+	if err := h.session.RestartFor(reason, cur.PositionSec); err != nil {
 		return fmt.Errorf("plex Restart: %w", err)
 	}
 	h.mu.Lock()
@@ -852,7 +856,7 @@ func (h *Hub) HandleControl(w http.ResponseWriter, r *http.Request) {
 				target, h.session.EdgeSec())
 			// Host action wins over any in-flight auto-restart.
 			h.session.SuppressAutoRestart()
-			if err := h.session.Restart(target); err != nil {
+			if err := h.session.RestartFor(RestartBySeek, target); err != nil {
 				log.Printf("seek: plex Restart failed: %v", err)
 				h.mu.Lock()
 				http.Error(w, "plex restart: "+err.Error(), http.StatusBadGateway)
@@ -874,22 +878,52 @@ func (h *Hub) HandleControl(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// SendEveryoneToLobby tears down the active Plex session and clears
+// hub state. Every connected /watch page sees the empty State on the
+// next SSE tick and reloads to land on waiting.html. Same code path
+// as a host clicking "← library", just admin-triggered.
+func (h *Hub) SendEveryoneToLobby() {
+	h.mu.Lock()
+	rk := h.state.RatingKey
+	posMs := int64(h.snapshot().PositionSec * 1000)
+	durMs := int64(h.state.DurationSec * 1000)
+	title := h.state.Title
+	h.mu.Unlock()
+	if rk != "" {
+		if err := h.session.ReportTimeline("stopped", rk, posMs, durMs); err != nil {
+			log.Printf("timeline: stop report failed: %v", err)
+		}
+	}
+	h.session.Stop()
+	h.mu.Lock()
+	h.state = State{UpdatedAtMs: nowMs()}
+	h.broadcast()
+	h.mu.Unlock()
+	log.Printf("admin lobby: tore down session %q", title)
+}
+
 // AdminRoster returns a snapshot of currently connected SSE clients
 // with the fields the admin panel needs (id for kick, ip, name, role,
-// connected-since seconds). Sorted host-first then by IP for a stable
-// display order.
-func (h *Hub) AdminRoster() []AdminViewer {
+// connected-since seconds, current kbps). Sorted host-first then by
+// IP for a stable display order. bw is used to join in each viewer's
+// rolling-window throughput; pass nil if bandwidth is unavailable.
+func (h *Hub) AdminRoster(bw *bwTracker) []AdminViewer {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	now := time.Now()
 	out := make([]AdminViewer, 0, len(h.clients))
 	for c := range h.clients {
+		var kbps int64
+		if bw != nil {
+			kbps = bw.KbpsForIP(c.ip)
+		}
 		out = append(out, AdminViewer{
 			ID:           c.id,
 			Name:         c.name,
 			Host:         c.host,
 			IP:           c.ip,
 			ConnectedSec: int64(now.Sub(c.connectedAt).Seconds()),
+			Kbps:         kbps,
 		})
 	}
 	sort.Slice(out, func(i, j int) bool {

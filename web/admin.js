@@ -68,7 +68,7 @@ async function refresh() {
       api('/admin/api/stats'),
       api('/admin/api/bandwidth/history'),
     ]);
-    renderSession(s.session);
+    renderSession(s.session, s.lifecycle);
     renderBandwidth(bw.samples);
     renderCache(s.cache);
     renderLibrary(s.library);
@@ -115,7 +115,7 @@ function renderBandwidth(samples) {
   fill.setAttribute('points', pts.join(' ') + ' ' + W + ',' + H + ' 0,' + H);
 }
 
-function renderSession(s) {
+function renderSession(s, lifecycle) {
   $('sess-title').textContent = s.title || '— idle —';
   $('sess-key').textContent = s.ratingKey || '—';
   if (s.ratingKey) {
@@ -125,7 +125,21 @@ function renderSession(s) {
   }
   $('sess-playing').textContent = s.ratingKey ? (s.playing ? 'yes' : 'paused') : '—';
   $('sess-token').textContent = s.sessionToken || '0';
+  if (lifecycle) {
+    $('sess-age').textContent = lifecycle.sessionAgeSec >= 0
+      ? fmtSeconds(lifecycle.sessionAgeSec) : '—';
+    const restartTotal = (lifecycle.restartsBySeek || 0)
+      + (lifecycle.restartsByAuto || 0)
+      + (lifecycle.restartsByRecover || 0)
+      + (lifecycle.restartsByAdmin || 0);
+    $('sess-restarts').textContent = restartTotal + ' '
+      + '(seek ' + (lifecycle.restartsBySeek || 0)
+      + ' · auto ' + (lifecycle.restartsByAuto || 0)
+      + ' · recover ' + (lifecycle.restartsByRecover || 0)
+      + ' · admin ' + (lifecycle.restartsByAdmin || 0) + ')';
+  }
   $('btn-session-restart').disabled = !s.ratingKey;
+  $('btn-session-stop').disabled = !s.ratingKey;
 }
 
 function renderCache(c) {
@@ -133,6 +147,15 @@ function renderCache(c) {
   $('cache-bytes').textContent = fmtBytes(c.totalBytes);
   $('cache-max').textContent = fmtBytes(c.maxBytes);
   $('cache-fill').textContent = fmtPct(c.totalBytes, c.maxBytes);
+  const total = (c.hits || 0) + (c.misses || 0);
+  $('cache-hitrate').textContent = total > 0
+    ? fmtPct(c.hits, total) + ' (' + c.hits.toLocaleString() + ' / ' + total.toLocaleString() + ')'
+    : '— (no requests yet)';
+  if (c.diskTotalBytes > 0) {
+    $('cache-disk').textContent = fmtBytes(c.freeBytes) + ' free of ' + fmtBytes(c.diskTotalBytes);
+  } else {
+    $('cache-disk').textContent = '—';
+  }
   const rows = $('cache-rows');
   if (!c.perMovie || c.perMovie.length === 0) {
     rows.innerHTML = '<tr class="empty-row"><td colspan="6">cache is empty</td></tr>';
@@ -165,7 +188,7 @@ function renderLibrary(l) {
 function renderViewers(viewers) {
   const rows = $('viewer-rows');
   if (!viewers || viewers.length === 0) {
-    rows.innerHTML = '<tr class="empty-row"><td colspan="6">no connections</td></tr>';
+    rows.innerHTML = '<tr class="empty-row"><td colspan="7">no connections</td></tr>';
     return;
   }
   rows.innerHTML = viewers.map(v =>
@@ -173,6 +196,7 @@ function renderViewers(viewers) {
       '<td class="' + (v.host ? 'role-host' : 'role-viewer') + '">' + (v.host ? '◆ host' : '○ viewer') + '</td>' +
       '<td>' + escapeHTML(v.name || 'guest') + '</td>' +
       '<td>' + escapeHTML(v.ip) + '</td>' +
+      '<td>' + fmtKbps(v.kbps || 0) + '</td>' +
       '<td>' + fmtSeconds(v.connectedSec) + '</td>' +
       '<td>' + escapeHTML(v.id) + '</td>' +
       '<td><button class="row-action" data-action="kick" data-id="' + escapeHTML(v.id) + '">Kick</button></td>' +
@@ -201,6 +225,10 @@ api('/admin/api/whoami').then(d => {
 $('btn-session-restart').addEventListener('click', () => {
   if (!confirm('Restart Plex session at the current host position?\n\nViewers will see a brief reload as the new transcode spins up.')) return;
   doAction('session restart', () => api('/admin/api/session/restart', {method: 'POST'}));
+});
+$('btn-session-stop').addEventListener('click', () => {
+  if (!confirm('End the watch session and send everyone to the lobby?\n\nThe Plex transcoder will stop. Every connected /watch page will reload into the waiting room.')) return;
+  doAction('send to lobby', () => api('/admin/api/session/stop', {method: 'POST'}));
 });
 $('btn-cache-clear').addEventListener('click', () => {
   if (!confirm('Wipe ALL cached segments? This frees disk space but every viewer will re-fetch from Plex on next watch.')) return;
