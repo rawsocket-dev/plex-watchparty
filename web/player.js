@@ -376,21 +376,28 @@ v.addEventListener('playing', () => {
   }
 });
 
-// Companion to the applyState autoplay attempt: if the FIRST applyState
-// arrived before hls.js had buffered any media (common — SSE delivers
-// the init state in the same tick attach() is kicked off), the inline
-// v.play() rejected with "no supported source" not "autoplay denied."
-// Once the browser tells us playback CAN start, retry once. Critical
-// for the Resume-from-library flow where the browser would otherwise
-// grant autoplay if we just asked it at the right moment.
-v.addEventListener('canplay', () => {
+// maybeAutoplay is the single gate for auto-dismissing the join
+// overlay. Three independent conditions all have to be true:
+//   1. authoritative state has arrived (so we know whether the server
+//      wants playback to be running),
+//   2. the server says playing=true and v is currently paused,
+//   3. the browser has enough buffered data that v.play() has a real
+//      chance of succeeding (readyState ≥ HAVE_CURRENT_DATA).
+//
+// Both 'canplay' (signal #3 just became true) and applyState (signals
+// #1 / #2 just became true) call this; whichever happens last triggers
+// the actual v.play(). On success the overlay auto-dismisses; on
+// autoplay-denied the overlay stays for the user's manual click.
+function maybeAutoplay() {
   if (userJoined) return;
   if (!lastState || !lastState.playing) return;
   if (!v.paused) return;
+  if (v.readyState < 2 /* HAVE_CURRENT_DATA */) return;
   v.play().then(() => {
     if (!userJoined) dismissJoin();
   }).catch(() => {/* autoplay denied — overlay stays for manual click */});
-});
+}
+v.addEventListener('canplay', maybeAutoplay);
 
 let hlsInstance = null;
 
@@ -538,18 +545,12 @@ function applyState(s, reason) {
     v.currentTime = target;
   }
   firstStateApplied = true;
-  if (s.playing && v.paused) {
-    // Optimistic autoplay. When the user lands here from a Resume
-    // click on the library page (or any path where the browser has
-    // granted the site media-engagement permission), v.play()
-    // succeeds without a fresh gesture — so we can dismiss the
-    // 'Take your seat' overlay automatically. Browsers that deny
-    // autoplay reject the promise; the overlay stays up and the
-    // existing click-to-play path handles the rest.
-    v.play().then(() => {
-      if (!userJoined) dismissJoin();
-    }).catch(() => {/* autoplay denied — leave overlay for manual click */});
-  }
+  // First-visit autoplay attempt (only fires while the overlay is up;
+  // gated on media-ready + state.playing inside maybeAutoplay).
+  maybeAutoplay();
+  // Ongoing v ↔ server sync. After the user has joined, this keeps
+  // v's play/pause state aligned with what the host wants.
+  if (s.playing && v.paused) v.play().catch(() => {});
   if (!s.playing && !v.paused) v.pause();
   setTimeout(() => { applying = false; }, 250);
 
