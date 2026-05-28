@@ -97,35 +97,50 @@ type BwHistorySample struct {
 	Kbps int64 `json:"kbps"`
 }
 
-// History returns the per-second total-kbps ring buffer, ordered
-// oldest-first. Slots with no traffic (no record() call that second)
-// are returned with Kbps=0 — the timeline is dense so the sparkline
-// renders contiguously. Pads to historyBuckets so the caller always
-// sees a fixed-width window.
+// historySmoothing is the rolling-window size used by History() to
+// produce a smooth per-second rate from sparse arrivals. HLS
+// segments are ~4 s apart, so any single second has either ~one
+// segment's worth of bytes OR zero — emitting raw per-second
+// values makes the sparkline strobe between huge spikes and
+// zero. Averaging over historySmoothing seconds gives a stable
+// reading that matches the actual transport rate (12 Mbps stream
+// → ~12 Mbps shown), at the cost of a small lag on rate changes.
+const historySmoothing = 5
+
+// History returns one BwHistorySample per second for the last
+// historyBuckets seconds, ordered oldest-first. Each sample is the
+// rolling sum of bytes over the prior historySmoothing seconds,
+// divided by historySmoothing — so a 12 Mbps stream (1 ~6 MB segment
+// every 4 s) reads as ~12 Mbps continuously rather than alternating
+// between 48 Mbps and 0. The sparkline rendering and the "Now"
+// readout both consume this output.
 func (b *bwTracker) History() []BwHistorySample {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	now := time.Now().Unix()
+	// Index the ring by timestamp for O(1) lookup. Slots whose
+	// timestamp is 0 are uninitialized (process just started) and
+	// must be skipped — leaving them in would alias second 0 of the
+	// unix epoch into our window.
+	bytesAt := make(map[int64]int64, len(b.history))
+	for i, ts := range b.timestamps {
+		if ts > 0 {
+			bytesAt[ts] = b.history[i]
+		}
+	}
 	out := make([]BwHistorySample, historyBuckets)
-	// Walk back from "now" filling each second slot. If the slot in
-	// the ring matches the second we're looking for, use its bytes;
-	// otherwise it's a zero second.
 	for i := 0; i < historyBuckets; i++ {
 		ts := now - int64(historyBuckets-1-i) // oldest first
-		// Scan a few slots back from head to find a match. With dense
-		// traffic this is O(1) since head is right next to current.
-		var bytes int64
-		for j := 0; j < len(b.history); j++ {
-			idx := (b.historyHead - j + len(b.history)) % len(b.history)
-			if b.timestamps[idx] == ts {
-				bytes = b.history[idx]
-				break
-			}
-			if b.timestamps[idx] < ts {
-				break // slots only get older as we walk back
-			}
+		// Sum the last historySmoothing seconds ending at ts.
+		var sum int64
+		for k := 0; k < historySmoothing; k++ {
+			sum += bytesAt[ts-int64(k)]
 		}
-		out[i] = BwHistorySample{Ts: ts, Kbps: bytes * 8 / 1000}
+		// kbps = avg bytes per second * 8 / 1000.
+		out[i] = BwHistorySample{
+			Ts:   ts,
+			Kbps: sum * 8 / int64(historySmoothing) / 1000,
+		}
 	}
 	return out
 }
