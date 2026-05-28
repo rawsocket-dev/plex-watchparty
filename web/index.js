@@ -80,7 +80,7 @@ async function doResumeAction(restart) {
   const orig = btn.textContent;
   btn.textContent = 'cueing…';
   try {
-    const body = { action: 'load', ratingKey: resumeHint.ratingKey };
+    const body = { action: 'load', ratingKey: resumeHint.ratingKey, autoplay: true };
     if (!restart) body.positionSec = resumeHint.positionSec;
     const r = await fetch('/control', {
       method: 'POST',

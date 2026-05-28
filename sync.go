@@ -733,6 +733,10 @@ type controlReq struct {
 	// the library's "Start over" prompt to discard the current
 	// position and begin from offset 0.
 	Restart bool `json:"restart"`
+	// Autoplay, when set on a 'load', starts the room in Playing state
+	// instead of paused. The resume banner uses it so resuming lands on
+	// /watch already playing rather than requiring a separate Run press.
+	Autoplay bool `json:"autoplay"`
 }
 
 // HandleControl applies an action from any authenticated friend and rebroadcasts.
@@ -835,7 +839,7 @@ func (h *Hub) HandleControl(w http.ResponseWriter, r *http.Request) {
 		h.state = State{
 			RatingKey:    req.RatingKey,
 			Title:        title,
-			Playing:      false,
+			Playing:      req.Autoplay,
 			PositionSec:  offsetSec,
 			DurationSec:  float64(si.Duration) / 1000.0,
 			SessionToken: h.session.SessionToken(),
