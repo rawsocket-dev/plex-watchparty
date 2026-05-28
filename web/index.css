@@ -526,7 +526,7 @@ body.guest ul.films button:hover::before { transform: scaleY(0); }
 /* --- Resume-after-restart banner ----------------------------------------- */
 #resume-banner {
   max-width: 1240px;
-  margin: 0 auto 1.5rem;
+  margin: 1.5rem auto;
   padding: 0 clamp(1.25rem, 3vw, 2.5rem);
 }
 #resume-banner.hidden { display: none; }
