@@ -586,7 +586,36 @@ function applyState(s, reason) {
 // openLiveEvents wires its own pagehide close — critical here because
 // bfcache-held EventSource connections balloon the server's viewer
 // count from a single Back/Forward navigation.
-openLiveEvents((s) => applyState(s, 'sse'));
+//
+// The server sends a one-shot {clientId} envelope as the FIRST SSE
+// message (per connection). Stash it so /api/heartbeat can identify
+// us; downstream messages are normal State broadcasts and flow into
+// applyState as usual.
+let clientId = null;
+openLiveEvents((msg) => {
+  if (msg && typeof msg.clientId === 'string' && !msg.ratingKey && !('positionSec' in msg)) {
+    clientId = msg.clientId;
+    return;
+  }
+  applyState(msg, 'sse');
+});
+
+// Heartbeat: tell the server what we're actually seeing every 5 s.
+// Admin panel uses this to render "viewer N is at HH:MM:SS, paused/
+// playing." Gated on visibility so a hidden tab stops chattering.
+setInterval(() => {
+  if (!clientId) return;
+  if (document.visibilityState === 'hidden') return;
+  fetch('/api/heartbeat', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      clientId: clientId,
+      positionSec: v.currentTime || 0,
+      paused: !!v.paused,
+    }),
+  }).catch(() => {/* network blip, retry next tick */});
+}, 5000);
 
 // Periodic drift correction. SSE only fires on state changes, so a
 // viewer who joins mid-playback and gets stuck on the autoplay

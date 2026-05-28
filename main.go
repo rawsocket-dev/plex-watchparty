@@ -419,6 +419,37 @@ func main() {
 		_, _ = cw.Write(v.([]byte))
 	})
 
+	// Lightweight per-connection telemetry: the player POSTs its
+	// currentTime + paused state every few seconds so the admin
+	// roster can show "what's each viewer actually seeing right now?"
+	// Cookie-gated (any authenticated viewer can heartbeat themselves);
+	// the clientId comes from the SSE init message.
+	protected.HandleFunc("/api/heartbeat", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "POST only", http.StatusMethodNotAllowed)
+			return
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, 1<<10)
+		var req struct {
+			ClientID    string  `json:"clientId"`
+			PositionSec float64 `json:"positionSec"`
+			Paused      bool    `json:"paused"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		if req.ClientID == "" {
+			http.Error(w, "clientId required", http.StatusBadRequest)
+			return
+		}
+		// Stale id (post-disconnect) is a 204 not a 404 — the client's
+		// next SSE reconnect mints a fresh id and the heartbeats catch
+		// up. Surfacing a 404 would just spam the player logs.
+		hub.RecordHeartbeat(req.ClientID, req.PositionSec, req.Paused)
+		w.WriteHeader(http.StatusNoContent)
+	})
+
 	protected.HandleFunc("/api/bandwidth", func(w http.ResponseWriter, r *http.Request) {
 		mine, total, viewers := bw.snapshot(clientIP(r))
 		writeJSON(w, map[string]int64{

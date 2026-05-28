@@ -67,6 +67,15 @@ type clientEntry struct {
 	connectedAt time.Time
 	send        chan []byte
 	kill        chan struct{}
+
+	// Heartbeat state — last position + playing flag the client
+	// reported via /api/heartbeat. Updated under Hub.mu so admin
+	// roster reads are race-free. lastHeartbeatAt is unix-nano; zero
+	// means "we've never heard from this client" (browser hasn't
+	// landed the heartbeat post yet).
+	lastPosSec      float64
+	lastPaused      bool
+	lastHeartbeatAt int64
 }
 
 // AdminViewer is the per-connection record surfaced to the admin
@@ -75,12 +84,18 @@ type clientEntry struct {
 // Kbps is each viewer's current rolling-window throughput, joined in
 // by IP from bwTracker so the panel can show "who's buffering."
 type AdminViewer struct {
-	ID           string `json:"id"`
-	Name         string `json:"name"`
-	Host         bool   `json:"host"`
-	IP           string `json:"ip"`
-	ConnectedSec int64  `json:"connectedSec"`
-	Kbps         int64  `json:"kbps"`
+	ID           string  `json:"id"`
+	Name         string  `json:"name"`
+	Host         bool    `json:"host"`
+	IP           string  `json:"ip"`
+	ConnectedSec int64   `json:"connectedSec"`
+	Kbps         int64   `json:"kbps"`
+	// Heartbeat fields — what the viewer's player reported on its
+	// last /api/heartbeat. HeartbeatAgeSec is -1 if no heartbeat has
+	// arrived yet (fresh tab, no js running, etc).
+	PosSec         float64 `json:"posSec"`
+	Paused         bool    `json:"paused"`
+	HeartbeatAgeSec float64 `json:"heartbeatAgeSec"`
 }
 
 type Hub struct {
@@ -626,6 +641,13 @@ func (h *Hub) HandleEvents(w http.ResponseWriter, r *http.Request, isHost bool) 
 		w.Write([]byte("\n\n"))
 		flusher.Flush()
 	}
+	// Per-connection handshake: the client needs to know its own id
+	// so it can stamp heartbeat POSTs with it. Sent only to this
+	// connection (the rest of the room never sees a clientId field
+	// in their state stream). The carry-along _clientId on the init
+	// state body avoids a second framing protocol.
+	hello, _ := json.Marshal(map[string]any{"clientId": entry.id})
+	writeBytes(hello)
 	writeBytes(initBytes)
 
 	// 5 s heartbeat: also doubles as our "is the client still there?"
@@ -917,13 +939,20 @@ func (h *Hub) AdminRoster(bw *bwTracker) []AdminViewer {
 		if bw != nil {
 			kbps = bw.KbpsForIP(c.ip)
 		}
+		hbAge := -1.0
+		if c.lastHeartbeatAt != 0 {
+			hbAge = time.Since(time.Unix(0, c.lastHeartbeatAt)).Seconds()
+		}
 		out = append(out, AdminViewer{
-			ID:           c.id,
-			Name:         c.name,
-			Host:         c.host,
-			IP:           c.ip,
-			ConnectedSec: int64(now.Sub(c.connectedAt).Seconds()),
-			Kbps:         kbps,
+			ID:              c.id,
+			Name:            c.name,
+			Host:            c.host,
+			IP:              c.ip,
+			ConnectedSec:    int64(now.Sub(c.connectedAt).Seconds()),
+			Kbps:            kbps,
+			PosSec:          c.lastPosSec,
+			Paused:          c.lastPaused,
+			HeartbeatAgeSec: hbAge,
 		})
 	}
 	sort.Slice(out, func(i, j int) bool {
@@ -933,6 +962,24 @@ func (h *Hub) AdminRoster(bw *bwTracker) []AdminViewer {
 		return out[i].IP < out[j].IP
 	})
 	return out
+}
+
+// RecordHeartbeat updates the per-client position + paused fields the
+// admin roster surfaces. id is the per-connection handle the client
+// learned from its SSE init payload. Returns false if no matching
+// connection is found (stale id, post-disconnect).
+func (h *Hub) RecordHeartbeat(id string, posSec float64, paused bool) bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for c := range h.clients {
+		if c.id == id {
+			c.lastPosSec = posSec
+			c.lastPaused = paused
+			c.lastHeartbeatAt = time.Now().UnixNano()
+			return true
+		}
+	}
+	return false
 }
 
 // KickClient closes the kill channel of the matching connection so its

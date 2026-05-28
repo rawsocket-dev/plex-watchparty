@@ -188,20 +188,34 @@ function renderLibrary(l) {
 function renderViewers(viewers) {
   const rows = $('viewer-rows');
   if (!viewers || viewers.length === 0) {
-    rows.innerHTML = '<tr class="empty-row"><td colspan="7">no connections</td></tr>';
+    rows.innerHTML = '<tr class="empty-row"><td colspan="8">no connections</td></tr>';
     return;
   }
-  rows.innerHTML = viewers.map(v =>
-    '<tr>' +
+  rows.innerHTML = viewers.map(v => {
+    // Position cell: heartbeat timestamp + at-position. If we've
+    // never heard from this client (e.g. it just connected and the
+    // first 5s heartbeat is still pending), render an em-dash.
+    let pos = '—';
+    if (v.heartbeatAgeSec >= 0) {
+      const state = v.paused ? '⏸' : '▶';
+      pos = state + ' ' + fmtTimecode(v.posSec || 0);
+      if (v.heartbeatAgeSec > 10) {
+        // Stale heartbeat — show how stale so an operator can tell
+        // "viewer's been backgrounded" from "still actively playing."
+        pos += ' (' + fmtSeconds(v.heartbeatAgeSec) + ' ago)';
+      }
+    }
+    return '<tr>' +
       '<td class="' + (v.host ? 'role-host' : 'role-viewer') + '">' + (v.host ? '◆ host' : '○ viewer') + '</td>' +
       '<td>' + escapeHTML(v.name || 'guest') + '</td>' +
       '<td>' + escapeHTML(v.ip) + '</td>' +
       '<td>' + fmtKbps(v.kbps || 0) + '</td>' +
+      '<td>' + pos + '</td>' +
       '<td>' + fmtSeconds(v.connectedSec) + '</td>' +
       '<td>' + escapeHTML(v.id) + '</td>' +
       '<td><button class="row-action" data-action="kick" data-id="' + escapeHTML(v.id) + '">Kick</button></td>' +
-    '</tr>'
-  ).join('');
+    '</tr>';
+  }).join('');
 }
 
 async function doAction(label, fn) {
