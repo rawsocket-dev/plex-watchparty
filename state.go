@@ -28,6 +28,11 @@ type ResumeHint struct {
 type StateStore struct {
 	path string
 	mu   sync.Mutex
+	// wg tracks in-flight SaveAsync goroutines so callers can drain
+	// pending writes before tearing down the directory we write into
+	// (graceful shutdown, and crucially tests using t.TempDir whose
+	// RemoveAll otherwise races a late write recreating the dir).
+	wg sync.WaitGroup
 }
 
 func NewStateStore(path string) *StateStore {
@@ -59,6 +64,23 @@ func (s *StateStore) Save(state ResumeHint) {
 		log.Printf("state: rename: %v", err)
 		_ = os.Remove(tmp)
 	}
+}
+
+// SaveAsync persists the hint on a background goroutine so the caller
+// (the broadcast hot path) never blocks on a slow filesystem. The
+// write is tracked by an internal WaitGroup; call Wait to drain
+// in-flight saves before removing the directory the store writes into.
+func (s *StateStore) SaveAsync(state ResumeHint) {
+	s.wg.Add(1)
+	go func() {
+		defer s.wg.Done()
+		s.Save(state)
+	}()
+}
+
+// Wait blocks until all in-flight SaveAsync writes have completed.
+func (s *StateStore) Wait() {
+	s.wg.Wait()
 }
 
 // Load reads the persisted hint from disk. Returns nil if the file

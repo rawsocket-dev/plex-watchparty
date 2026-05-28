@@ -593,7 +593,7 @@ func (h *Hub) broadcast() {
 		}
 		h.lastKnown = &hint
 		if h.store != nil {
-			go h.store.Save(hint)
+			h.store.SaveAsync(hint)
 		}
 	} else if h.lastKnown != nil {
 		// No active session — surface the resume hint so waiting

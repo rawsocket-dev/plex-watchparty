@@ -55,6 +55,12 @@ func newHubTestFixture(t *testing.T) *hubTestFixture {
 	store := NewStateStore(filepath.Join(dir, "state.json"))
 	session := NewPlexSession(plex, 12000)
 	hub := NewHub(plex, session, cache, recent, store)
+	// State persistence is fire-and-forget on a goroutine. Drain any
+	// in-flight writes before t.TempDir's RemoveAll runs — cleanups
+	// are LIFO, so registering this after t.TempDir() makes it run
+	// first. Without it a late Save recreates a file (its MkdirAll
+	// even recreates the dir) mid-removal → "directory not empty".
+	t.Cleanup(store.Wait)
 	return &hubTestFixture{hub: hub, mock: mock, cache: cache, dir: dir}
 }
 
