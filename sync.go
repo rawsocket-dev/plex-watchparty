@@ -137,6 +137,12 @@ func NewHub(plex *Plex, session *PlexSession, cache *SegmentCache, recent *Recen
 	// drift correction in the player has up-to-date state even
 	// between play/pause/seek changes.
 	go h.broadcastLoop()
+	// Plex timeline reporting. Makes us look like a normal Plex
+	// client (web app, iOS, etc.) by POSTing our position + state
+	// every ~5s. Plex uses these reports to transcode ahead of the
+	// playhead and not evict nearby segments — without them we get
+	// 404s on segments hls.js races ahead to ask for.
+	go h.timelineReportLoop()
 	return h
 }
 
@@ -178,6 +184,51 @@ func (h *Hub) broadcastLoop() {
 			h.broadcast()
 		}
 		h.mu.Unlock()
+	}
+}
+
+// timelineReportInterval matches the cadence Plex's official web /
+// mobile clients use. Faster than this is noisy on the Plex side;
+// slower invites stale-segment eviction.
+const timelineReportInterval = 5 * time.Second
+
+// timelineReportLoop POSTs /:/timeline every timelineReportInterval
+// while a Plex session is active. Snapshot extrapolates the position
+// so each report carries the actual playhead, not a stale value
+// from the last play/pause.
+func (h *Hub) timelineReportLoop() {
+	t := time.NewTicker(timelineReportInterval)
+	defer t.Stop()
+	for range t.C {
+		h.reportTimelineNow()
+	}
+}
+
+// reportTimelineNow snapshots state and fires off a single timeline
+// report. Called from the periodic ticker AND from state-changing
+// /control actions (load, play, pause, seek) so Plex learns about
+// changes promptly instead of waiting up to 5 seconds for the next
+// tick. Safe to call when no session is active — ReportTimeline
+// is a no-op in that case.
+func (h *Hub) reportTimelineNow() {
+	h.mu.Lock()
+	if h.state.RatingKey == "" {
+		h.mu.Unlock()
+		return
+	}
+	s := h.snapshot()
+	h.mu.Unlock()
+	plexState := "paused"
+	if s.Playing {
+		plexState = "playing"
+	}
+	if err := h.session.ReportTimeline(
+		plexState,
+		s.RatingKey,
+		int64(s.PositionSec*1000),
+		int64(s.DurationSec*1000),
+	); err != nil {
+		log.Printf("timeline: report failed: %v", err)
 	}
 }
 
@@ -433,6 +484,7 @@ func (h *Hub) AutoRestartAtCurrentPosition() error {
 	h.state.UpdatedAtMs = nowMs()
 	h.broadcast()
 	h.mu.Unlock()
+	go h.reportTimelineNow()
 	return nil
 }
 
@@ -454,6 +506,7 @@ func (h *Hub) RecoverSegmentForRange(startMs, endMs int64) ([]byte, error) {
 	h.state.UpdatedAtMs = nowMs()
 	h.broadcast()
 	h.mu.Unlock()
+	go h.reportTimelineNow()
 	return data, nil
 }
 
@@ -701,6 +754,11 @@ func (h *Hub) HandleControl(w http.ResponseWriter, r *http.Request) {
 		}
 		h.broadcast()
 		h.mu.Unlock()
+		// Tell Plex about the new session immediately so it knows our
+		// starting position. The 5s ticker would catch it eventually
+		// but the first segments hls.js requests would race ahead of
+		// Plex's transcoder otherwise.
+		go h.reportTimelineNow()
 		if h.recent != nil {
 			h.recent.Touch(req.RatingKey, title, year)
 		}
@@ -723,6 +781,19 @@ func (h *Hub) HandleControl(w http.ResponseWriter, r *http.Request) {
 		// library" link so navigating away kills playback instead of
 		// leaving the transcoder running until the idle timer fires.
 		log.Printf("control: stop ip=%s title=%q", clientIP(r), h.state.Title)
+		// Send a final "stopped" timeline before tearing down the
+		// session — after session.Stop() the sessionID is cleared and
+		// ReportTimeline becomes a no-op.
+		h.mu.Lock()
+		rk := h.state.RatingKey
+		posMs := int64(h.snapshot().PositionSec * 1000)
+		durMs := int64(h.state.DurationSec * 1000)
+		h.mu.Unlock()
+		if rk != "" {
+			if err := h.session.ReportTimeline("stopped", rk, posMs, durMs); err != nil {
+				log.Printf("timeline: stop report failed: %v", err)
+			}
+		}
 		h.session.Stop()
 		h.mu.Lock()
 		h.state = State{UpdatedAtMs: nowMs()}
@@ -796,6 +867,10 @@ func (h *Hub) HandleControl(w http.ResponseWriter, r *http.Request) {
 	cur.UpdatedAtMs = nowMs()
 	h.state = cur
 	h.broadcast()
+	// Promptly tell Plex about play/pause/seek so it can adjust its
+	// transcode lookahead and segment retention without waiting for
+	// the next 5s tick.
+	go h.reportTimelineNow()
 	w.WriteHeader(http.StatusNoContent)
 }
 

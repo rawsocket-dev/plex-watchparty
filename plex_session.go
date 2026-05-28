@@ -630,3 +630,54 @@ func (ps *PlexSession) RecoverSegmentBytes(startMs, endMs int64) ([]byte, error)
 	}
 	return data, nil
 }
+
+// ReportTimeline POSTs the current playback position + state to
+// Plex's /:/timeline endpoint. Every Plex client (the web app, the
+// iOS app, etc.) does this every few seconds while a session is
+// active — Plex uses the reports to prioritize transcoding segments
+// ahead of the playhead and to keep nearby segments resident in its
+// internal cache.
+//
+// Without timeline reports, Plex treats us as a black-box client:
+// it transcodes segments lazily as requested and may evict ones it
+// thinks the client has moved past, which is the main source of
+// "Plex 404'd a segment hls.js needs" failures. With timeline
+// reports we look like a real client and Plex behaves accordingly.
+//
+// state should be one of: "playing", "paused", "stopped", "buffering".
+// timeMs and durationMs are in milliseconds (Plex's native unit).
+func (ps *PlexSession) ReportTimeline(state, ratingKey string, timeMs, durationMs int64) error {
+	ps.mu.Lock()
+	sessionID := ps.sessionID
+	ps.mu.Unlock()
+	if sessionID == "" || ratingKey == "" {
+		return nil // nothing to report on
+	}
+	q := url.Values{}
+	q.Set("ratingKey", ratingKey)
+	q.Set("key", "/library/metadata/"+ratingKey)
+	q.Set("state", state)
+	q.Set("time", strconv.FormatInt(timeMs, 10))
+	q.Set("playbackTime", strconv.FormatInt(timeMs, 10))
+	q.Set("duration", strconv.FormatInt(durationMs, 10))
+	q.Set("session", sessionID)
+	q.Set("X-Plex-Session-Identifier", sessionID)
+	q.Set("X-Plex-Client-Identifier", plexClientID)
+	q.Set("X-Plex-Product", plexClientID)
+	q.Set("X-Plex-Version", "1.0")
+	q.Set("X-Plex-Platform", "Generic")
+	q.Set("X-Plex-Device", plexClientID)
+	q.Set("X-Plex-Token", ps.plex.Token)
+
+	u := ps.plex.BaseURL + "/:/timeline?" + q.Encode()
+	req, _ := http.NewRequest(http.MethodPost, u, nil)
+	resp, err := ps.plex.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		return fmt.Errorf("plex timeline: status %d", resp.StatusCode)
+	}
+	return nil
+}
