@@ -29,8 +29,7 @@ authoritative position with sub-second tolerance.
 Playback state (last movie + position) is persisted to disk, so after a
 container restart or idle shutdown the library and waiting room offer to
 **resume where you left off**. There's no database — live state is in memory;
-only the segment cache, the library cache, and the recently-played list
-survive on disk.
+only the segment cache, the library cache, the recently-played list, and the admin audit log (`audit.jsonl`) survive on disk.
 
 **Code structure:**
 
@@ -162,6 +161,7 @@ A small maintenance console available to anyone in `ADMIN_EMAILS` after
 signing in. The panel covers: current Plex session info + manual restart,
 segment cache stats with clear-all / clear-one-movie / prune-older-than-N-days,
 library cache age + manual refresh, and a live SSE viewer roster with kick.
+The panel also shows an **Audit** log — the last 500 sign-ins, denied sign-in attempts, and admin actions (persisted to `audit.jsonl`).
 
 ### Google Cloud setup
 
