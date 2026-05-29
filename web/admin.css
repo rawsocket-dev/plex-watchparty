@@ -215,6 +215,22 @@ table td {
   vertical-align: middle;
 }
 table tbody tr:hover { background: rgba(159,230,173,.04); }
+
+/* Audit log: cap the table to 15 rows and scroll the rest, keeping the
+   column header pinned. Height = header (~28px) + 15 rows @ 32px pitch
+   (measured against this stylesheet). The box-shadow draws the header's
+   bottom rule because border-collapse drops sticky-cell borders on scroll. */
+.audit-scroll {
+  margin-top: .85rem;
+  max-height: calc(1.76rem + 15 * 2rem);
+  overflow-y: auto;
+}
+.audit-scroll table { margin-top: 0; }
+.audit-scroll thead th {
+  position: sticky; top: 0; z-index: 1;
+  background: var(--ink-2);
+  box-shadow: inset 0 -1px 0 var(--rule);
+}
 table .role-host { color: var(--signal); }
 table .role-viewer { color: var(--paper-mute); }
 table .empty-row td {

@@ -110,13 +110,15 @@
 
   <section class="panel full">
     <h2><span class="prefix">06</span>Audit</h2>
-    <table class="viewers">
-      <thead>
-        <tr><th>Time</th><th>Type</th><th>Email</th><th>Role</th><th>IP</th><th>Detail</th></tr>
-      </thead>
-      <tbody id="audit-rows"></tbody>
-    </table>
-    <div class="hint">Last 500 sign-ins, denied attempts, and admin actions — newest first.</div>
+    <div class="audit-scroll">
+      <table class="viewers">
+        <thead>
+          <tr><th>Time</th><th>Type</th><th>Email</th><th>Role</th><th>IP</th><th>Detail</th></tr>
+        </thead>
+        <tbody id="audit-rows"></tbody>
+      </table>
+    </div>
+    <div class="hint">Last 500 sign-ins, denied attempts, and admin actions — newest first. Scroll for older entries.</div>
   </section>
 
 </main>
