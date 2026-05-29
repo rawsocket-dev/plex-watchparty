@@ -300,8 +300,9 @@ func main() {
 	protected.HandleFunc("/events", func(w http.ResponseWriter, r *http.Request) {
 		hub.HandleEvents(w, r, auth.Role(r) == RoleHost)
 	})
-	// /control is host-gated. RequireHost is a no-op when HOST_PASSWORD
-	// isn't configured (preserves "any-friend-can-drive" default).
+	// /control is host-gated. When HOST_EMAILS is empty, Role() treats
+	// every allowed user as a host, so RequireHost lets everyone through
+	// — preserving the "any-friend-can-drive" default.
 	protected.Handle("/control", auth.RequireHost(http.HandlerFunc(hub.HandleControl)))
 
 	protected.HandleFunc("/api/whoami", func(w http.ResponseWriter, r *http.Request) {
