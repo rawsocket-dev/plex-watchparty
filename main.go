@@ -220,7 +220,7 @@ func main() {
 	// Admin maintenance panel — same identity, gated on ADMIN_EMAILS.
 	registerAdminRoutes(mux, auth, plex, segCache, plexSession, hub, bw)
 
-	// Everything else is behind the shared password.
+	// Everything else is behind the Google-identity Guard.
 	protected := http.NewServeMux()
 
 	protected.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {

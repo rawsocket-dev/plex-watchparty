@@ -101,6 +101,23 @@ func TestAuthRevocationByRemoval(t *testing.T) {
 	}
 }
 
+func TestOAuthHandleLoginNoLoopForRevoked(t *testing.T) {
+	// A user with a validly-signed cookie whose email is NOT on the
+	// allowlist must NOT be redirected to "/" (Guard would bounce them
+	// back, looping). HandleLogin should render the sign-in page (200).
+	signer := NewAuth("s", "ghost@x.com", "", "") // ghost was allowed when signed
+	a := NewAuth("s", "alice@x.com", "", "")       // ghost since removed; same secret
+	o := NewOAuth("id", "secret", "https://h/oauth/callback", a)
+	r := httptest.NewRequest("GET", "/login", nil)
+	r.AddCookie(&http.Cookie{Name: sessionCookie, Value: signer.token("ghost@x.com")})
+	w := httptest.NewRecorder()
+	o.HandleLogin(w, r)
+	if w.Code == http.StatusSeeOther {
+		t.Fatalf("HandleLogin redirected (%d, Location=%q) a revoked user — loop risk; want 200 sign-in page",
+			w.Code, w.Header().Get("Location"))
+	}
+}
+
 func TestGuardAndRequireHostAndAdmin(t *testing.T) {
 	a := testAuth()
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(299) })

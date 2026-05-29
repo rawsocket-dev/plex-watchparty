@@ -27,36 +27,30 @@ const stateCookie = "wp_oauth_state"
 const userinfoEndpoint = "https://openidconnect.googleapis.com/v1/userinfo"
 
 type OAuth struct {
-	cfg        *oauth2.Config
-	auth       *Auth
-	configured bool
+	cfg  *oauth2.Config
+	auth *Auth
 }
 
-// NewOAuth builds the Google sign-in gate for the whole app. Returns a
-// value whose Configured() is false if any required field is missing
-// (main.go fails fast in that case).
+// NewOAuth builds the app-wide Google sign-in gate. main.go validates
+// that the client ID / secret / redirect URL are non-empty before
+// calling this (fail-fast), so there's no disabled state to represent.
 func NewOAuth(clientID, clientSecret, redirectURL string, auth *Auth) *OAuth {
-	o := &OAuth{auth: auth}
-	if clientID == "" || clientSecret == "" || redirectURL == "" {
-		return o
-	}
-	o.cfg = &oauth2.Config{
-		ClientID:     clientID,
-		ClientSecret: clientSecret,
-		RedirectURL:  redirectURL,
-		Scopes:       []string{"openid", "email", "profile"},
-		Endpoint:     google.Endpoint,
-	}
-	o.configured = true
 	log.Printf("oauth: google sign-in enabled · redirect=%s", redirectURL)
-	return o
+	return &OAuth{
+		auth: auth,
+		cfg: &oauth2.Config{
+			ClientID:     clientID,
+			ClientSecret: clientSecret,
+			RedirectURL:  redirectURL,
+			Scopes:       []string{"openid", "email", "profile"},
+			Endpoint:     google.Endpoint,
+		},
+	}
 }
-
-func (o *OAuth) Configured() bool { return o.configured }
 
 // HandleLogin renders the sign-in page. If already signed in, jumps to /.
 func (o *OAuth) HandleLogin(w http.ResponseWriter, r *http.Request) {
-	if o.auth.Email(r) != "" {
+	if o.auth.Role(r) != RoleAnon {
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
 	}
