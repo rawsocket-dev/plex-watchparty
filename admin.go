@@ -145,8 +145,6 @@ func registerAdminRoutes(
 			return
 		}
 		log.Printf("admin: %s manual session restart at current position", auth.Email(r))
-		audit.Record(AuditEvent{Type: "admin", Email: auth.Email(r), Role: "admin", IP: clientIP(r),
-			Detail: "restarted plex session at current position"})
 		// Suppress any in-flight auto-restart racing in from the seg
 		// proxy — admin intent wins.
 		plexSession.SuppressAutoRestart()
@@ -154,6 +152,10 @@ func registerAdminRoutes(
 			http.Error(w, "restart failed: "+err.Error(), http.StatusBadGateway)
 			return
 		}
+		// Record only after the restart actually succeeded, so the audit
+		// trail never shows a restart that errored out.
+		audit.Record(AuditEvent{Type: "admin", Email: auth.Email(r), Role: "admin", IP: clientIP(r),
+			Detail: "restarted plex session at current position"})
 		w.WriteHeader(http.StatusNoContent)
 	})))
 
