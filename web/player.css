@@ -258,11 +258,13 @@ body.viewer .role-cell .r-viewer { display: inline; }
   box-shadow: 0 0 10px rgba(240,168,48,.7);
 }
 .cell-btn.warn { color: #b89260; }
-.cell-btn.warn .led {
+.cell-btn.warn:hover { color: var(--warn); }
+/* Exit's dot stays dark like the other idle buttons — it only lights
+   amber on hover, rather than burning amber permanently. */
+.cell-btn.warn:hover .led {
   background: var(--warn);
   box-shadow: 0 0 10px rgba(240,168,48,.7);
 }
-.cell-btn.warn:hover { color: var(--warn); }
 #fullscreen { font-size: 1.05rem; letter-spacing: 0; }
 #wrap.fill #zoom { color: var(--signal); }
 #wrap.fill #zoom .led {
