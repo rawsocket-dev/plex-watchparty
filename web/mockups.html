@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>plex-watchparty · player header redesign mockups</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#0f1217; --ink-2:#1a1e24; --ink-3:#11141a;
+    --paper:#e8ecf2; --paper-mute:#5e6878; --paper-dim:#4a5260;
+    --rule:#2a323e; --rule-hi:#3a424e; --signal:#9fe6ad; --signal-deep:#6ab37d; --warn:#f0a830;
+    --mono:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--ink-3);color:var(--paper);font-family:var(--mono);padding:2rem;line-height:1.5}
+  h1{font-weight:600;letter-spacing:.04em;font-size:1.2rem}
+  h1::before{content:'// ';color:var(--signal)}
+  h2{font-weight:600;font-size:.9rem;letter-spacing:.1em;text-transform:uppercase;color:var(--signal);margin:2.5rem 0 .3rem}
+  .cap{color:var(--paper-mute);font-size:.78rem;max-width:70ch;margin:.2rem 0 .9rem}
+  .frame{border:1px dashed var(--rule-hi);border-radius:4px;overflow:hidden;margin-bottom:.5rem}
+  .frame.narrow{width:380px;max-width:100%}
+  .frame .tag{font-size:.55rem;letter-spacing:.2em;text-transform:uppercase;color:var(--paper-dim);padding:.3rem .6rem;background:var(--ink)}
+  .stage{background:#000;}
+  .stage .film{height:90px;background:repeating-linear-gradient(135deg,#0c0f14 0 14px,#0a0d11 14px 28px);display:flex;align-items:center;justify-content:center;color:var(--paper-dim);font-size:.6rem;letter-spacing:.3em}
+
+  /* ---- shared bar primitives (lifted from player.css) ---- */
+  .bar{display:flex;align-items:stretch;background:
+      repeating-linear-gradient(90deg,rgba(255,255,255,.014) 0 1px,transparent 1px 3px),
+      linear-gradient(180deg,var(--ink-2) 0%,var(--ink-3) 100%);
+      border-bottom:1px solid var(--rule);box-shadow:inset 0 1px 0 rgba(255,255,255,.04),inset 0 -1px 0 rgba(0,0,0,.5)}
+  .cell{border-right:1px solid var(--rule);padding:.45rem .9rem;display:flex;flex-direction:column;justify-content:center;gap:.15rem;min-height:52px}
+  .lbl{font-size:.52rem;font-weight:500;letter-spacing:.25em;text-transform:uppercase;color:var(--paper-mute)}
+  .v{font-size:.8rem;font-weight:500;letter-spacing:.06em;color:var(--paper);white-space:nowrap}
+  .v.mint{color:var(--signal)}
+  .led{width:7px;height:7px;border-radius:50%;display:inline-block;vertical-align:middle;margin-right:.4rem}
+  .led.on{background:var(--signal);box-shadow:0 0 8px rgba(159,230,173,.7)}
+  .led.amber{background:var(--warn);box-shadow:0 0 8px rgba(240,168,48,.6)}
+  .led.off{background:var(--rule-hi)}
+  .grow{flex:1;min-width:0}
+  .title{border-left:1px solid var(--rule);border-right:1px solid var(--rule);background:var(--ink);box-shadow:inset 0 0 30px rgba(0,0,0,.6);justify-content:center;text-align:left}
+  .title .v{font-size:1rem;overflow:hidden;text-overflow:ellipsis}
+  .btn{background:linear-gradient(180deg,#1d2129,#131820);border:0;border-left:1px solid var(--rule);color:#8a92a0;font-family:var(--mono);font-size:.62rem;font-weight:500;letter-spacing:.22em;text-transform:uppercase;cursor:pointer;padding:0 1rem;min-height:52px;display:inline-flex;align-items:center;gap:.5rem}
+  .btn.primary{color:var(--signal)} .btn.primary .led{background:var(--signal);box-shadow:0 0 9px rgba(159,230,173,.8)}
+  .btn.warn{color:#b89260}
+  .btn .led{background:#3a424e}
+  .kebab{font-size:1rem;letter-spacing:0;color:var(--paper-mute)}
+  .group{display:flex;align-items:stretch}
+  .group + .group{border-left:2px solid var(--ink-3)}
+  .chip{display:inline-flex;align-items:center;gap:.4rem;font-size:.66rem;letter-spacing:.1em;color:var(--paper);padding:0 .7rem;border-right:1px solid var(--rule)}
+  .chip .k{color:var(--paper-mute);font-size:.5rem;letter-spacing:.22em;text-transform:uppercase}
+  .pill{font-size:.55rem;letter-spacing:.2em;text-transform:uppercase;color:var(--signal);border:1px solid var(--signal-deep);border-radius:999px;padding:.12rem .5rem}
+  .backlink{display:inline-block;margin-bottom:1.5rem;color:var(--paper-mute);font-size:.7rem;letter-spacing:.15em;text-transform:uppercase;text-decoration:none;border:1px solid var(--rule);padding:.3rem .7rem;border-radius:3px}
+  .backlink:hover{color:var(--signal);border-color:var(--signal-deep)}
+</style>
+</head>
+<body>
+<a class="backlink" href="/admin">&larr; back to admin</a>
+<h1>Player header — redesign mockups</h1>
+<p class="cap">Rendered with the real Console palette + IBM&nbsp;Plex&nbsp;Mono. All show the busiest case: the <b>active host</b> on a wide screen (they see status + transport + view tools + Pass-control + Admin + Exit). A narrow (phone) rendering follows each. These are throwaway mockups to pick a direction — not final CSS.</p>
+
+<!-- ============ BASELINE ============ -->
+<h2>0 · Baseline (today)</h2>
+<p class="cap">Everything in one flat row of equal-weight cells/buttons. Functional but undifferentiated — status, title, and seven+ actions all compete; no obvious hierarchy, and it has no narrow-screen story.</p>
+<div class="frame"><div class="tag">desktop · current</div>
+  <div class="bar">
+    <div class="cell"><div class="lbl">Role</div><div class="v mint"><span class="led on"></span>Host</div></div>
+    <div class="cell"><div class="lbl">Sync</div><div class="v">host</div></div>
+    <div class="cell"><div class="lbl">Audience</div><div class="v">4</div></div>
+    <div class="cell"><div class="lbl">User BW / Total</div><div class="v">2.1 / 9.4 Mbps</div></div>
+    <div class="cell"><div class="lbl">Host</div><div class="v mint">Alice</div></div>
+    <div class="cell title grow"><div class="lbl">Feed_Live · Source 01</div><div class="v">Blade Runner 2049</div></div>
+    <button class="btn primary"><span class="led"></span>Run</button>
+    <button class="btn"><span class="led"></span>Pause</button>
+    <button class="btn">Vol</button>
+    <button class="btn"><span class="led"></span>Fit</button>
+    <button class="btn"><span class="led"></span>⛶</button>
+    <select class="btn"><option>Pass control →</option></select>
+    <button class="btn"><span class="led"></span>Admin</button>
+    <button class="btn warn"><span class="led"></span>Exit</button>
+  </div>
+</div>
+
+<!-- ============ VARIANT A ============ -->
+<h2>A · Grouped row + overflow kebab  <span class="pill">recommended</span></h2>
+<p class="cap">One row, three zones with visual grouping. Left: a compact <b>status cluster</b> (role LED · who's driving · sync) — Audience &amp; BW collapse into a hover/tap popover. Center: title. Right: only the <b>primary transport</b> (Run/Pause) stays out; secondary tools (Volume, Fit, Fullscreen, Pass control, Admin, Exit) move into a <b>⋯ kebab menu</b>. Cleanest; scales to narrow by dropping the status cluster into the kebab too.</p>
+<div class="frame"><div class="tag">desktop</div>
+  <div class="bar">
+    <div class="group">
+      <div class="chip"><span class="led on"></span><span><span class="k">host</span> Alice</span></div>
+      <div class="chip"><span class="k">sync</span> locked</div>
+      <div class="chip" title="4 watching · 2.1/9.4 Mbps — hover for roster"><span class="k">audience</span> 4 ▾</div>
+    </div>
+    <div class="cell title grow"><div class="lbl">Now playing</div><div class="v">Blade Runner 2049</div></div>
+    <div class="group">
+      <button class="btn primary"><span class="led"></span>Run</button>
+      <button class="btn"><span class="led"></span>Pause</button>
+      <button class="btn kebab" title="Volume · Fit · Fullscreen · Pass control · Admin · Exit">⋯</button>
+    </div>
+  </div>
+</div>
+<div class="frame narrow"><div class="tag">narrow (phone)</div>
+  <div class="bar">
+    <div class="chip"><span class="led on"></span><span class="k">A</span></div>
+    <div class="cell title grow" style="padding:.45rem .7rem"><div class="v" style="font-size:.85rem">Blade Runner 2049</div></div>
+    <button class="btn primary" style="padding:0 .7rem"><span class="led"></span>▶</button>
+    <button class="btn kebab" style="padding:0 .7rem">⋯</button>
+  </div>
+</div>
+
+<!-- ============ VARIANT B ============ -->
+<h2>B · Two-tier (status strip + control row)</h2>
+<p class="cap">Splits responsibilities onto two rows. A <b>thin status strip</b> up top (role · host · sync · audience · BW · title), and a <b>control row</b> below with buttons in labelled groups: [transport] · [view] · [host] · [exit]. Most legible hierarchy &amp; room to grow, at the cost of vertical space (worse on short/landscape phones).</p>
+<div class="frame"><div class="tag">desktop</div>
+  <div style="background:linear-gradient(180deg,var(--ink-2),var(--ink-3));border-bottom:1px solid var(--rule)">
+    <div style="display:flex;align-items:center;gap:0;border-bottom:1px solid var(--rule)">
+      <div class="chip"><span class="led on"></span><span class="k">host</span> Alice</div>
+      <div class="chip"><span class="k">sync</span> locked</div>
+      <div class="chip"><span class="k">audience</span> 4</div>
+      <div class="chip"><span class="k">bw</span> 2.1 / 9.4 Mbps</div>
+      <div class="chip grow" style="border-right:0;color:var(--paper)"><span class="k">now</span> Blade Runner 2049</div>
+    </div>
+    <div class="bar" style="border-bottom:0;background:none">
+      <div class="group"><button class="btn primary"><span class="led"></span>Run</button><button class="btn"><span class="led"></span>Pause</button></div>
+      <div class="group"><button class="btn">Vol</button><button class="btn"><span class="led"></span>Fit</button><button class="btn"><span class="led"></span>⛶</button></div>
+      <div class="group"><select class="btn"><option>Pass control →</option></select></div>
+      <div class="grow"></div>
+      <div class="group"><button class="btn"><span class="led"></span>Admin</button><button class="btn warn"><span class="led"></span>Exit</button></div>
+    </div>
+  </div>
+</div>
+<div class="frame narrow"><div class="tag">narrow (phone) · status strip wraps, controls scroll</div>
+  <div style="background:linear-gradient(180deg,var(--ink-2),var(--ink-3))">
+    <div class="chip" style="border-right:0"><span class="led on"></span><span class="k">host</span> Alice · <span class="k">4</span> · Blade Runner 2049</div>
+    <div class="bar" style="border-bottom:0;background:none;overflow-x:auto">
+      <button class="btn primary" style="padding:0 .7rem"><span class="led"></span>▶</button>
+      <button class="btn" style="padding:0 .7rem">II</button>
+      <button class="btn" style="padding:0 .7rem">⛶</button>
+      <button class="btn kebab" style="padding:0 .7rem">⋯</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ VARIANT C ============ -->
+<h2>C · Minimal auto-reveal (media-player chrome)</h2>
+<p class="cap">A slim always-visible strip (title · play-state dot · who's driving · ⚙). Full controls slide in on hover/tap over the video, like Netflix/YouTube — shown here in the revealed state. Maximises screen for the movie; status/tools are one gesture away. Most "app-like", but hidden controls are less discoverable and fiddlier on a shared-TV remote.</p>
+<div class="frame"><div class="tag">desktop · idle strip</div>
+  <div class="bar" style="min-height:0">
+    <div class="chip" style="border-right:0;color:var(--paper)"><span class="led on" style="width:6px;height:6px"></span> Blade Runner 2049 <span class="k" style="margin-left:.6rem">host</span> Alice</div>
+    <div class="grow"></div>
+    <button class="btn" style="min-height:40px">⚙</button>
+  </div>
+</div>
+<div class="frame"><div class="tag">desktop · controls revealed (hover / tap)</div>
+  <div class="stage">
+    <div class="film">· video ·</div>
+    <div class="bar" style="background:linear-gradient(180deg,rgba(15,18,23,.2),rgba(15,18,23,.92))">
+      <div class="group">
+        <button class="btn primary" style="min-height:46px"><span class="led"></span>Run</button>
+        <button class="btn" style="min-height:46px"><span class="led"></span>Pause</button>
+        <button class="btn" style="min-height:46px">Vol</button>
+      </div>
+      <div class="cell title grow" style="min-height:46px;background:transparent;box-shadow:none;border:0"><div class="v">Blade Runner 2049 · <span class="mint">Alice driving</span> · 4 watching</div></div>
+      <div class="group">
+        <button class="btn" style="min-height:46px"><span class="led"></span>Fit</button>
+        <button class="btn" style="min-height:46px"><span class="led"></span>⛶</button>
+        <select class="btn" style="min-height:46px"><option>Pass →</option></select>
+        <button class="btn" style="min-height:46px">Admin</button>
+        <button class="btn warn" style="min-height:46px">Exit</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<h2 style="color:var(--paper-mute)">— open questions these raise —</h2>
+<p class="cap">
+1. <b>Phone target?</b> If people watch on phones, A or C win (B eats vertical space).<br>
+2. <b>Discoverability vs. minimalism</b> — A/B keep transport always visible; C hides it behind a gesture.<br>
+3. <b>What's allowed in the overflow ⋯</b> — Admin &amp; Exit are rare; Volume/Fullscreen are common. Where's the line?<br>
+4. <b>Viewer vs host vs admin</b> — viewers see no transport/Pass/Admin; the layout should look intentional (not gap-riddled) in all three roles.
+</p>
+</body>
+</html>

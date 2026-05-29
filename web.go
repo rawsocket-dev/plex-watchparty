@@ -37,3 +37,10 @@ var adminCSS []byte
 
 //go:embed web/admin.js
 var adminJS []byte
+
+// Throwaway design artifact — header-redesign mockups served at
+// /admin/mockups so they're viewable in the deployed container.
+// Remove this (and the route + file) once a direction is chosen.
+//
+//go:embed web/mockups.html
+var mockupsHTML []byte
