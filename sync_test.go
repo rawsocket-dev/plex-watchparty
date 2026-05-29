@@ -150,6 +150,36 @@ func TestViewerListMarksOnlyActiveHost(t *testing.T) {
 	}
 }
 
+func TestViewerListDedupesByIdentity(t *testing.T) {
+	f := newHubTestFixture(t)
+	h := f.hub
+	h.mu.Lock()
+	h.clients = map[*clientEntry]struct{}{}
+	h.activeHost = "alice@x.com"
+	for _, c := range []*clientEntry{
+		{id: "a1", email: "alice@x.com", name: "Alice"},
+		{id: "a2", email: "alice@x.com", name: "Alice"}, // same person, 2nd tab
+		{id: "b1", email: "bob@x.com", name: "Bob"},
+	} {
+		h.clients[c] = struct{}{}
+	}
+	list := h.viewerList()
+	h.mu.Unlock()
+
+	if len(list) != 2 {
+		t.Fatalf("viewerList has %d entries, want 2 (one per person): %+v", len(list), list)
+	}
+	var hosts int
+	for _, v := range list {
+		if v.Host {
+			hosts++
+		}
+	}
+	if hosts != 1 {
+		t.Errorf("want exactly one host in the deduped roster, got %d", hosts)
+	}
+}
+
 func TestActiveHostStaysWhenSecondEligibleJoins(t *testing.T) {
 	f := newHubTestFixture(t)
 	f.hub.mu.Lock()
@@ -416,6 +446,12 @@ func TestHubCloseStopsLoops(t *testing.T) {
 func TestHubHandleEventsReportsViewer(t *testing.T) {
 	f := newHubTestFixture(t)
 	f.post(t, `{"action":"load","ratingKey":"rk1"}`)
+	// Drop the fixture's pre-seeded connection so the one we open below is
+	// the only connection for testHostEmail — otherwise the roster dedupe
+	// (one entry per identity) would merge them and keep the first name.
+	f.hub.mu.Lock()
+	f.hub.clients = map[*clientEntry]struct{}{}
+	f.hub.mu.Unlock()
 
 	// Spin a goroutine that connects, reads the initial state, and
 	// exits. The main goroutine inspects the viewer list afterwards.

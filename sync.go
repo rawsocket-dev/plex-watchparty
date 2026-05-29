@@ -477,12 +477,32 @@ func (h *Hub) activeHostNameLocked() string {
 // viewerList returns the current connected-viewer roster sorted host-
 // first then alphabetical. Must be called with h.mu held.
 func (h *Hub) viewerList() []ViewerInfo {
-	out := make([]ViewerInfo, 0, len(h.clients))
+	// One entry per PERSON (identity = email), so a user holding several
+	// connections (tabs / reloads / proxy-held ghosts) shows once and the
+	// viewer COUNT reflects people, not sockets. Empty-email connections
+	// stay separate. Host marks the single ACTIVE host (who's driving), NOT
+	// mere host-eligibility. The representative id is one of the person's
+	// connections — hand-off resolves it back to the email, so any works.
+	byKey := make(map[string]*ViewerInfo)
+	var order []string
 	for c := range h.clients {
-		// Host marks the single ACTIVE host (who's driving), NOT mere
-		// host-eligibility — otherwise every eligible viewer shows up as
-		// a "host" in the roster, which reads as multiple hosts.
-		out = append(out, ViewerInfo{ID: c.id, Name: c.name, Host: c.email != "" && c.email == h.activeHost})
+		key := c.email
+		if key == "" {
+			key = "conn:" + c.id
+		}
+		isActive := c.email != "" && c.email == h.activeHost
+		if v, ok := byKey[key]; ok {
+			if isActive { // prefer the active host's own connection as representative
+				v.ID, v.Host = c.id, true
+			}
+			continue
+		}
+		byKey[key] = &ViewerInfo{ID: c.id, Name: c.name, Host: isActive}
+		order = append(order, key)
+	}
+	out := make([]ViewerInfo, 0, len(order))
+	for _, k := range order {
+		out = append(out, *byKey[k])
 	}
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].Host != out[j].Host {
