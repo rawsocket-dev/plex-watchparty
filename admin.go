@@ -184,6 +184,20 @@ func registerAdminRoutes(
 		w.WriteHeader(http.StatusNoContent)
 	})))
 
+	mux.Handle("/admin/api/host/set", gated(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "POST only", http.StatusMethodNotAllowed)
+			return
+		}
+		id := r.URL.Query().Get("id")
+		if err := hub.SetActiveHostByConn(id); err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		log.Printf("admin: %s set active host (conn id=%s)", auth.Email(r), id)
+		w.WriteHeader(http.StatusNoContent)
+	})))
+
 	mux.Handle("/admin/api/viewers/kick", gated(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "POST only", http.StatusMethodNotAllowed)

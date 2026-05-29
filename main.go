@@ -307,6 +307,19 @@ func main() {
 	// protected Guard still requires an authenticated, allow-listed user.
 	protected.Handle("/control", auth.WithActor(http.HandlerFunc(hub.HandleControl)))
 
+	protected.HandleFunc("/api/host/handoff", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "POST only", http.StatusMethodNotAllowed)
+			return
+		}
+		id := r.URL.Query().Get("id")
+		if err := hub.Handoff(auth.Email(r), id); err != nil {
+			http.Error(w, err.Error(), http.StatusForbidden)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+
 	protected.HandleFunc("/api/whoami", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]any{
 			"email":        auth.Email(r),

@@ -369,3 +369,31 @@ func TestIsActiveHost(t *testing.T) {
 		t.Error("IsActiveHost(other) = true, want false")
 	}
 }
+
+func TestSetActiveHostByConn(t *testing.T) {
+	f := newHubTestFixture(t)
+	e := f.addConn("guest@x.com", false) // non-eligible, but admin can promote
+	if err := f.hub.SetActiveHostByConn(e.id); err != nil {
+		t.Fatalf("SetActiveHostByConn: %v", err)
+	}
+	if f.active() != "guest@x.com" {
+		t.Errorf("admin set: active=%q, want guest@x.com", f.active())
+	}
+	if err := f.hub.SetActiveHostByConn("no-such-id"); err == nil {
+		t.Error("SetActiveHostByConn(bad id) = nil err, want error")
+	}
+}
+
+func TestHandoffByActiveHost(t *testing.T) {
+	f := newHubTestFixture(t)
+	e := f.addConn("buddy@x.com", true)
+	if err := f.hub.Handoff("tester@x.com", e.id); err != nil {
+		t.Fatalf("Handoff: %v", err)
+	}
+	if f.active() != "buddy@x.com" {
+		t.Errorf("after handoff: active=%q, want buddy@x.com", f.active())
+	}
+	if err := f.hub.Handoff("someone@x.com", e.id); err == nil {
+		t.Error("Handoff by non-active-host = nil err, want error")
+	}
+}

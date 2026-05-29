@@ -104,9 +104,12 @@ type AdminViewer struct {
 	// Heartbeat fields — what the viewer's player reported on its
 	// last /api/heartbeat. HeartbeatAgeSec is -1 if no heartbeat has
 	// arrived yet (fresh tab, no js running, etc).
-	PosSec         float64 `json:"posSec"`
-	Paused         bool    `json:"paused"`
+	PosSec          float64 `json:"posSec"`
+	Paused          bool    `json:"paused"`
 	HeartbeatAgeSec float64 `json:"heartbeatAgeSec"`
+	// IsActiveHost is true when this connection's email matches the
+	// current active host. Displayed in the admin roster as a marker.
+	IsActiveHost bool `json:"isActiveHost"`
 }
 
 type Hub struct {
@@ -1242,6 +1245,7 @@ func (h *Hub) AdminRoster(bw *bwTracker) []AdminViewer {
 			PosSec:          c.lastPosSec,
 			Paused:          c.lastPaused,
 			HeartbeatAgeSec: hbAge,
+			IsActiveHost:    c.email == h.activeHost,
 		})
 	}
 	sort.Slice(out, func(i, j int) bool {
@@ -1269,6 +1273,69 @@ func (h *Hub) RecordHeartbeat(id string, posSec float64, paused bool) bool {
 		}
 	}
 	return false
+}
+
+// emailForConnLocked returns the email of the connection with the given
+// id, and whether found. Caller holds h.mu.
+func (h *Hub) emailForConnLocked(id string) (string, bool) {
+	for c := range h.clients {
+		if c.id == id {
+			return c.email, true
+		}
+	}
+	return "", false
+}
+
+// SetActiveHostByConn makes the user behind connection id the active host
+// — any connected user, eligible or not (admin override). Errors if id
+// isn't a current connection.
+func (h *Hub) SetActiveHostByConn(id string) error {
+	h.mu.Lock()
+	email, ok := h.emailForConnLocked(id)
+	if !ok {
+		h.mu.Unlock()
+		return fmt.Errorf("no such connection")
+	}
+	detail := ""
+	if h.activeHost != email {
+		detail = fmt.Sprintf("admin set active host to %q", h.nameForEmailLocked(email))
+	}
+	h.activeHost = email
+	h.broadcast()
+	h.mu.Unlock()
+	h.wakeBroadcast()
+	if detail != "" {
+		h.audit.Record(AuditEvent{Type: "host", Email: "admin", Detail: detail})
+	}
+	return nil
+}
+
+// Handoff lets the current active host (byEmail) pass control to the user
+// behind connection targetID. Errors if byEmail isn't the active host or
+// the target isn't connected.
+func (h *Hub) Handoff(byEmail, targetID string) error {
+	h.mu.Lock()
+	if h.activeHost != byEmail {
+		h.mu.Unlock()
+		return fmt.Errorf("not the active host")
+	}
+	email, ok := h.emailForConnLocked(targetID)
+	if !ok {
+		h.mu.Unlock()
+		return fmt.Errorf("no such connection")
+	}
+	detail := ""
+	if h.activeHost != email {
+		detail = fmt.Sprintf("handed control to %q", h.nameForEmailLocked(email))
+	}
+	h.activeHost = email
+	h.broadcast()
+	h.mu.Unlock()
+	h.wakeBroadcast()
+	if detail != "" {
+		h.audit.Record(AuditEvent{Type: "host", Email: byEmail, Detail: detail})
+	}
+	return nil
 }
 
 // KickClient closes the kill channel of the matching connection so its
