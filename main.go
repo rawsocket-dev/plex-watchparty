@@ -153,7 +153,7 @@ func main() {
 		transcodeKbps = n
 	}
 	log.Printf("plex: transcode target → 1920x1080 h264 @ %d kbps", transcodeKbps)
-	plex := NewPlex(plexURL, plexTok, libraryCache)
+	plex := NewPlex(plexURL, plexTok, libraryCache, audit)
 
 	// Disk cache for HLS segments. Sized by CACHE_MAX_GB (default 20 GB).
 	// Survives container restarts so previously-watched ranges of a

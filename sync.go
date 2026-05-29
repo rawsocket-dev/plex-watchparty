@@ -466,6 +466,11 @@ func (h *Hub) idleShutdown(forRatingKey string) {
 	}
 	log.Printf("idle: stopping plex session %q after %s with no viewers",
 		h.state.Title, idleGrace)
+	// Recording (a file write) under Hub.mu is normally avoided, but it's
+	// safe here: the len(h.clients) guard above means there are zero
+	// viewers, so there's no SSE writer to stall. Don't copy this pattern
+	// to a path that can run with viewers connected.
+	h.audit.Record(AuditEvent{Type: "plex", Email: "system", Detail: fmt.Sprintf("idle: stopped %q after %s with no viewers", h.state.Title, idleGrace)})
 	h.session.Stop()
 	h.state = State{UpdatedAtMs: nowMs()}
 	h.broadcast()

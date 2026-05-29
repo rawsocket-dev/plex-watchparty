@@ -40,6 +40,8 @@ type Plex struct {
 	healthMu     sync.Mutex
 	healthy      bool
 	pingerActive bool
+
+	audit *AuditLog
 }
 
 // 30 minutes is long enough that a typical watch-party session (browsing
@@ -48,7 +50,7 @@ type Plex struct {
 // newly-added content shows up within the same evening.
 const moviesCacheTTL = 30 * time.Minute
 
-func NewPlex(baseURL, token, cacheFile string) *Plex {
+func NewPlex(baseURL, token, cacheFile string, audit *AuditLog) *Plex {
 	// Plex Media Server's TLS certificate is only valid for hostnames
 	// under *.<machine-id>.plex.direct (the auto-generated cert that
 	// Plex.tv signs and ships down to each server). Any operator who
@@ -65,6 +67,7 @@ func NewPlex(baseURL, token, cacheFile string) *Plex {
 		http:      &http.Client{Timeout: 15 * time.Second, Transport: tr},
 		cacheFile: cacheFile,
 		healthy:   true, // optimistic; startup Ping in main flips this if Plex is down
+		audit:     audit,
 	}
 	p.loadCacheFromDisk()
 	return p
@@ -104,6 +107,7 @@ func (p *Plex) MarkUnhealthy(err error) {
 	p.healthMu.Unlock()
 	if wasHealthy {
 		log.Printf("plex: marking unhealthy: %v", err)
+		p.audit.Record(AuditEvent{Type: "plex", Email: "system", Detail: fmt.Sprintf("plex unreachable: %v", err)})
 	}
 	if startPinger {
 		go p.healthRecoveryLoop()
@@ -126,6 +130,7 @@ func (p *Plex) healthRecoveryLoop() {
 			p.healthMu.Unlock()
 			log.Printf("plex: recovered on attempt %d — connected to %q (version %s, machine %s)",
 				attempt, id.FriendlyName, id.Version, id.MachineIdentifier)
+			p.audit.Record(AuditEvent{Type: "plex", Email: "system", Detail: fmt.Sprintf("plex recovered (connected to %q)", id.FriendlyName)})
 			return
 		}
 		log.Printf("plex: recovery attempt %d failed (%v); retry in %s", attempt, err, delay)

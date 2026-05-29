@@ -28,7 +28,7 @@ func TestPlexSessionStart(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	plex := NewPlex(srv.URL, "tok", "")
+	plex := NewPlex(srv.URL, "tok", "", nil)
 	ps := NewPlexSession(plex, 12000)
 	if err := ps.Start("rk1", 0); err != nil {
 		t.Fatalf("Start: %v", err)
@@ -55,7 +55,7 @@ func TestPlexSessionStartWithOffset(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	ps := NewPlexSession(NewPlex(srv.URL, "tok", ""), 12000)
+	ps := NewPlexSession(NewPlex(srv.URL, "tok", "", nil), 12000)
 	if err := ps.Start("rk1", 600); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
@@ -74,7 +74,7 @@ func TestPlexSessionStopCallsPlex(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	ps := NewPlexSession(NewPlex(srv.URL, "tok", ""), 12000)
+	ps := NewPlexSession(NewPlex(srv.URL, "tok", "", nil), 12000)
 	_ = ps.Start("rk1", 0)
 	ps.Stop()
 	if !stopped {
@@ -91,7 +91,7 @@ func TestPlexSessionRestartBumpsToken(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	ps := NewPlexSession(NewPlex(srv.URL, "tok", ""), 12000)
+	ps := NewPlexSession(NewPlex(srv.URL, "tok", "", nil), 12000)
 	_ = ps.Start("rk1", 0)
 	tokenBefore := ps.SessionToken()
 	if err := ps.Restart(120); err != nil {
@@ -109,7 +109,7 @@ func TestPlexSessionEdgeMsTracks(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	ps := NewPlexSession(NewPlex(srv.URL, "tok", ""), 12000)
+	ps := NewPlexSession(NewPlex(srv.URL, "tok", "", nil), 12000)
 	_ = ps.Start("rk1", 30) // session starts at 30s
 	if got := ps.EdgeSec(); got != 30.0 {
 		t.Errorf("EdgeSec after start = %v, want 30.0", got)
@@ -132,7 +132,7 @@ func TestPlexSessionFetchPlaylist(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	ps := NewPlexSession(NewPlex(srv.URL, "tok", ""), 12000)
+	ps := NewPlexSession(NewPlex(srv.URL, "tok", "", nil), 12000)
 	_ = ps.Start("rk1", 0)
 	data, baseURL, err := ps.FetchPlaylist()
 	if err != nil {
@@ -159,7 +159,7 @@ func TestPlexSessionFetchPlaylistFollowsMaster(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	ps := NewPlexSession(NewPlex(srv.URL, "tok", ""), 12000)
+	ps := NewPlexSession(NewPlex(srv.URL, "tok", "", nil), 12000)
 	_ = ps.Start("rk1", 0)
 	data, baseURL, err := ps.FetchPlaylist()
 	if err != nil {
@@ -179,7 +179,7 @@ func TestPlexSessionFetchSegment(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	ps := NewPlexSession(NewPlex(srv.URL, "tok", ""), 12000)
+	ps := NewPlexSession(NewPlex(srv.URL, "tok", "", nil), 12000)
 	_ = ps.Start("rk1", 0)
 	rc, err := ps.FetchSegment(srv.URL + "/some-seg.ts")
 	if err != nil {

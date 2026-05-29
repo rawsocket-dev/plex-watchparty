@@ -49,11 +49,11 @@ func newHubTestFixture(t *testing.T) *hubTestFixture {
 	}))
 	t.Cleanup(mock.Close)
 	dir := t.TempDir()
-	plex := NewPlex(mock.URL, "tok", filepath.Join(dir, "lib.json"))
+	audit := NewAuditLog(filepath.Join(dir, "audit.jsonl"), auditCap)
+	plex := NewPlex(mock.URL, "tok", filepath.Join(dir, "lib.json"), audit)
 	cache := NewSegmentCache(filepath.Join(dir, "cache"), 1<<30)
 	recent := NewRecentMovies(filepath.Join(dir, "recent.json"))
 	store := NewStateStore(filepath.Join(dir, "state.json"))
-	audit := NewAuditLog(filepath.Join(dir, "audit.jsonl"), auditCap)
 	session := NewPlexSession(plex, 12000)
 	hub := NewHub(plex, session, cache, recent, store, audit)
 	// Stop the Hub's background loops/timers and drain pending state
