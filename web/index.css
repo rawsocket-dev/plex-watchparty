@@ -35,7 +35,7 @@ header {
   box-shadow: inset 0 1px 0 rgba(255,255,255,.04), inset 0 -1px 0 rgba(0,0,0,.5);
   padding: 1rem clamp(1.25rem, 4vw, 3rem);
   display: grid;
-  grid-template-columns: auto 1fr auto;
+  grid-template-columns: auto 1fr auto auto;
   gap: 1.5rem;
   align-items: center;
 }
@@ -192,6 +192,19 @@ header {
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
+
+/* Header logout — icon-only exit button, same vocabulary as the player's
+   .ibtn controls. Warms to amber on hover since it's a "leave" action. */
+.ibtn {
+  width: 46px; height: 40px; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: linear-gradient(180deg, #1d2129 0%, #131820 100%);
+  border: 1px solid var(--rule); border-radius: 2px;
+  color: #7e8794; text-decoration: none; cursor: pointer;
+  transition: background .2s ease, color .2s ease;
+}
+.ibtn:hover { color: var(--warn); background: linear-gradient(180deg, #252b34 0%, #1a1f27 100%); }
+.ibtn .ico { width: 18px; height: 18px; display: block; flex: none; }
 
 #status {
   padding: 2rem clamp(1.25rem, 4vw, 3rem);

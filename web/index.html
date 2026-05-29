@@ -10,6 +10,12 @@
 <link rel="stylesheet" href="/static/index.css">
 </head>
 <body>
+
+<!-- Icon defs (shared vocabulary with player.html). i-exit = log out. -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <symbol id="i-exit" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4H5v16h9M11 12h9M16 8l4 4-4 4"/></symbol>
+</defs></svg>
+
 <header>
   <div class="brand">
     <span class="one">The Library</span>
@@ -24,6 +30,7 @@
     <input id="search" type="search" placeholder="search titles" autofocus autocomplete="off" spellcheck="false">
   </label>
   <span id="count" class="count">— titles</span>
+  <a class="ibtn" id="logout-link" href="/logout" title="Sign out"><svg class="ico"><use href="#i-exit"/></svg></a>
 </header>
 
 <div id="guest">
@@ -59,7 +66,7 @@
 </div>
 
 <div id="groups"></div>
-<footer>· intermission · grab a drink · <a href="/logout">log out</a> ·</footer>
+<footer>· intermission · grab a drink ·</footer>
 
 <!-- Resume / Start over dialog. Hidden by default; opened when the
      user clicks a movie that's already the active session and has a

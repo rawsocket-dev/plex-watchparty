@@ -14,14 +14,6 @@ var playerHTML []byte
 //go:embed web/waiting.html
 var waitingHTML []byte
 
-// Throwaway design gallery — logout-button placement options served at
-// /mockups (public, no auth: pure HTML + CSS, no movie metadata, no Plex
-// token surface). Remove this (route + embed + file) once a direction is
-// chosen and wired into the real pages.
-//
-//go:embed web/mockups.html
-var mockupsHTML []byte
-
 //go:embed web/common.js
 var commonJS []byte
 
