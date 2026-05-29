@@ -209,7 +209,7 @@ function renderViewers(viewers) {
       }
     }
     return '<tr>' +
-      '<td class="' + (v.host ? 'role-host' : 'role-viewer') + '">' + (v.host ? '◆ host' : '○ viewer') + '</td>' +
+      '<td class="' + (v.isActiveHost ? 'role-host' : 'role-viewer') + '">' + (v.isActiveHost ? '◆ host' : '○ viewer') + '</td>' +
       '<td>' + escapeHTML(v.name || 'guest') + '</td>' +
       '<td>' + escapeHTML(v.ip) + '</td>' +
       '<td>' + fmtKbps(v.kbps || 0) + '</td>' +
