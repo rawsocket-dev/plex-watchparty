@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>plex-watchparty · header buttons</title>
+<title>plex-watchparty · header — active-state glow</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
@@ -18,18 +18,12 @@
   h1{font-weight:600;letter-spacing:.04em;font-size:1.2rem}
   h1::before{content:'// ';color:var(--signal)}
   h2{font-weight:600;font-size:.9rem;letter-spacing:.1em;text-transform:uppercase;color:var(--signal);margin:2.6rem 0 .3rem}
-  h3{font-weight:500;font-size:.62rem;letter-spacing:.25em;text-transform:uppercase;color:var(--paper-mute);margin:1.6rem 0 .4rem}
   .cap{color:var(--paper-mute);font-size:.78rem;max-width:80ch;margin:.2rem 0 .9rem}
-  .cap b{color:var(--paper)}
+  .cap b{color:var(--paper)} .cap .mint{color:var(--signal)}
   .frame{border:1px dashed var(--rule-hi);border-radius:4px;overflow:hidden;margin-bottom:1rem}
   .frame .tag{font-size:.55rem;letter-spacing:.2em;text-transform:uppercase;color:var(--paper-dim);padding:.3rem .6rem;background:var(--ink)}
   .backlink{display:inline-block;margin-bottom:1.5rem;color:var(--paper-mute);font-size:.7rem;letter-spacing:.15em;text-transform:uppercase;text-decoration:none;border:1px solid var(--rule);padding:.3rem .7rem;border-radius:3px}
   .backlink:hover{color:var(--signal);border-color:var(--signal-deep)}
-
-  /* ---- shared primitives ---- */
-  .led{width:7px;height:7px;border-radius:50%;display:inline-block;vertical-align:middle;margin-right:.4rem;background:#3a424e}
-  .led.on{background:var(--signal);box-shadow:0 0 8px rgba(159,230,173,.7)}
-  .led.amber{background:var(--warn);box-shadow:0 0 8px rgba(240,168,48,.6)}
 
   .hdr{background:linear-gradient(180deg,var(--ink-2),var(--ink-3));border-bottom:1px solid var(--rule);
        box-shadow:inset 0 1px 0 rgba(255,255,255,.04),inset 0 -1px 0 rgba(0,0,0,.5)}
@@ -52,28 +46,26 @@
        white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
   .group{display:flex;align-items:stretch}
 
-  /* base button */
-  .btn{background:linear-gradient(180deg,#1d2129,#131820);border:0;border-right:1px solid var(--rule);color:#8a92a0;
+  .btn{background:linear-gradient(180deg,#1d2129,#131820);border:0;border-right:1px solid var(--rule);color:#7e8794;
        font-family:var(--mono);font-size:.64rem;font-weight:500;letter-spacing:.22em;text-transform:uppercase;
-       cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:.5rem;padding:0 1.05rem}
+       cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:.55rem;padding:0 1.05rem}
   .group.left .btn:first-child{border-left:0}
   .btn svg{width:18px;height:18px;display:block;flex:none}
+  .btn:hover{color:var(--paper);background:linear-gradient(180deg,#222833,#161b22)}
 
-  /* compact icon-only button — the smaller view tools */
-  .ibtn{width:46px;padding:0;color:#7e8794}
-  .ibtn:hover{color:var(--paper);background:linear-gradient(180deg,#222833,#161b22)}
-  .ibtn.warn{color:#a07a48}.ibtn.warn:hover{color:var(--warn)}
+  .ibtn{width:46px;padding:0}
+  .tbtn{padding:0 1rem;gap:.55rem} .tbtn svg{width:14px;height:14px}
+  .btn.warn{color:#a07a48} .btn.warn:hover{color:var(--warn)}
 
-  /* transport — primary, lit when active */
-  .ibtn.primary{color:var(--signal);background:linear-gradient(180deg,#1c2a22,#141d18)}
-  .ibtn.primary svg{filter:drop-shadow(0 0 5px rgba(159,230,173,.55))}
-  .ibtn.idle{color:#7e8794;background:linear-gradient(180deg,#1d2129,#131820)}
-  .tbtn{padding:0 1rem;gap:.55rem}
-  .tbtn svg{width:14px;height:14px}
+  /* the lit / engaged state — applied to whichever button reflects the
+     current state: playing→Play, paused→Pause, fill mode→Fit, fullscreen→FS */
+  .btn.lit{color:var(--signal);background:linear-gradient(180deg,#1d2c23,#131e18);
+           box-shadow:inset 0 2px 0 var(--signal-deep)}
+  .btn.lit:hover{color:var(--signal);background:linear-gradient(180deg,#21311f,#152019)}
+  .btn.lit svg{filter:drop-shadow(0 0 6px rgba(159,230,173,.75))}
 </style>
 </head>
 <body>
-<!-- icon sprite -->
 <svg style="display:none" aria-hidden="true"><defs>
   <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" fill="currentColor"/></symbol>
   <symbol id="i-pause" viewBox="0 0 24 24"><rect x="6" y="5" width="4" height="14" fill="currentColor"/><rect x="14" y="5" width="4" height="14" fill="currentColor"/></symbol>
@@ -85,15 +77,15 @@
 </defs></svg>
 
 <a class="backlink" href="/admin">&larr; back to admin</a>
-<h1>Header buttons — transport symbols &amp; compact view tools</h1>
-<p class="cap">Locked: title <b>1.35rem</b>, viewer box <b>A (stretch)</b>, hand-off <b>Give&nbsp;Remote&nbsp;→</b>. These three variants differ only in <b>how transport works</b>; all share the new <b>compact icon-only view tools</b> (Volume / Fit / Fullscreen) — 46px squares instead of wide text buttons. Hover any icon for its tooltip.</p>
+<h1>Header — active-state glow (style 3)</h1>
+<p class="cap">Symbol + label transport, compact icon view tools. Now the <b>button that reflects the current state glows mint</b> (icon glow + a mint top edge): playing&nbsp;→&nbsp;<span class="mint">Play</span> lit, paused&nbsp;→&nbsp;<span class="mint">Pause</span> lit. <b>Fit</b> and <b>Fullscreen</b> light the same way when engaged. Two states shown below.</p>
 
-<h2>1 · Two icon buttons (Play / Pause, the active one lit)</h2>
-<p class="cap">Closest to today's model — two separate buttons, keeping the green "is it playing" signal. Here it's playing, so Play is lit and Pause is idle.</p>
-<div class="frame"><div class="tag">desktop · host</div>
+<h2>State A — playing · windowed · normal fit</h2>
+<p class="cap"><span class="mint">Play</span> glows (it's playing); Pause, Fit, Fullscreen all idle.</p>
+<div class="frame"><div class="tag">desktop · host · playing</div>
   <div class="hdr">
     <div class="strip">
-      <div class="chip"><span class="led on"></span><span class="k">role</span> <span class="mint">Host</span></div>
+      <div class="chip"><span class="led on" style="width:7px;height:7px;border-radius:50%;display:inline-block;background:var(--signal);box-shadow:0 0 8px rgba(159,230,173,.7);margin-right:.4rem"></span><span class="k">role</span> <span class="mint">Host</span></div>
       <div class="chip"><span class="k">driving</span> <span class="mint">Alice (you)</span></div>
       <div class="chip"><span class="k">sync</span> locked</div>
       <div class="chip"><span class="k">audience</span> 4</div>
@@ -102,8 +94,8 @@
     </div>
     <div class="ctl">
       <div class="group left">
-        <button class="btn ibtn primary" title="Play"><svg><use href="#i-play"/></svg></button>
-        <button class="btn ibtn idle" title="Pause"><svg><use href="#i-pause"/></svg></button>
+        <button class="btn tbtn lit" title="Playing"><svg><use href="#i-play"/></svg>Play</button>
+        <button class="btn tbtn" title="Pause"><svg><use href="#i-pause"/></svg>Pause</button>
       </div>
       <div class="title"><div class="k">Now playing</div><div class="name">Blade Runner 2049</div></div>
       <div class="group">
@@ -117,27 +109,28 @@
   </div>
 </div>
 
-<h2>2 · Single play/pause toggle (one button, flips with state)</h2>
-<p class="cap">The standard media-player pattern: one button shows ⏸ while playing (press to pause), ▶ while paused. Frees a slot and is unambiguous. Shown mid-playback (⏸).</p>
-<div class="frame"><div class="tag">desktop · host</div>
+<h2>State B — paused · fullscreen · fill engaged</h2>
+<p class="cap"><span class="mint">Pause</span> glows (it's paused); <span class="mint">Fit</span> and <span class="mint">Fullscreen</span> glow because fill-mode and fullscreen are active. Play is idle.</p>
+<div class="frame"><div class="tag">desktop · host · paused, fullscreen, fill</div>
   <div class="hdr">
     <div class="strip">
-      <div class="chip"><span class="led on"></span><span class="k">role</span> <span class="mint">Host</span></div>
+      <div class="chip"><span style="width:7px;height:7px;border-radius:50%;display:inline-block;background:var(--warn);box-shadow:0 0 8px rgba(240,168,48,.6);margin-right:.4rem"></span><span class="k">role</span> <span class="mint">Host</span></div>
       <div class="chip"><span class="k">driving</span> <span class="mint">Alice (you)</span></div>
-      <div class="chip"><span class="k">sync</span> locked</div>
+      <div class="chip"><span class="k">sync</span> paused</div>
       <div class="chip"><span class="k">audience</span> 4</div>
       <div class="chip"><span class="k">user bw / total</span> 2.1 / 9.4 Mbps</div>
       <div class="chip pass"><select><option>Give Remote →</option><option>Bob</option></select></div>
     </div>
     <div class="ctl">
       <div class="group left">
-        <button class="btn ibtn primary" title="Pause" style="width:54px"><svg><use href="#i-pause"/></svg></button>
+        <button class="btn tbtn" title="Play"><svg><use href="#i-play"/></svg>Play</button>
+        <button class="btn tbtn lit" title="Paused"><svg><use href="#i-pause"/></svg>Pause</button>
       </div>
       <div class="title"><div class="k">Now playing</div><div class="name">Blade Runner 2049</div></div>
       <div class="group">
         <button class="btn ibtn" title="Volume"><svg><use href="#i-vol"/></svg></button>
-        <button class="btn ibtn" title="Fit / fill screen"><svg><use href="#i-fit"/></svg></button>
-        <button class="btn ibtn" title="Fullscreen"><svg><use href="#i-fs"/></svg></button>
+        <button class="btn ibtn lit" title="Fill screen (on)"><svg><use href="#i-fit"/></svg></button>
+        <button class="btn ibtn lit" title="Fullscreen (on)"><svg><use href="#i-fs"/></svg></button>
         <button class="btn ibtn" title="Admin panel"><svg><use href="#i-admin"/></svg></button>
         <button class="btn ibtn warn" title="Exit to lobby"><svg><use href="#i-exit"/></svg></button>
       </div>
@@ -145,41 +138,12 @@
   </div>
 </div>
 
-<h2>3 · Symbol + label transport (icon with a word), icon-only tools</h2>
-<p class="cap">If you want the transport to stay self-explanatory: ▶&nbsp;Play / ⏸&nbsp;Pause keep a word; only the secondary tools shrink to icons. A middle ground between today and pure icons.</p>
-<div class="frame"><div class="tag">desktop · host</div>
+<h2>Viewer view</h2>
+<p class="cap">No transport / Pass / Admin. Fit + Fullscreen still glow when the viewer engages them (here: fullscreen on).</p>
+<div class="frame"><div class="tag">desktop · viewer · fullscreen on</div>
   <div class="hdr">
     <div class="strip">
-      <div class="chip"><span class="led on"></span><span class="k">role</span> <span class="mint">Host</span></div>
-      <div class="chip"><span class="k">driving</span> <span class="mint">Alice (you)</span></div>
-      <div class="chip"><span class="k">sync</span> locked</div>
-      <div class="chip"><span class="k">audience</span> 4</div>
-      <div class="chip"><span class="k">user bw / total</span> 2.1 / 9.4 Mbps</div>
-      <div class="chip pass"><select><option>Give Remote →</option><option>Bob</option></select></div>
-    </div>
-    <div class="ctl">
-      <div class="group left">
-        <button class="btn tbtn primary" title="Play"><svg><use href="#i-play"/></svg>Play</button>
-        <button class="btn tbtn idle" title="Pause"><svg><use href="#i-pause"/></svg>Pause</button>
-      </div>
-      <div class="title"><div class="k">Now playing</div><div class="name">Blade Runner 2049</div></div>
-      <div class="group">
-        <button class="btn ibtn" title="Volume"><svg><use href="#i-vol"/></svg></button>
-        <button class="btn ibtn" title="Fit / fill screen"><svg><use href="#i-fit"/></svg></button>
-        <button class="btn ibtn" title="Fullscreen"><svg><use href="#i-fs"/></svg></button>
-        <button class="btn ibtn" title="Admin panel"><svg><use href="#i-admin"/></svg></button>
-        <button class="btn ibtn warn" title="Exit to lobby"><svg><use href="#i-exit"/></svg></button>
-      </div>
-    </div>
-  </div>
-</div>
-
-<h2>Viewer view (whichever transport you pick, viewers get no transport)</h2>
-<p class="cap">Box A stretch, compact icon tools, no transport / Pass / Admin.</p>
-<div class="frame"><div class="tag">desktop · viewer</div>
-  <div class="hdr">
-    <div class="strip">
-      <div class="chip"><span class="led amber"></span><span class="k">role</span> Viewer</div>
+      <div class="chip"><span style="width:7px;height:7px;border-radius:50%;display:inline-block;background:var(--warn);box-shadow:0 0 8px rgba(240,168,48,.6);margin-right:.4rem"></span><span class="k">role</span> Viewer</div>
       <div class="chip"><span class="k">driving</span> <span class="mint">Alice</span></div>
       <div class="chip"><span class="k">sync</span> following</div>
       <div class="chip"><span class="k">audience</span> 4</div>
@@ -190,13 +154,13 @@
       <div class="group">
         <button class="btn ibtn" title="Volume"><svg><use href="#i-vol"/></svg></button>
         <button class="btn ibtn" title="Fit / fill screen"><svg><use href="#i-fit"/></svg></button>
-        <button class="btn ibtn" title="Fullscreen"><svg><use href="#i-fs"/></svg></button>
+        <button class="btn ibtn lit" title="Fullscreen (on)"><svg><use href="#i-fs"/></svg></button>
         <button class="btn ibtn warn" title="Exit to lobby"><svg><use href="#i-exit"/></svg></button>
       </div>
     </div>
   </div>
 </div>
 
-<p class="cap" style="margin-top:1.5rem">Pick a <b>transport style</b> (1 two-buttons / 2 single-toggle / 3 symbol+label) and confirm the <b>icon set</b> reads OK (Volume / Fit / Fullscreen / Admin / Exit). Then I lock the design and write the spec.</p>
+<p class="cap" style="margin-top:1.5rem">If the glow treatment reads right (mint icon + mint top edge on the active button), say the word and I'll lock the design and write the spec.</p>
 </body>
 </html>
