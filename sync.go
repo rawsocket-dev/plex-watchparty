@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math/rand"
 	"net/http"
 	"net/url"
 	"sort"
@@ -39,6 +40,9 @@ type State struct {
 	// Refreshed on every broadcast so the player's "who's here" tooltip
 	// can update as people join / leave.
 	Viewers []ViewerInfo `json:"viewers,omitempty"`
+	// ActiveHostName is the display name of the single user currently
+	// elected to drive playback. Empty string means no one is driving.
+	ActiveHostName string `json:"activeHostName,omitempty"`
 	// Resume is the persisted "last known" playback state, surfaced
 	// only when there is NO active session (RatingKey == ""). The
 	// waiting room and library render it as a "Resume where you left
@@ -67,6 +71,7 @@ type ViewerInfo struct {
 // terminates that one connection without touching the others.
 type clientEntry struct {
 	id          string
+	email       string
 	host        bool
 	name        string
 	ip          string
@@ -111,6 +116,12 @@ type Hub struct {
 	recent  *RecentMovies
 	store   *StateStore
 	audit   *AuditLog
+
+	// activeHost is the email of the single user currently allowed to
+	// drive playback. "" means no one. Recomputed by electHostLocked on
+	// every client-count change; set directly (to any connected user) by
+	// admin override / hand-off (later tasks).
+	activeHost string
 
 	mu    sync.Mutex
 	state State
@@ -372,6 +383,73 @@ func (h *Hub) hostCount() int {
 	return n
 }
 
+func (h *Hub) hasConnectionLocked(email string) bool {
+	if email == "" {
+		return false
+	}
+	for c := range h.clients {
+		if c.email == email {
+			return true
+		}
+	}
+	return false
+}
+
+// electHostLocked recomputes the active host. Keeps the current one if
+// still connected (even an admin-promoted, non-eligible user); otherwise
+// elects a random host-ELIGIBLE connected user, or "" if none.
+//
+// Returns a non-empty audit detail string when the active host CHANGED,
+// so the caller can Record it AFTER releasing h.mu (auditing does a file
+// write — never under the room lock). Caller holds h.mu.
+func (h *Hub) electHostLocked() string {
+	prev := h.activeHost
+	if h.activeHost != "" && h.hasConnectionLocked(h.activeHost) {
+		return ""
+	}
+	seen := map[string]bool{}
+	var candidates []string
+	for c := range h.clients {
+		if c.host && c.email != "" && !seen[c.email] {
+			seen[c.email] = true
+			candidates = append(candidates, c.email)
+		}
+	}
+	if len(candidates) == 0 {
+		h.activeHost = ""
+	} else {
+		h.activeHost = candidates[rand.Intn(len(candidates))]
+	}
+	if h.activeHost == prev {
+		return ""
+	}
+	if h.activeHost == "" {
+		return "no active host (none eligible connected)"
+	}
+	return fmt.Sprintf("active host is now %q", h.nameForEmailLocked(h.activeHost))
+}
+
+func (h *Hub) nameForEmailLocked(email string) string {
+	for c := range h.clients {
+		if c.email == email && c.name != "" {
+			return c.name
+		}
+	}
+	return email
+}
+
+func (h *Hub) activeHostNameLocked() string {
+	if h.activeHost == "" {
+		return ""
+	}
+	for c := range h.clients {
+		if c.email == h.activeHost && c.name != "" {
+			return c.name
+		}
+	}
+	return "" // no named connection for the active host — don't leak an email
+}
+
 // viewerList returns the current connected-viewer roster sorted host-
 // first then alphabetical. Must be called with h.mu held.
 func (h *Hub) viewerList() []ViewerInfo {
@@ -392,7 +470,10 @@ func (h *Hub) viewerList() []ViewerInfo {
 // is added to or removed from h.clients. Manages two timers:
 //   - idle shutdown: plex session stops when ALL viewers leave
 //   - host-exit pause: room pauses when the last HOST leaves mid-playback
-func (h *Hub) onClientCountChange() {
+//
+// Returns a non-empty audit detail string when the active host changed,
+// so the caller can Record it AFTER releasing h.mu.
+func (h *Hub) onClientCountChange() string {
 	// --- idle shutdown (any-viewer) ---
 	if len(h.clients) > 0 {
 		if h.idleTimer != nil {
@@ -405,27 +486,27 @@ func (h *Hub) onClientCountChange() {
 		log.Printf("idle: no viewers, will stop plex session in %s if nobody returns", idleGrace)
 	}
 
-	// --- host-exit pause ---
-	if h.hostCount() > 0 {
-		// At least one host present — cancel any pending pause.
+	// --- single active host: recompute who's driving ---
+	hostAudit := h.electHostLocked()
+
+	// --- pause when nobody is driving ---
+	if h.activeHost != "" {
 		if h.hostExitTimer != nil {
 			h.hostExitTimer.Stop()
 			h.hostExitTimer = nil
 		}
-		return
+		return hostAudit
 	}
-	// No hosts. Only schedule a pause if a movie is actively playing
-	// (no point pausing a paused session) and a pause isn't already
-	// scheduled.
 	if !h.state.Playing || h.state.RatingKey == "" {
-		return
+		return hostAudit
 	}
 	if h.hostExitTimer != nil {
-		return
+		return hostAudit
 	}
 	rk := h.state.RatingKey
 	h.hostExitTimer = time.AfterFunc(hostExitGrace, func() { h.hostExitPause(rk) })
-	log.Printf("host-exit: no host present, will pause in %s if none returns", hostExitGrace)
+	log.Printf("host-exit: no active host, will pause in %s if none returns", hostExitGrace)
+	return hostAudit
 }
 
 // hostExitPause fires when the host-exit grace timer expires. Pauses
@@ -434,8 +515,8 @@ func (h *Hub) hostExitPause(forRatingKey string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.hostExitTimer = nil
-	if h.hostCount() > 0 {
-		return // a host came back
+	if h.activeHost != "" {
+		return // a host took over
 	}
 	if h.state.RatingKey != forRatingKey || !h.state.Playing {
 		return // session changed or already paused
@@ -626,6 +707,7 @@ func (h *Hub) Snapshot() State {
 	defer h.mu.Unlock()
 	s := h.snapshot()
 	s.Viewers = h.viewerList()
+	s.ActiveHostName = h.activeHostNameLocked()
 	if s.RatingKey == "" && h.lastKnown != nil {
 		s.Resume = h.lastKnown
 	}
@@ -665,6 +747,7 @@ func (h *Hub) broadcast() {
 		s.Resume = h.lastKnown
 	}
 	s.Viewers = h.viewerList()
+	s.ActiveHostName = h.activeHostNameLocked()
 	b, err := json.Marshal(s)
 	if err != nil {
 		log.Printf("broadcast: marshal: %v", err)
@@ -681,8 +764,9 @@ func (h *Hub) broadcast() {
 // HandleEvents is the SSE stream: initial state on connect, then every change,
 // plus a heartbeat so proxies don't kill idle connections.
 // isHost is the connection's effective role — needed so the hub can pause
-// the room when the last host leaves.
-func (h *Hub) HandleEvents(w http.ResponseWriter, r *http.Request, isHost bool) {
+// the room when the last host leaves. email is the verified identity of the
+// connecting user, used for active-host election.
+func (h *Hub) HandleEvents(w http.ResponseWriter, r *http.Request, isHost bool, email string) {
 	name := viewerNameFromRequest(r)
 	flusher, ok := w.(http.Flusher)
 	if !ok {
@@ -703,6 +787,7 @@ func (h *Hub) HandleEvents(w http.ResponseWriter, r *http.Request, isHost bool) 
 	connectedAt := time.Now()
 	entry := &clientEntry{
 		id:          randomHex(8),
+		email:       email,
 		host:        isHost,
 		name:        name,
 		ip:          ip,
@@ -715,7 +800,7 @@ func (h *Hub) HandleEvents(w http.ResponseWriter, r *http.Request, isHost bool) 
 	h.clients[entry] = struct{}{}
 	n := len(h.clients)
 	hosts := h.hostCount()
-	h.onClientCountChange()
+	hostAudit := h.onClientCountChange()
 	if wasEmpty {
 		// First viewer in an idle room — unblock the broadcast loop.
 		h.wakeBroadcast()
@@ -732,8 +817,12 @@ func (h *Hub) HandleEvents(w http.ResponseWriter, r *http.Request, isHost bool) 
 	// roster on join and have to wait up to 3 s for the next
 	// broadcastLoop tick. Stamp the current roster onto the init.
 	init.Viewers = h.viewerList()
+	init.ActiveHostName = h.activeHostNameLocked()
 	initBytes, _ := json.Marshal(init)
 	h.mu.Unlock()
+	if hostAudit != "" {
+		h.audit.Record(AuditEvent{Type: "host", Email: "system", Detail: hostAudit})
+	}
 	role := "viewer"
 	if isHost {
 		role = "host"
@@ -744,8 +833,11 @@ func (h *Hub) HandleEvents(w http.ResponseWriter, r *http.Request, isHost bool) 
 		delete(h.clients, entry)
 		left := len(h.clients)
 		leftHosts := h.hostCount()
-		h.onClientCountChange()
+		hostAudit := h.onClientCountChange()
 		h.mu.Unlock()
+		if hostAudit != "" {
+			h.audit.Record(AuditEvent{Type: "host", Email: "system", Detail: hostAudit})
+		}
 		log.Printf("sse: disconnect ip=%s role=%s viewers=%d hosts=%d after=%s",
 			ip, role, left, leftHosts, time.Since(connectedAt).Round(time.Second))
 	}()

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -10,6 +11,8 @@ import (
 	"testing"
 	"time"
 )
+
+const testHostEmail = "tester@x.com"
 
 // hubTestFixture spins up a Hub backed by a mock Plex server, an in-
 // memory SegmentCache, and a tempdir RecentMovies. The mock answers
@@ -56,6 +59,10 @@ func newHubTestFixture(t *testing.T) *hubTestFixture {
 	store := NewStateStore(filepath.Join(dir, "state.json"))
 	session := NewPlexSession(plex, 12000)
 	hub := NewHub(plex, session, cache, recent, store, audit)
+	hub.mu.Lock()
+	hub.clients[&clientEntry{id: "t", email: testHostEmail, host: false, name: "Tester", send: make(chan []byte, 8), kill: make(chan struct{})}] = struct{}{}
+	hub.activeHost = testHostEmail
+	hub.mu.Unlock()
 	// Stop the Hub's background loops/timers and drain pending state
 	// writes before t.TempDir's RemoveAll runs — cleanups are LIFO, so
 	// registering this after t.TempDir() makes it run first. Without it
@@ -68,6 +75,7 @@ func newHubTestFixture(t *testing.T) *hubTestFixture {
 func (f *hubTestFixture) post(t *testing.T, body string) *httptest.ResponseRecorder {
 	t.Helper()
 	r := httptest.NewRequest("POST", "/control", bytes.NewBufferString(body))
+	r = r.WithContext(context.WithValue(r.Context(), actorCtxKey{}, testHostEmail))
 	w := httptest.NewRecorder()
 	f.hub.HandleControl(w, r)
 	return w
@@ -229,7 +237,7 @@ func TestHubHandleEventsReportsViewer(t *testing.T) {
 	// Spin a goroutine that connects, reads the initial state, and
 	// exits. The main goroutine inspects the viewer list afterwards.
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		f.hub.HandleEvents(w, r, true)
+		f.hub.HandleEvents(w, r, true, testHostEmail)
 	}))
 	defer srv.Close()
 
@@ -260,4 +268,75 @@ func TestHubHandleEventsReportsViewer(t *testing.T) {
 		time.Sleep(20 * time.Millisecond)
 	}
 	t.Fatal("no viewer registered within deadline")
+}
+
+func (f *hubTestFixture) addConn(email string, eligible bool) *clientEntry {
+	e := &clientEntry{id: randomHex(4), email: email, host: eligible, name: email, send: make(chan []byte, 8), kill: make(chan struct{})}
+	f.hub.mu.Lock()
+	f.hub.clients[e] = struct{}{}
+	f.hub.onClientCountChange()
+	f.hub.mu.Unlock()
+	return e
+}
+func (f *hubTestFixture) removeConn(e *clientEntry) {
+	f.hub.mu.Lock()
+	delete(f.hub.clients, e)
+	f.hub.onClientCountChange()
+	f.hub.mu.Unlock()
+}
+func (f *hubTestFixture) active() string {
+	f.hub.mu.Lock()
+	defer f.hub.mu.Unlock()
+	return f.hub.activeHost
+}
+
+func TestHostFirstEligibleWins(t *testing.T) {
+	f := newHubTestFixture(t)
+	f.hub.mu.Lock(); f.hub.activeHost = ""; f.hub.mu.Unlock()
+	f.addConn("ineligible@x.com", false)
+	if f.active() != "" {
+		t.Fatalf("ineligible-only connect elected %q, want none", f.active())
+	}
+	f.addConn("alice@x.com", true)
+	if f.active() != "alice@x.com" {
+		t.Errorf("first eligible: active=%q, want alice@x.com", f.active())
+	}
+	f.addConn("bob@x.com", true)
+	if f.active() != "alice@x.com" {
+		t.Errorf("second eligible must not steal: active=%q, want alice@x.com", f.active())
+	}
+}
+
+func TestHostReassignsOnDisconnect(t *testing.T) {
+	f := newHubTestFixture(t)
+	f.hub.mu.Lock(); f.hub.activeHost = ""; f.hub.mu.Unlock()
+	a := f.addConn("alice@x.com", true)
+	f.addConn("bob@x.com", true)
+	if f.active() != "alice@x.com" {
+		t.Fatalf("setup: active=%q", f.active())
+	}
+	f.removeConn(a)
+	if f.active() != "bob@x.com" {
+		t.Errorf("after host disconnect: active=%q, want bob@x.com", f.active())
+	}
+	f.hub.mu.Lock()
+	for e := range f.hub.clients {
+		delete(f.hub.clients, e)
+	}
+	f.hub.onClientCountChange()
+	f.hub.mu.Unlock()
+	if f.active() != "" {
+		t.Errorf("no connections: active=%q, want empty", f.active())
+	}
+}
+
+func TestHostMultiTabRetainsSlot(t *testing.T) {
+	f := newHubTestFixture(t)
+	f.hub.mu.Lock(); f.hub.activeHost = ""; f.hub.mu.Unlock()
+	tab1 := f.addConn("alice@x.com", true)
+	_ = f.addConn("alice@x.com", true)
+	f.removeConn(tab1)
+	if f.active() != "alice@x.com" {
+		t.Errorf("slot lost on one-tab close: active=%q, want alice@x.com", f.active())
+	}
 }

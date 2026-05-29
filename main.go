@@ -299,7 +299,7 @@ func main() {
 	})
 
 	protected.HandleFunc("/events", func(w http.ResponseWriter, r *http.Request) {
-		hub.HandleEvents(w, r, auth.Role(r) == RoleHost)
+		hub.HandleEvents(w, r, auth.Role(r) == RoleHost, auth.Email(r))
 	})
 	// /control is host-gated. When HOST_EMAILS is empty, Role() treats
 	// every allowed user as a host, so RequireHost lets everyone through
