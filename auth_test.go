@@ -118,6 +118,21 @@ func TestOAuthHandleLoginNoLoopForRevoked(t *testing.T) {
 	}
 }
 
+func TestWithActorStashesEmail(t *testing.T) {
+	a := testAuth()
+	var seen string
+	h := a.WithActor(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seen = actorEmail(r)
+	}))
+	h.ServeHTTP(httptest.NewRecorder(), reqWithSession(a, "op@x.com"))
+	if seen != "op@x.com" {
+		t.Errorf("actorEmail = %q, want op@x.com", seen)
+	}
+	if got := actorEmail(httptest.NewRequest("GET", "/", nil)); got != "" {
+		t.Errorf("actorEmail without middleware = %q, want empty", got)
+	}
+}
+
 func TestGuardAndRequireHostAndAdmin(t *testing.T) {
 	a := testAuth()
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(299) })

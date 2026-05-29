@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"crypto/subtle"
@@ -206,4 +207,28 @@ func (a *Auth) RequireAdmin(next http.Handler) http.Handler {
 		}
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
 	})
+}
+
+// actorCtxKey keys the verified email of the user driving a request,
+// stashed by WithActor so downstream handlers (the Hub's /control,
+// which is intentionally decoupled from Auth) can attribute actions
+// without re-parsing the cookie.
+type actorCtxKey struct{}
+
+// WithActor stashes the request's verified email in the context. Wrap
+// handlers that need to know "who did this" but don't otherwise hold
+// an *Auth (e.g. hub.HandleControl).
+func (a *Auth) WithActor(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := context.WithValue(r.Context(), actorCtxKey{}, a.Email(r))
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+// actorEmail returns the email stashed by WithActor, or "" if absent.
+func actorEmail(r *http.Request) string {
+	if v, ok := r.Context().Value(actorCtxKey{}).(string); ok {
+		return v
+	}
+	return ""
 }

@@ -304,7 +304,7 @@ func main() {
 	// /control is host-gated. When HOST_EMAILS is empty, Role() treats
 	// every allowed user as a host, so RequireHost lets everyone through
 	// — preserving the "any-friend-can-drive" default.
-	protected.Handle("/control", auth.RequireHost(http.HandlerFunc(hub.HandleControl)))
+	protected.Handle("/control", auth.RequireHost(auth.WithActor(http.HandlerFunc(hub.HandleControl))))
 
 	protected.HandleFunc("/api/whoami", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]any{
