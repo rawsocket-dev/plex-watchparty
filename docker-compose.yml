@@ -12,12 +12,18 @@ services:
       # Your Plex server (token stays server-side, never sent to clients).
       PLEX_BASE_URL: "http://host.docker.internal:32400"
       PLEX_TOKEN: "${PLEX_TOKEN:?set PLEX_TOKEN}"
-      # Viewer password (everyone gets this — lets them watch).
-      WATCH_PASSWORD: "${WATCH_PASSWORD:?set WATCH_PASSWORD}"
-      # Optional host password — only the host knows this; lets them
-      # pick / play / pause / seek. Omit (or set blank) to keep the
-      # old "any friend can drive" behaviour.
-      HOST_PASSWORD: "${HOST_PASSWORD:-}"
+      # Google OAuth — one client for the whole app (sign-in + roles).
+      # See README "Google Cloud setup" for steps to create the client ID.
+      GOOGLE_CLIENT_ID:     "${GOOGLE_CLIENT_ID:?set GOOGLE_CLIENT_ID}"
+      GOOGLE_CLIENT_SECRET: "${GOOGLE_CLIENT_SECRET:?set GOOGLE_CLIENT_SECRET}"
+      GOOGLE_REDIRECT_URL:  "${GOOGLE_REDIRECT_URL:?set GOOGLE_REDIRECT_URL}"
+      # Comma-separated email allowlists (lowercased server-side).
+      # ALLOWED_EMAILS — who may sign in & watch (required).
+      # HOST_EMAILS    — subset who can pick / play / pause / seek (empty = everyone allowed can drive).
+      # ADMIN_EMAILS   — subset who can open /admin (empty = no one).
+      ALLOWED_EMAILS:       "${ALLOWED_EMAILS:?set ALLOWED_EMAILS}"
+      HOST_EMAILS:          "${HOST_EMAILS:-}"
+      ADMIN_EMAILS:         "${ADMIN_EMAILS:-}"
       # Optional Plex Universal Transcoder pass-through. When set to a
       # positive integer, every loaded movie is routed through Plex's
       # on-the-fly transcoder targeting 1080p h264 at this bitrate (in
@@ -35,16 +41,6 @@ services:
       # Root data directory for cache and work files. Persisted outside
       # the container layer so cached segments survive restarts.
       WORK_DIR: /data/sessions
-      # Optional Google OAuth gate for the /admin maintenance panel.
-      # Set all four to enable; if any are blank, /admin routes are not
-      # registered and the panel is 404. See README for the Google Cloud
-      # console steps to create the OAuth 2.0 Client ID.
-      ADMIN_GOOGLE_CLIENT_ID:       "${ADMIN_GOOGLE_CLIENT_ID:-}"
-      ADMIN_GOOGLE_CLIENT_SECRET:   "${ADMIN_GOOGLE_CLIENT_SECRET:-}"
-      ADMIN_GOOGLE_REDIRECT_URL:    "${ADMIN_GOOGLE_REDIRECT_URL:-}"
-      # Comma-separated email allowlist (lowercased server-side).
-      # Anyone NOT in this list gets a 403 after Google sign-in.
-      ADMIN_GOOGLE_ALLOWED_EMAILS:  "${ADMIN_GOOGLE_ALLOWED_EMAILS:-}"
     volumes:
       - ./data:/data
     restart: unless-stopped

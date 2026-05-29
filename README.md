@@ -1,7 +1,7 @@
 # plex-watchparty
 
 Restream a single movie from Plex and watch it **in sync** with friends who
-need **only a shared password** — no Plex account, no Plex access.
+**sign in with Google** (an email allowlist controls who gets in) — no Plex account needed.
 
 The Plex token never leaves the server. The watchparty proxy acts as a thin
 caching layer over Plex's Universal Transcoder, fetching HLS segments on demand
@@ -43,8 +43,8 @@ survive on disk.
 - `state.go` — persisted resume hint (last movie + position)
 - `recent.go` — persisted recently-played list
 - `bandwidth.go` — per-IP rolling-window bandwidth tracker
-- `auth.go` — shared-password gate, HMAC session cookies, role gating
-- `oauth.go` — Google sign-in for the admin panel
+- `auth.go` — Google OAuth gate, HMAC session cookies, role gating
+- `oauth.go` — Google sign-in flow
 - `admin.go` — `/admin` maintenance console + JSON API
 - `web/` — login, library, waiting room, drift-correcting hls.js player, admin panel
 
@@ -70,8 +70,8 @@ or build locally:
 # One-time: log in to the registry. See "Registry login" below for token.
 docker login registry.example.com:5050 -u <access-token-user> -p <access-token>
 
-export PLEX_TOKEN=xxxxxxxxxxxx
-export WATCH_PASSWORD=movienight
+# Copy .env.example to .env and fill in your Plex token, Google OAuth
+# credentials, and email allowlists, then:
 docker compose pull
 docker compose up -d
 ```
@@ -79,12 +79,11 @@ docker compose up -d
 **Build locally instead:**
 
 ```sh
-export PLEX_TOKEN=xxxxxxxxxxxx
-export WATCH_PASSWORD=movienight
+# Copy .env.example to .env and fill in your values, then:
 docker compose up --build
 ```
 
-Then open `http://<your-ip>:8080`, enter the password, pick a movie.
+Then open `http://<your-ip>:8080`, sign in with Google, pick a movie.
 
 > Edit `PLEX_BASE_URL` in `docker-compose.yml` if Plex isn't reachable at
 > `host.docker.internal:32400`.
@@ -124,10 +123,10 @@ username instead of the access-token username.
 ## Run locally
 
 ```sh
-PLEX_BASE_URL=http://192.168.1.10:32400 \
-PLEX_TOKEN=xxxxxxxxxxxx \
-WATCH_PASSWORD=movienight \
-go run .
+PLEX_BASE_URL=http://192.168.1.10:32400 PLEX_TOKEN=xxx \
+GOOGLE_CLIENT_ID=xxx GOOGLE_CLIENT_SECRET=xxx \
+GOOGLE_REDIRECT_URL=http://localhost:8080/oauth/callback \
+ALLOWED_EMAILS=you@example.com go run .
 ```
 
 ## Configuration
@@ -136,62 +135,71 @@ go run .
 |-----------------------------------|----------|--------------------------|-------|
 | `PLEX_BASE_URL`                   | yes      | —                        | Your Plex server URL, e.g. `http://192.168.1.10:32400` |
 | `PLEX_TOKEN`                      | yes      | —                        | Plex auth token (stays server-side, never sent to clients) |
-| `WATCH_PASSWORD`                  | yes      | —                        | Shared password for viewers (can be anyone) |
-| `HOST_PASSWORD`                   | no       | unset (= any friend can drive) | Optional: password granting play/pause/seek privileges |
+| `GOOGLE_CLIENT_ID`                | yes      | —                        | Google OAuth 2.0 client ID (Web application type). |
+| `GOOGLE_CLIENT_SECRET`            | yes      | —                        | Matching client secret. Also seeds the session-cookie HMAC (rotating it signs everyone out). |
+| `GOOGLE_REDIRECT_URL`             | yes      | —                        | `https://<host>/oauth/callback`, registered as an authorized redirect URI on the OAuth client. |
+| `ALLOWED_EMAILS`                  | yes      | —                        | Comma-separated emails that may sign in & watch. |
+| `HOST_EMAILS`                     | no       | empty (= everyone allowed can drive) | Subset that can pick / play / pause / seek. |
+| `ADMIN_EMAILS`                    | no       | empty (= no one)         | Subset that can open the `/admin` maintenance panel. |
 | `PLEX_TRANSCODE_BITRATE_KBPS`     | no       | `12000` (12 Mbps)        | Plex Universal Transcoder target bitrate in kbps. Every play goes through Plex's transcoder (1920×1080 H.264 + AAC) — there is no direct-stream mode. Plex handles codec / HDR conversion (HEVC→H.264, HDR→SDR). |
 | `CACHE_MAX_GB`                    | no       | `20`                     | Disk cap for HLS segment cache in GB. Cached segments survive restarts; LRU eviction kicks in when cap is hit. Estimate ~10 GB per typical 2hr movie at 12 Mbps. |
 | `LISTEN_ADDR`                     | no       | `:8080`                  | Listen address (e.g., `:8080` or `0.0.0.0:8080`) |
 | `WORK_DIR`                        | no       | `$TMPDIR/plexwatchparty` | Root data directory for cache and work files |
-| `ADMIN_GOOGLE_CLIENT_ID`          | no       | unset (= /admin disabled) | Google OAuth 2.0 Client ID for the admin panel |
-| `ADMIN_GOOGLE_CLIENT_SECRET`      | no       | unset                    | Matching client secret |
-| `ADMIN_GOOGLE_REDIRECT_URL`       | no       | unset                    | Public callback URL, e.g. `https://watch.example.com/admin/oauth/callback` |
-| `ADMIN_GOOGLE_ALLOWED_EMAILS`     | no       | unset                    | Comma-separated email allowlist. Required when the three above are set, otherwise admin sign-in is disabled. |
 
-**HOST_PASSWORD behavior:**
+**Roles:**
 
-When `HOST_PASSWORD` is set, the person who knows it is the **host** — the only
-one who can pick a movie, play, pause, or seek. Everyone else logs in with
-`WATCH_PASSWORD` and joins as a *viewer*: they see the library but can't pick
-from it, and the player UI hides the playback controls. If `HOST_PASSWORD` is
-unset (or equals `WATCH_PASSWORD`), the original "any friend can drive"
-behaviour is preserved.
+There are three tiers. Everyone in `ALLOWED_EMAILS` can sign in and watch
+(*viewer*). Anyone whose email also appears in `HOST_EMAILS` can pick a movie,
+play, pause, and seek (*host*); if `HOST_EMAILS` is empty, every allowed user
+can drive. Anyone in `ADMIN_EMAILS` can open the `/admin` maintenance panel
+after signing in.
 
 [Finding your Plex token.](https://support.plex.tv/articles/204059436-finding-an-authentication-token-x-plex-token/)
 
 ## Admin panel (`/admin`)
 
-A small maintenance console gated by Google sign-in. Opt-in — disabled
-by default. When configured, sign in at `/admin/login` and you get a
-panel covering: current Plex session info + manual restart, segment
-cache stats with clear-all / clear-one-movie / prune-older-than-N-days,
-library cache age + manual refresh, and a live SSE viewer roster with
-kick.
+A small maintenance console available to anyone in `ADMIN_EMAILS` after
+signing in. The panel covers: current Plex session info + manual restart,
+segment cache stats with clear-all / clear-one-movie / prune-older-than-N-days,
+library cache age + manual refresh, and a live SSE viewer roster with kick.
 
 ### Google Cloud setup
+
+One OAuth client covers the entire app (sign-in for all users, not just admins).
 
 1. Go to the [Google Cloud Console](https://console.cloud.google.com/),
    create (or pick) a project.
 2. **APIs & Services → Credentials → Create credentials → OAuth client ID.**
 3. Application type: **Web application**. Add the deployed callback URL
-   under *Authorized redirect URIs*, e.g.
-   `https://watch.example.com/admin/oauth/callback`. (For local dev
-   you can add `http://localhost:8080/admin/oauth/callback` too.)
+   under *Authorized redirect URIs*:
+   `https://watch.example.com/oauth/callback`. (For local dev you can
+   add `http://localhost:8080/oauth/callback` too.)
 4. Save. Google shows you the **Client ID** and **Client secret**.
 5. **APIs & Services → OAuth consent screen.** Pick *External* (or
-   *Internal* if you're on Google Workspace). Fill in the basic app
-   info; the *email* scope is automatically included.
-6. Set the four env vars on the watchparty container:
+   *Internal* if you're on Google Workspace). Fill in the basic app info
+   (app name, support email, developer contact); the `openid`, `email`,
+   and `profile` scopes are automatically included.
+6. Set the env vars on the watchparty container:
 
    ```
-   ADMIN_GOOGLE_CLIENT_ID=…apps.googleusercontent.com
-   ADMIN_GOOGLE_CLIENT_SECRET=…
-   ADMIN_GOOGLE_REDIRECT_URL=https://watch.example.com/admin/oauth/callback
-   ADMIN_GOOGLE_ALLOWED_EMAILS=you@example.com,partner@example.com
+   GOOGLE_CLIENT_ID=…apps.googleusercontent.com
+   GOOGLE_CLIENT_SECRET=…
+   GOOGLE_REDIRECT_URL=https://watch.example.com/oauth/callback
+   ALLOWED_EMAILS=you@example.com,friend@example.com
+   HOST_EMAILS=you@example.com
+   ADMIN_EMAILS=you@example.com
    ```
 
-If any of `CLIENT_ID` / `CLIENT_SECRET` / `REDIRECT_URL` are missing,
-or `ALLOWED_EMAILS` is empty when they are present, the `/admin`
-routes are not registered and the panel is a 404.
+> **Publishing note:** The app requests only non-sensitive scopes
+> (`openid`, `email`, `profile`), so Google's app-verification review
+> is NOT required and there is no test-users list to maintain. In the
+> OAuth consent screen, set Publishing status to **"In production"
+> ("Publish app")** — any Google account can then complete sign-in, and
+> `ALLOWED_EMAILS` is the real gate (non-allowlisted users are bounced
+> after authenticating). Fill the basic consent-screen fields once (app
+> name, support email, developer contact). (Alternatively, a Google
+> Workspace domain you control can use User Type "Internal" — org-only,
+> no publishing.)
 
 ## Reverse proxy
 
