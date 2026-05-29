@@ -8,11 +8,9 @@ import (
 )
 
 // registerAdminRoutes wires the /admin/* tree onto the public mux.
-// Login + OAuth callback are reachable without auth; everything else
-// is wrapped in RequireAdmin so a valid wp_admin cookie is required.
+// Everything is wrapped in RequireAdmin so a valid identity cookie is required.
 func registerAdminRoutes(
 	mux *http.ServeMux,
-	oauth *OAuth,
 	auth *Auth,
 	plex *Plex,
 	segCache *SegmentCache,
@@ -20,13 +18,6 @@ func registerAdminRoutes(
 	hub *Hub,
 	bw *bwTracker,
 ) {
-	// --- public sign-in surface ---
-	mux.HandleFunc("/admin/login", oauth.HandleLogin)
-	mux.HandleFunc("/admin/oauth/start", oauth.HandleStart)
-	mux.HandleFunc("/admin/oauth/callback", oauth.HandleCallback)
-	mux.HandleFunc("/admin/logout", oauth.HandleLogout)
-
-	// --- gated admin panel + API ---
 	gated := auth.RequireAdmin
 
 	mux.Handle("/admin", gated(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -61,7 +52,7 @@ func registerAdminRoutes(
 
 	// --- JSON API ---
 	mux.Handle("/admin/api/whoami", gated(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, map[string]any{"email": auth.AdminEmail(r)})
+		writeJSON(w, map[string]any{"email": auth.Email(r)})
 	})))
 
 	mux.Handle("/admin/api/stats", gated(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -80,11 +71,11 @@ func registerAdminRoutes(
 		if rk != "" {
 			entries, bytes = segCache.ClearMovie(rk)
 			log.Printf("admin: %s cleared cache for ratingKey=%s (%d entries, %d bytes)",
-				auth.AdminEmail(r), rk, entries, bytes)
+				auth.Email(r), rk, entries, bytes)
 		} else {
 			entries, bytes = segCache.Clear()
 			log.Printf("admin: %s cleared entire cache (%d entries, %d bytes)",
-				auth.AdminEmail(r), entries, bytes)
+				auth.Email(r), entries, bytes)
 		}
 		writeJSON(w, map[string]any{
 			"entriesRemoved": entries,
@@ -104,7 +95,7 @@ func registerAdminRoutes(
 		}
 		entries, bytes := segCache.Prune(time.Duration(days) * 24 * time.Hour)
 		log.Printf("admin: %s pruned cache older than %d days (%d entries, %d bytes)",
-			auth.AdminEmail(r), days, entries, bytes)
+			auth.Email(r), days, entries, bytes)
 		writeJSON(w, map[string]any{
 			"entriesRemoved": entries,
 			"bytesRemoved":   bytes,
@@ -122,11 +113,11 @@ func registerAdminRoutes(
 		// that fetch (admin-only, infrequent — OK).
 		movies, err := plex.ListMovies()
 		if err != nil {
-			log.Printf("admin: %s library refresh failed: %v", auth.AdminEmail(r), err)
+			log.Printf("admin: %s library refresh failed: %v", auth.Email(r), err)
 			http.Error(w, "refresh failed: "+err.Error(), http.StatusBadGateway)
 			return
 		}
-		log.Printf("admin: %s refreshed library (%d titles)", auth.AdminEmail(r), len(movies))
+		log.Printf("admin: %s refreshed library (%d titles)", auth.Email(r), len(movies))
 		writeJSON(w, map[string]any{"titles": len(movies)})
 	})))
 
@@ -139,7 +130,7 @@ func registerAdminRoutes(
 			http.Error(w, "no active session", http.StatusBadRequest)
 			return
 		}
-		log.Printf("admin: %s manual session restart at current position", auth.AdminEmail(r))
+		log.Printf("admin: %s manual session restart at current position", auth.Email(r))
 		// Suppress any in-flight auto-restart racing in from the seg
 		// proxy — admin intent wins.
 		plexSession.SuppressAutoRestart()
@@ -165,7 +156,7 @@ func registerAdminRoutes(
 			http.Error(w, "no active session", http.StatusBadRequest)
 			return
 		}
-		log.Printf("admin: %s sent room to lobby", auth.AdminEmail(r))
+		log.Printf("admin: %s sent room to lobby", auth.Email(r))
 		// Final timeline report before the session goes away, then
 		// tear down. The hub's state.RatingKey going blank triggers
 		// every connected /watch page to reload into the waiting room.
@@ -188,7 +179,7 @@ func registerAdminRoutes(
 			http.Error(w, "no such connection", http.StatusNotFound)
 			return
 		}
-		log.Printf("admin: %s kicked connection id=%s", auth.AdminEmail(r), id)
+		log.Printf("admin: %s kicked connection id=%s", auth.Email(r), id)
 		w.WriteHeader(http.StatusNoContent)
 	})))
 }
