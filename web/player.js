@@ -17,6 +17,10 @@ fetchWhoami().then(d => {
   if (!d) return;
   isHost = d.role === 'host';
   if (!isHost) document.body.classList.add('viewer');
+  if (d.isAdmin) {
+    const al = document.getElementById('admin-link');
+    if (al) al.hidden = false;
+  }
 });
 const scrubHit      = document.getElementById('scrub-hit');
 const scrubTrack    = document.getElementById('scrub-track');

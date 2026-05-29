@@ -276,6 +276,7 @@ body.viewer .role-cell .r-viewer { display: inline; }
   background: var(--signal);
   box-shadow: 0 0 10px rgba(159,230,173,.8);
 }
+#admin-link[hidden] { display: none; }
 
 /* Volume control — cell-btn footprint with SVG speaker icon and a
    hover/focus-revealed slider popover. */
