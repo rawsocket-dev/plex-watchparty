@@ -210,7 +210,7 @@ function renderViewers(viewers) {
     }
     return '<tr>' +
       '<td class="' + (v.isActiveHost ? 'role-host' : 'role-viewer') + '">' + (v.isActiveHost ? '◆ host' : '○ viewer') + '</td>' +
-      '<td>' + escapeHTML(v.name || 'guest') + '</td>' +
+      '<td>' + escapeHTML(v.name || 'guest') + (v.conns > 1 ? ' <span class="conns">×' + v.conns + '</span>' : '') + '</td>' +
       '<td>' + escapeHTML(v.ip) + '</td>' +
       '<td>' + fmtKbps(v.kbps || 0) + '</td>' +
       '<td>' + pos + '</td>' +

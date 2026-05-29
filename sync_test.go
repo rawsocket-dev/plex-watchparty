@@ -190,6 +190,80 @@ func TestActiveHostReclaimsOnReconnect(t *testing.T) {
 	}
 }
 
+func TestAdminRosterDedupesByIdentity(t *testing.T) {
+	f := newHubTestFixture(t)
+	h := f.hub
+	h.mu.Lock()
+	h.clients = map[*clientEntry]struct{}{}
+	h.activeHost = "alice@x.com"
+	mk := func(id, email, name, ip string) {
+		h.clients[&clientEntry{id: id, email: email, name: name, ip: ip, connectedAt: time.Now(), send: make(chan []byte, 8), kill: make(chan struct{})}] = struct{}{}
+	}
+	mk("a1", "alice@x.com", "Alice", "10.0.0.1") // alice: 3 connections
+	mk("a2", "alice@x.com", "Alice", "10.0.0.1")
+	mk("a3", "alice@x.com", "Alice", "10.0.0.1")
+	mk("b1", "bob@x.com", "Bob", "10.0.0.2") // bob: 1
+	h.mu.Unlock()
+
+	roster := h.AdminRoster(nil)
+	if len(roster) != 2 {
+		t.Fatalf("roster has %d rows, want 2 (one per person)", len(roster))
+	}
+	var alice, bob *AdminViewer
+	for i := range roster {
+		switch roster[i].Name {
+		case "Alice":
+			alice = &roster[i]
+		case "Bob":
+			bob = &roster[i]
+		}
+	}
+	if alice == nil || bob == nil {
+		t.Fatalf("missing rows: %+v", roster)
+	}
+	if alice.Conns != 3 {
+		t.Errorf("alice conns=%d, want 3", alice.Conns)
+	}
+	if bob.Conns != 1 {
+		t.Errorf("bob conns=%d, want 1", bob.Conns)
+	}
+	if !alice.IsActiveHost || bob.IsActiveHost {
+		t.Errorf("active host wrong: alice=%v bob=%v", alice.IsActiveHost, bob.IsActiveHost)
+	}
+}
+
+func TestKickRemovesAllOfPersonsConnections(t *testing.T) {
+	f := newHubTestFixture(t)
+	h := f.hub
+	h.mu.Lock()
+	h.clients = map[*clientEntry]struct{}{}
+	a1 := &clientEntry{id: "a1", email: "alice@x.com", name: "Alice", kill: make(chan struct{}), send: make(chan []byte, 8)}
+	a2 := &clientEntry{id: "a2", email: "alice@x.com", name: "Alice", kill: make(chan struct{}), send: make(chan []byte, 8)}
+	b1 := &clientEntry{id: "b1", email: "bob@x.com", name: "Bob", kill: make(chan struct{}), send: make(chan []byte, 8)}
+	for _, c := range []*clientEntry{a1, a2, b1} {
+		h.clients[c] = struct{}{}
+	}
+	h.mu.Unlock()
+
+	if !h.KickClient("a1") {
+		t.Fatal("KickClient returned false")
+	}
+	closed := func(ch chan struct{}) bool {
+		select {
+		case <-ch:
+			return true
+		default:
+			return false
+		}
+	}
+	if !closed(a1.kill) || !closed(a2.kill) {
+		t.Error("kicking one of alice's connections should kick all of them")
+	}
+	if closed(b1.kill) {
+		t.Error("bob must not be kicked")
+	}
+}
+
 func TestHubLoadSetsState(t *testing.T) {
 	f := newHubTestFixture(t)
 	w := f.post(t, `{"action":"load","ratingKey":"rk1"}`)

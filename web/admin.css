@@ -52,6 +52,9 @@ header {
   color: var(--paper-mute);
 }
 .ident .lbl { color: var(--paper-mute); }
+/* Connection count next to a viewer name when they hold multiple SSE
+   connections (tabs / reloads / ghosts). */
+.conns { color: var(--paper-mute); font-size: .85em; }
 .ident .val {
   color: var(--signal); text-transform: none;
   letter-spacing: .03em; font-weight: 500;

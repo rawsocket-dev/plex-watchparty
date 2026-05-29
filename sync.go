@@ -103,6 +103,10 @@ type AdminViewer struct {
 	Name         string  `json:"name"`
 	Host         bool    `json:"host"`
 	IP           string  `json:"ip"`
+	// Conns is how many live SSE connections this person holds (tabs,
+	// reloads, or proxy-held ghosts). The roster shows one row per
+	// identity, not per socket.
+	Conns        int     `json:"conns"`
 	ConnectedSec int64   `json:"connectedSec"`
 	Kbps         int64   `json:"kbps"`
 	// Heartbeat fields — what the viewer's player reported on its
@@ -1338,32 +1342,67 @@ func (h *Hub) AdminRoster(bw *bwTracker) []AdminViewer {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	now := time.Now()
-	out := make([]AdminViewer, 0, len(h.clients))
+	// One row per PERSON (identity = email), collapsing a user's multiple
+	// connections — tabs, reloads, or proxy-held ghosts — into a single
+	// entry with a connection count. The representative connection is the
+	// active host's (if any), else the one with the freshest heartbeat (an
+	// actually-live tab). Empty-email connections aren't merged.
+	byKey := make(map[string]*AdminViewer)
+	chosenActive := make(map[string]bool)
+	bestFresh := make(map[string]float64)
+	var order []string
 	for c := range h.clients {
-		var kbps int64
-		if bw != nil {
-			kbps = bw.KbpsForIP(c.ip)
+		key := c.email
+		if key == "" {
+			key = "conn:" + c.id
 		}
 		hbAge := -1.0
 		if c.lastHeartbeatAt != 0 {
 			hbAge = time.Since(time.Unix(0, c.lastHeartbeatAt)).Seconds()
 		}
-		out = append(out, AdminViewer{
-			ID:              c.id,
-			Name:            c.name,
-			Host:            c.host,
-			IP:              c.ip,
-			ConnectedSec:    int64(now.Sub(c.connectedAt).Seconds()),
-			Kbps:            kbps,
-			PosSec:          c.lastPosSec,
-			Paused:          c.lastPaused,
-			HeartbeatAgeSec: hbAge,
-			IsActiveHost:    c.email == h.activeHost,
-		})
+		av, ok := byKey[key]
+		if !ok {
+			av = &AdminViewer{}
+			byKey[key] = av
+			bestFresh[key] = math.Inf(1)
+			order = append(order, key)
+		}
+		av.Conns++
+		if cs := int64(now.Sub(c.connectedAt).Seconds()); cs > av.ConnectedSec {
+			av.ConnectedSec = cs // show the longest-lived connection's uptime
+		}
+		isActive := c.email != "" && c.email == h.activeHost
+		if isActive {
+			av.IsActiveHost = true
+		}
+		// Pick the representative connection: active host wins outright;
+		// otherwise the freshest heartbeat (never-heartbeated ranks last).
+		fresh := hbAge
+		if fresh < 0 {
+			fresh = math.Inf(1)
+		}
+		take := false
+		if isActive && !chosenActive[key] {
+			take, chosenActive[key] = true, true
+		} else if !chosenActive[key] && fresh <= bestFresh[key] {
+			take = true
+		}
+		if take {
+			bestFresh[key] = fresh
+			av.ID, av.Name, av.Host, av.IP = c.id, c.name, c.host, c.ip
+			av.PosSec, av.Paused, av.HeartbeatAgeSec = c.lastPosSec, c.lastPaused, hbAge
+			if bw != nil {
+				av.Kbps = bw.KbpsForIP(c.ip)
+			}
+		}
+	}
+	out := make([]AdminViewer, 0, len(order))
+	for _, k := range order {
+		out = append(out, *byKey[k])
 	}
 	sort.Slice(out, func(i, j int) bool {
-		if out[i].Host != out[j].Host {
-			return out[i].Host
+		if out[i].IsActiveHost != out[j].IsActiveHost {
+			return out[i].IsActiveHost // active host first
 		}
 		return out[i].IP < out[j].IP
 	})
@@ -1458,22 +1497,31 @@ func (h *Hub) Handoff(byEmail, targetID string) error {
 // not "ban this user."
 func (h *Hub) KickClient(id string) bool {
 	h.mu.Lock()
-	var target *clientEntry
+	// Resolve the identity behind id, then kick EVERY connection that
+	// identity holds — the admin roster shows one row per person, so a
+	// single "Kick" should clear all their tabs / reloads / ghosts. An
+	// empty-email (unauthenticated) connection is kicked on its own.
+	var email string
 	for c := range h.clients {
 		if c.id == id {
-			target = c
+			email = c.email
 			break
 		}
 	}
+	var targets []*clientEntry
+	for c := range h.clients {
+		if c.id == id || (email != "" && c.email == email) {
+			targets = append(targets, c)
+		}
+	}
 	h.mu.Unlock()
-	if target == nil {
-		return false
+	for _, t := range targets {
+		select {
+		case <-t.kill:
+			// already closed
+		default:
+			close(t.kill)
+		}
 	}
-	select {
-	case <-target.kill:
-		// already closed
-	default:
-		close(target.kill)
-	}
-	return true
+	return len(targets) > 0
 }
