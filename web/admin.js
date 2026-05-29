@@ -64,9 +64,10 @@ async function api(path, opts) {
 
 async function refresh() {
   try {
-    const [s, bw] = await Promise.all([
+    const [s, bw, audit] = await Promise.all([
       api('/admin/api/stats'),
       api('/admin/api/bandwidth/history'),
+      api('/admin/api/audit'),
     ]);
     if (s.version) $('build-ver').textContent = s.version;
     renderSession(s.session, s.lifecycle);
@@ -74,6 +75,7 @@ async function refresh() {
     renderCache(s.cache);
     renderLibrary(s.library);
     renderViewers(s.viewers);
+    renderAudit(audit);
     setStatus('ok', 'ok');
   } catch (err) {
     setStatus('error: ' + err.message, 'err');
@@ -217,6 +219,29 @@ function renderViewers(viewers) {
       '<td><button class="row-action" data-action="kick" data-id="' + escapeHTML(v.id) + '">Kick</button></td>' +
     '</tr>';
   }).join('');
+}
+
+function fmtWhen(unix) {
+  if (!unix) return '—';
+  return new Date(unix * 1000).toLocaleString();
+}
+function renderAudit(events) {
+  const tbody = $('audit-rows');
+  if (!tbody) return;
+  if (!events || events.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="6">No events yet.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = events.map((e) =>
+    '<tr>' +
+    '<td class="mono">' + escapeHTML(fmtWhen(e.unix)) + '</td>' +
+    '<td>' + escapeHTML(e.type || '') + '</td>' +
+    '<td class="mono">' + escapeHTML(e.email || '') + '</td>' +
+    '<td>' + escapeHTML(e.role || '') + '</td>' +
+    '<td class="mono">' + escapeHTML(e.ip || '') + '</td>' +
+    '<td>' + escapeHTML(e.detail || '') + '</td>' +
+    '</tr>'
+  ).join('');
 }
 
 async function doAction(label, fn) {
