@@ -245,9 +245,17 @@ body.viewer .role-cell .r-viewer { display: inline; }
 .cell-btn:hover { background: linear-gradient(180deg, #252b34 0%, #1a1f27 100%); color: var(--paper); }
 .cell-btn:hover .led { background: var(--paper-mute); }
 .cell-btn.primary { color: var(--signal); }
-.cell-btn.primary .led {
+/* Run / Pause status lights track live playback (mirrors the zoom +
+   fullscreen active indicators below): Run glows mint while playing,
+   Pause glows amber while paused. When neither matches, the .led falls
+   back to the dark base above. */
+#wrap.playing #play .led {
   background: var(--signal);
   box-shadow: 0 0 10px rgba(159,230,173,.8), inset 0 0 2px rgba(255,255,255,.4);
+}
+#wrap:not(.playing) #pause .led {
+  background: var(--warn);
+  box-shadow: 0 0 10px rgba(240,168,48,.7);
 }
 .cell-btn.warn { color: #b89260; }
 .cell-btn.warn .led {
@@ -258,6 +266,11 @@ body.viewer .role-cell .r-viewer { display: inline; }
 #fullscreen { font-size: 1.05rem; letter-spacing: 0; }
 #wrap.fill #zoom { color: var(--signal); }
 #wrap.fill #zoom .led {
+  background: var(--signal);
+  box-shadow: 0 0 10px rgba(159,230,173,.8);
+}
+#wrap.fs #fullscreen { color: var(--signal); }
+#wrap.fs #fullscreen .led {
   background: var(--signal);
   box-shadow: 0 0 10px rgba(159,230,173,.8);
 }

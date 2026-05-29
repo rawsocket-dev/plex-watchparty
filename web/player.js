@@ -227,8 +227,8 @@ async function pollBandwidth() {
     }
     bwEl.hidden = false;
     // Fill just the .v inside the bandwidth cell — the .lbl above
-    // already says "You / Room", and "Mb" is appended once at the
-    // end so both numbers share a single unit label.
+    // already says "User BW / Total", and the unit is appended once at
+    // the end so both numbers share a single unit label.
     const bwV = bwEl.querySelector('.v');
     bwV.innerHTML =
       '<span class="you">' + (d.mineKbps / 1000).toFixed(1) + '</span>' +
@@ -516,6 +516,10 @@ function applyState(s, reason) {
   }
   renderViewers(s.viewers);
 
+  // Status lights track live playback: Run glows mint while playing,
+  // Pause glows amber while paused (CSS keys off #wrap.playing).
+  wrapEl.classList.toggle('playing', !!s.playing);
+
   const ratingKeyChanged   = s.ratingKey !== loadedKey;
   const sessionTokenChanged = s.sessionToken && s.sessionToken !== lastSessionToken;
   if (ratingKeyChanged || sessionTokenChanged) {
@@ -744,6 +748,12 @@ document.getElementById('fullscreen').onclick = () => {
     wrapEl.requestFullscreen().catch(err => console.warn('fullscreen failed:', err));
   }
 };
+// Light the fullscreen button mint while active (mirrors the zoom 'fill'
+// indicator). Listen on document so Esc / F11 exits — which bypass our
+// click handler — still update the button.
+document.addEventListener('fullscreenchange', () => {
+  wrapEl.classList.toggle('fs', document.fullscreenElement === wrapEl);
+});
 
 // Volume control — per-client (each viewer has their own), persists
 // in localStorage so a refresh doesn't blow it away. Mute remembers
