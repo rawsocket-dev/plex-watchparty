@@ -902,13 +902,10 @@ volCell.addEventListener('wheel', (e) => {
 // localStorage so it survives reloads and tab restarts.
 const zoomBtn = document.getElementById('zoom');
 function applyZoom(mode) {
-  if (mode === 'fill') {
-    wrapEl.classList.add('fill');
-    zoomBtn.textContent = 'fill';
-  } else {
-    wrapEl.classList.remove('fill');
-    zoomBtn.textContent = 'fit';
-  }
+  // The Fit button is icon-only; its state shows via the #wrap.fill #zoom
+  // active-glow. Don't touch the button's children — setting textContent
+  // here would destroy the inline <svg> icon.
+  wrapEl.classList.toggle('fill', mode === 'fill');
   try { localStorage.setItem('zoom', mode); } catch {}
 }
 applyZoom((() => { try { return localStorage.getItem('zoom') || 'fit'; } catch { return 'fit'; } })());
