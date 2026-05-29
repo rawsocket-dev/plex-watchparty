@@ -127,6 +127,23 @@ func TestHubLoadSameMovieWithRestartForcesStart(t *testing.T) {
 	}
 }
 
+func TestHubLoadAutoplayControlsInitialPlaying(t *testing.T) {
+	// The resume banners (library + waiting room) send autoplay:true so
+	// the room starts playing instead of paused. A plain load (movie
+	// pick) omits it and stays paused. Lock both halves of the contract.
+	f := newHubTestFixture(t)
+	f.post(t, `{"action":"load","ratingKey":"rk1","autoplay":true}`)
+	if !f.hub.Snapshot().Playing {
+		t.Error("load with autoplay:true → Playing=false, want true")
+	}
+
+	g := newHubTestFixture(t)
+	g.post(t, `{"action":"load","ratingKey":"rk1"}`)
+	if g.hub.Snapshot().Playing {
+		t.Error("load without autoplay → Playing=true, want false")
+	}
+}
+
 func TestHubPlayPauseFlipsState(t *testing.T) {
 	f := newHubTestFixture(t)
 	f.post(t, `{"action":"load","ratingKey":"rk1"}`)
