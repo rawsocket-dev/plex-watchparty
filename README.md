@@ -26,13 +26,27 @@ Friends watching together stay in sync via Server-Sent Events: the host's play
 / pause / seek actions are broadcast to all viewers, who track the host's
 authoritative position with sub-second tolerance.
 
+Playback state (last movie + position) is persisted to disk, so after a
+container restart or idle shutdown the library and waiting room offer to
+**resume where you left off**. There's no database — live state is in memory;
+only the segment cache, the library cache, and the recently-played list
+survive on disk.
+
 **Code structure:**
 
-- `plex.go` — Plex API: list movies, start transcoder sessions, fetch + rewrite HLS playlists
+- `main.go` — HTTP routing, env parsing, wiring
+- `plex.go` — Plex API: list movies, start transcodes, health-state machine
+- `plex_session.go` — one active Plex transcode session
+- `playlist.go` — HLS playlist rewriter + segment-context encoding
 - `cache.go` — LRU disk cache for HLS segments (survives restarts)
-- `auth.go` — password gate, HMAC session cookies
-- `sync.go` — authoritative playback state, SSE broadcast to viewers, host control endpoint
-- `web/` — login, movie list, drift-correcting hls.js player
+- `sync.go` — authoritative playback state, SSE broadcast, host control endpoint
+- `state.go` — persisted resume hint (last movie + position)
+- `recent.go` — persisted recently-played list
+- `bandwidth.go` — per-IP rolling-window bandwidth tracker
+- `auth.go` — shared-password gate, HMAC session cookies, role gating
+- `oauth.go` — Google sign-in for the admin panel
+- `admin.go` — `/admin` maintenance console + JSON API
+- `web/` — login, library, waiting room, drift-correcting hls.js player, admin panel
 
 Read the playlist / segment / cache files (`plex.go`, `playlist.go`,
 `cache.go`) first if you're modifying that pipeline.
@@ -124,7 +138,7 @@ go run .
 | `PLEX_TOKEN`                      | yes      | —                        | Plex auth token (stays server-side, never sent to clients) |
 | `WATCH_PASSWORD`                  | yes      | —                        | Shared password for viewers (can be anyone) |
 | `HOST_PASSWORD`                   | no       | unset (= any friend can drive) | Optional: password granting play/pause/seek privileges |
-| `PLEX_TRANSCODE_BITRATE_KBPS`     | no       | unset (no transcode)     | Request Plex transcode at this bitrate (e.g., `12000` = 12 Mbps). Plex handles codec conversion (HEVC→H.264, HDR→SDR). Leave unset for direct-stream only. |
+| `PLEX_TRANSCODE_BITRATE_KBPS`     | no       | `12000` (12 Mbps)        | Plex Universal Transcoder target bitrate in kbps. Every play goes through Plex's transcoder (1920×1080 H.264 + AAC) — there is no direct-stream mode. Plex handles codec / HDR conversion (HEVC→H.264, HDR→SDR). |
 | `CACHE_MAX_GB`                    | no       | `20`                     | Disk cap for HLS segment cache in GB. Cached segments survive restarts; LRU eviction kicks in when cap is hit. Estimate ~10 GB per typical 2hr movie at 12 Mbps. |
 | `LISTEN_ADDR`                     | no       | `:8080`                  | Listen address (e.g., `:8080` or `0.0.0.0:8080`) |
 | `WORK_DIR`                        | no       | `$TMPDIR/plexwatchparty` | Root data directory for cache and work files |
