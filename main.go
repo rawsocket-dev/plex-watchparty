@@ -108,7 +108,13 @@ func writeJSON(w http.ResponseWriter, v any) {
 	}
 }
 
+// version is the build's commit, injected at build time via
+// -ldflags "-X main.version=<sha>" (see Dockerfile + .the registry-ci.yml).
+// Defaults to "dev" for local `go build`.
+var version = "dev"
+
 func main() {
+	log.Printf("plex-watchparty starting — build %s", version)
 	plexURL := os.Getenv("PLEX_BASE_URL")
 	plexTok := os.Getenv("PLEX_TOKEN")
 	password := os.Getenv("WATCH_PASSWORD")

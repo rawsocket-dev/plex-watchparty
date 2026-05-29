@@ -6,10 +6,15 @@
 # crane from buildhost when bumping versions.
 FROM registry.example.com:5050/example/plex-watchparty/golang:1.26-alpine AS build
 WORKDIR /src
+# Commit the build is from, stamped into the binary (main.version) and
+# logged at startup. CI passes --build-arg VERSION=$CI_COMMIT_SHORT_SHA;
+# local builds default to "dev".
+ARG VERSION=dev
 COPY go.mod ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" \
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath \
+    -ldflags="-s -w -X main.version=${VERSION}" \
     -o /out/plexwatchparty .
 
 # --- minimal runtime --------------------------------------------------------
