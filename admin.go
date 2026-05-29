@@ -196,6 +196,7 @@ func registerAdminRoutes(
 // AdminSnapshot bundles the data sources the admin panel displays in
 // one round-trip.
 type AdminSnapshot struct {
+	Version   string                `json:"version"`
 	Cache     CacheStats            `json:"cache"`
 	Library   LibraryStats          `json:"library"`
 	Session   SessionSummary        `json:"session"`
@@ -218,6 +219,7 @@ type SessionSummary struct {
 func adminSnapshot(plex *Plex, cache *SegmentCache, sess *PlexSession, hub *Hub, bw *bwTracker) AdminSnapshot {
 	state := hub.Snapshot()
 	return AdminSnapshot{
+		Version: version,
 		Cache:   cache.Stats(),
 		Library: plex.Stats(),
 		Session: SessionSummary{

@@ -68,6 +68,7 @@ async function refresh() {
       api('/admin/api/stats'),
       api('/admin/api/bandwidth/history'),
     ]);
+    if (s.version) $('build-ver').textContent = s.version;
     renderSession(s.session, s.lifecycle);
     renderBandwidth(bw.samples);
     renderCache(s.cache);
