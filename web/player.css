@@ -277,6 +277,14 @@ body.viewer .role-cell .r-viewer { display: inline; }
   box-shadow: 0 0 10px rgba(159,230,173,.8);
 }
 #admin-link[hidden] { display: none; }
+#host-cell[hidden], #handoff[hidden] { display: none; }
+.host-cell .v { color: var(--signal); }
+#handoff {
+  background: linear-gradient(180deg, #1d2129 0%, #131820 100%);
+  border: 0; border-left: 1px solid var(--rule);
+  color: #8a92a0; font-family: var(--mono);
+  font-size: .6rem; letter-spacing: .15em; cursor: pointer;
+}
 
 /* Volume control — cell-btn footprint with SVG speaker icon and a
    hover/focus-revealed slider popover. */

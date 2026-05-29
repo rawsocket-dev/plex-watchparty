@@ -54,7 +54,10 @@ type State struct {
 // ViewerInfo is the per-connection identity surfaced to clients in
 // the SSE state stream. Name comes from the wp_name cookie set at
 // login; Host mirrors the connection's effective role.
+// ID is the per-connection handle used by the hand-off picker so
+// the active host can pass control to a specific viewer.
 type ViewerInfo struct {
+	ID   string `json:"id,omitempty"`
 	Name string `json:"name"`
 	Host bool   `json:"host"`
 }
@@ -458,7 +461,7 @@ func (h *Hub) activeHostNameLocked() string {
 func (h *Hub) viewerList() []ViewerInfo {
 	out := make([]ViewerInfo, 0, len(h.clients))
 	for c := range h.clients {
-		out = append(out, ViewerInfo{Name: c.name, Host: c.host})
+		out = append(out, ViewerInfo{ID: c.id, Name: c.name, Host: c.host})
 	}
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].Host != out[j].Host {

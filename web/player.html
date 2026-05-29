@@ -19,6 +19,10 @@
           <span class="r-host">Host</span><span class="r-viewer">Viewer</span>
         </div>
       </div>
+      <div class="cell host-cell" id="host-cell" hidden>
+        <div class="lbl">Host</div>
+        <div class="v" id="host-name">—</div>
+      </div>
       <div class="cell sync-cell">
         <div class="lbl">Sync</div>
         <div class="v" id="sync">listening</div>
@@ -54,6 +58,9 @@
       </div>
       <button class="cell-btn" id="zoom" title="Zoom (fit / fill)"><span class="led"></span>Fit</button>
       <button class="cell-btn" id="fullscreen" title="Fullscreen"><span class="led"></span>⛶</button>
+      <select class="cell-btn" id="handoff" title="Pass control to…" hidden>
+        <option value="">Pass control →</option>
+      </select>
       <a class="cell-btn" id="admin-link" href="/admin" target="_blank" rel="noopener" title="Maintenance panel" hidden><span class="led"></span>Admin</a>
       <a class="cell-btn warn" id="library-link" href="/"><span class="led"></span>Exit</a>
     </div>

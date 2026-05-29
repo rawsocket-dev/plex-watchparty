@@ -9,19 +9,41 @@ const bwEl    = document.getElementById('bw');
 // it without tripping a temporal-dead-zone error.
 const wrapEl  = document.getElementById('wrap');
 
-// Default to host until /api/whoami answers. Viewers can't seek or
-// drive playback; their scrub-bar interactions silently no-op and
+// isHost tracks whether this connection IS the active host — drives
+// control visibility, scrub-bar seek guards, and join-overlay autoplay.
+// Viewers can't drive playback; their interactions silently no-op and
 // their buttons are hidden via the .viewer body class.
-let isHost = true;
-fetchWhoami().then(d => {
+let isHost = false;            // "is the ACTIVE host" — drives control visibility
+let lastActiveHostName;        // undefined initially
+function applyWhoami(d) {
   if (!d) return;
-  isHost = d.role === 'host';
-  if (!isHost) document.body.classList.add('viewer');
-  if (d.isAdmin) {
-    const al = document.getElementById('admin-link');
-    if (al) al.hidden = false;
+  isHost = !!d.isActiveHost;
+  document.body.classList.toggle('viewer', !isHost);
+  const al = document.getElementById('admin-link');
+  if (al) al.hidden = !d.isAdmin;
+}
+fetchWhoami().then(applyWhoami);
+const handoffSel = document.getElementById('handoff');
+if (handoffSel) {
+  handoffSel.addEventListener('change', () => {
+    const id = handoffSel.value;
+    handoffSel.value = '';
+    if (id) fetch('/api/host/handoff?id=' + encodeURIComponent(id), { method: 'POST' }).catch(() => {});
+  });
+}
+// Re-fetch whoami (cache-bypassing) whenever the active host changes, so
+// control visibility tracks election/hand-off without a reload.
+function refreshHostUI(state) {
+  const name = state.activeHostName || '';
+  if (name !== lastActiveHostName) {
+    lastActiveHostName = name;
+    fetch('/api/whoami', { cache: 'no-store' }).then(r => r.ok ? r.json() : null).then(applyWhoami).catch(() => {});
   }
-});
+  const hc = document.getElementById('host-cell');
+  const hn = document.getElementById('host-name');
+  if (hn) hn.textContent = name || 'nobody';
+  if (hc) hc.hidden = isHost; // the active host doesn't need the indicator
+}
 const scrubHit      = document.getElementById('scrub-hit');
 const scrubTrack    = document.getElementById('scrub-track');
 const scrubFill     = document.getElementById('scrub-fill');
@@ -258,6 +280,7 @@ const viewersRosterEl = viewersEl.querySelector('.roster');
 function renderViewers(list) {
   if (!Array.isArray(list) || list.length === 0) {
     viewersEl.hidden = true;
+    if (handoffSel) { handoffSel.hidden = true; }
     return;
   }
   viewersEl.hidden = false;
@@ -268,6 +291,14 @@ function renderViewers(list) {
       '<span class="role">' + (v.host ? 'host' : 'viewer') + '</span>' +
     '</div>'
   ).join('');
+  if (handoffSel) {
+    handoffSel.hidden = !isHost;
+    const opts = ['<option value="">Pass control →</option>'];
+    (list || []).forEach(v => {
+      if (v.id) opts.push('<option value="' + escapeHTML(v.id) + '">' + escapeHTML(v.name || v.id) + '</option>');
+    });
+    handoffSel.innerHTML = opts.join('');
+  }
 }
 function fmtRate(kbps) {
   if (kbps >= 1000) return (kbps / 1000).toFixed(1) + ' Mbps';
@@ -524,6 +555,7 @@ function applyState(s, reason) {
     updateScrub();
   }
   renderViewers(s.viewers);
+  refreshHostUI(s);
 
   // Status lights track live playback: Run glows mint while playing,
   // Pause glows amber while paused (CSS keys off #wrap.playing).
