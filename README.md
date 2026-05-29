@@ -161,7 +161,10 @@ A small maintenance console available to anyone in `ADMIN_EMAILS` after
 signing in. The panel covers: current Plex session info + manual restart,
 segment cache stats with clear-all / clear-one-movie / prune-older-than-N-days,
 library cache age + manual refresh, and a live SSE viewer roster with kick.
-The panel also shows an **Audit** log — the last 500 sign-ins, denied sign-in attempts, and admin actions (persisted to `audit.jsonl`).
+The panel also shows an **Audit** log — the last 500 sign-ins, denied sign-in
+attempts, admin actions, playback events (load / play / pause / seek / stop,
+attributed to the host), and Plex lifecycle events (server reachability + idle
+shutdown, recorded as `system`). Persisted to `audit.jsonl`.
 
 ### Google Cloud setup
 
