@@ -16,6 +16,16 @@ import (
 	"golang.org/x/sync/singleflight"
 )
 
+// landOnWatch decides whether a user hitting "/" should be sent to the
+// player instead of the library. When a movie is playing, only the single
+// active host has anything to do on the library (pick / re-pick); everyone
+// else — plain viewers AND host-eligible users who aren't the active host —
+// belongs in /watch. Host-eligibility is NOT the same as being the active
+// host, which is why this keys off isActiveHost rather than role.
+func landOnWatch(moviePlaying, isActiveHost bool) bool {
+	return moviePlaying && !isActiveHost
+}
+
 // newServer builds the public HTTP server. ReadHeaderTimeout bounds the
 // request-header read phase so a slow client can't hold a connection open
 // indefinitely (slowloris). Read/Write timeouts are deliberately left
@@ -260,12 +270,14 @@ func main() {
 			http.NotFound(w, r)
 			return
 		}
-		// If a viewer (non-host) lands here while a movie is already
-		// loaded, skip the library — they can't pick anything from it
-		// anyway — and route them straight to /watch where they get
-		// the player (or the "take your seat" waiting room if the
-		// session has since cleared).
-		if auth.Role(r) != RoleHost && plexSession.RatingKey() != "" {
+		// If someone who isn't the ACTIVE host lands here while a movie is
+		// already loaded, skip the library — they can't pick anything from
+		// it anyway — and route them straight to /watch where they get the
+		// player (or the "take your seat" waiting room if the session has
+		// since cleared). This includes host-ELIGIBLE users who aren't the
+		// one currently driving: a second host logging in mid-movie joins
+		// as a viewer instead of getting the library.
+		if landOnWatch(plexSession.RatingKey() != "", hub.IsActiveHost(auth.Email(r))) {
 			http.Redirect(w, r, "/watch", http.StatusSeeOther)
 			return
 		}
