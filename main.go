@@ -218,6 +218,17 @@ func main() {
 	mux.HandleFunc("/oauth/start", oauth.HandleStart)
 	mux.HandleFunc("/oauth/callback", oauth.HandleCallback)
 
+	// /mockups is a throwaway public design gallery — logout-button
+	// placement options, shareable for opinions without login. No auth
+	// required; the page is pure HTML + CSS, no movie metadata, no Plex
+	// token surface, no /control affordances. Remove once a direction is
+	// chosen (route + embed + web/mockups.html).
+	mux.HandleFunc("/mockups", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-store")
+		w.Write(mockupsHTML)
+	})
+
 	// Admin maintenance panel — same identity, gated on ADMIN_EMAILS.
 	registerAdminRoutes(mux, auth, plex, segCache, plexSession, hub, bw, audit)
 

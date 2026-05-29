@@ -1,0 +1,409 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Logout placement · mockups</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    color-scheme: dark;
+    /* Console palette — matches index.css / player.css / waiting.html. */
+    --ink:        #0f1217;
+    --ink-2:      #1a1e24;
+    --ink-3:      #11141a;
+    --paper:      #e8ecf2;
+    --paper-mute: #5e6878;
+    --paper-dim:  #4a5260;
+    --rule:       #2a323e;
+    --rule-hi:    #3a424e;
+    --signal:     #9fe6ad;
+    --signal-deep:#6ab37d;
+    --warn:       #f0a830;
+    --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--ink-3); color: var(--paper); }
+  body {
+    font-family: var(--mono);
+    min-height: 100vh;
+    padding: 2.5rem clamp(1rem, 4vw, 3rem) 5rem;
+    background:
+      repeating-linear-gradient(90deg, rgba(255,255,255,.008) 0 1px, transparent 1px 3px),
+      linear-gradient(180deg, var(--ink-2) 0%, var(--ink-3) 100%);
+    background-attachment: fixed;
+  }
+
+  /* ---- Page chrome -------------------------------------------------- */
+  .page-head { max-width: 1100px; margin: 0 auto 2.5rem; }
+  .page-head .eyebrow {
+    font-size: .6rem; letter-spacing: .42em; text-transform: uppercase;
+    color: var(--signal); margin-bottom: .8rem;
+  }
+  .page-head .eyebrow::before { content: '// '; }
+  .page-head h1 {
+    font-size: clamp(1.4rem, 3.5vw, 2rem); font-weight: 600;
+    letter-spacing: .06em; text-transform: uppercase; margin: 0 0 .8rem;
+  }
+  .page-head p {
+    color: var(--paper-mute); font-size: .8rem; line-height: 1.7;
+    letter-spacing: .02em; max-width: 70ch; margin: 0;
+  }
+  .page-head code {
+    color: var(--paper); background: var(--ink); border: 1px solid var(--rule);
+    border-radius: 2px; padding: .05rem .35rem; font-size: .76rem;
+  }
+
+  .section-title {
+    max-width: 1100px; margin: 3rem auto 1.2rem;
+    font-size: .62rem; letter-spacing: .36em; text-transform: uppercase;
+    color: var(--paper); border-bottom: 1px solid var(--rule); padding-bottom: .7rem;
+  }
+  .section-title span { color: var(--paper-mute); }
+
+  .grid { max-width: 1100px; margin: 0 auto; display: grid; gap: 1.6rem; }
+
+  /* A mockup card: label + note + a framed live slice of the real UI. */
+  .mock { border: 1px solid var(--rule); border-radius: 3px; background: var(--ink-3);
+          box-shadow: inset 0 1px 0 rgba(255,255,255,.03); overflow: hidden; }
+  .mock > .meta { padding: .9rem 1.1rem; border-bottom: 1px solid var(--rule);
+                  display: flex; align-items: baseline; gap: .9rem; flex-wrap: wrap; }
+  .mock .tag {
+    font-size: .58rem; letter-spacing: .28em; text-transform: uppercase;
+    color: var(--ink); background: var(--signal); padding: .2rem .5rem; border-radius: 2px;
+    font-weight: 600; flex: none;
+  }
+  .mock .name { font-size: .82rem; letter-spacing: .04em; color: var(--paper); font-weight: 500; }
+  .mock .note { font-size: .72rem; letter-spacing: .02em; color: var(--paper-mute); line-height: 1.6; }
+  .mock .stage { padding: 1.4rem; background:
+      repeating-linear-gradient(90deg, rgba(255,255,255,.006) 0 1px, transparent 1px 3px),
+      linear-gradient(180deg, #0d1015 0%, #0a0d11 100%); }
+
+  /* =================================================================== */
+  /*  LIBRARY HEADER replica (from index.css)                            */
+  /* =================================================================== */
+  .lib-header {
+    background:
+      repeating-linear-gradient(90deg, rgba(255,255,255,.014) 0 1px, transparent 1px 3px),
+      linear-gradient(180deg, rgba(26, 30, 36, .96) 0%, rgba(17, 20, 26, .96) 100%);
+    border: 1px solid var(--rule);
+    border-radius: 2px;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.04), inset 0 -1px 0 rgba(0,0,0,.5);
+    padding: 1rem clamp(1rem, 3vw, 1.6rem);
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 1.2rem;
+    align-items: center;
+  }
+  .lib-header.with-slot { grid-template-columns: auto 1fr auto auto; }
+  .brand { display: flex; flex-direction: column; line-height: 1; gap: .25rem; }
+  .brand .one { font-weight: 600; font-size: 1rem; letter-spacing: .12em; color: var(--paper); text-transform: uppercase; }
+  .brand .two { font-size: .58rem; font-weight: 500; letter-spacing: .3em; text-transform: uppercase; color: var(--paper-mute); }
+  .brand .who { display: inline-flex; align-items: center; gap: .55rem; margin-top: .55rem;
+                font-size: .58rem; letter-spacing: .28em; text-transform: uppercase; color: var(--paper-mute); }
+  .brand .who .nm { font-weight: 500; font-size: .82rem; letter-spacing: .04em; text-transform: none; color: var(--paper); }
+  .brand .who .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--signal);
+                     box-shadow: 0 0 8px rgba(159,230,173,.7), inset 0 0 2px rgba(255,255,255,.4); display: inline-block; flex-shrink: 0; }
+  .brand .who .role { color: var(--signal); }
+  .search-wrap { display: flex; align-items: baseline; gap: .6rem; background: var(--ink);
+                 border: 1px solid var(--rule); border-radius: 2px; padding: .55rem .85rem;
+                 box-shadow: inset 0 0 12px rgba(0,0,0,.4); }
+  .search-wrap::before { content: '$'; color: var(--signal); font-size: .85rem; font-weight: 500; }
+  .search-wrap .ph { color: var(--paper-mute); text-transform: lowercase; letter-spacing: .08em; opacity: .55; font-size: .85rem; }
+  .count { font-size: .58rem; letter-spacing: .3em; text-transform: uppercase; color: var(--paper-mute); white-space: nowrap; }
+
+  /* =================================================================== */
+  /*  LIBRARY FOOTER replica                                             */
+  /* =================================================================== */
+  .lib-footer {
+    border: 1px solid var(--rule); border-radius: 2px;
+    padding: 1.4rem clamp(1rem, 3vw, 1.6rem);
+    color: var(--paper-mute); font-size: .58rem; letter-spacing: .28em;
+    text-transform: uppercase; text-align: center;
+  }
+  .lib-footer.split { display: flex; justify-content: space-between; align-items: center; gap: 1rem; text-align: left; }
+  .lib-footer a { color: var(--paper); text-decoration: none; }
+  .lib-footer a:hover { color: var(--signal); }
+
+  /* Shared text "sign out" affordances ------------------------------- */
+  .signout-text {
+    font-size: .58rem; letter-spacing: .28em; text-transform: uppercase;
+    color: var(--paper); text-decoration: none; white-space: nowrap;
+  }
+  .signout-text:hover { color: var(--signal); }
+  .signout-text .arrow { color: var(--paper-mute); }
+  .signout-text:hover .arrow { color: var(--signal); }
+
+  /* Bordered "sign out" pill (a touch more button-like) -------------- */
+  .signout-pill {
+    display: inline-flex; align-items: center; gap: .45rem;
+    font-size: .58rem; letter-spacing: .24em; text-transform: uppercase;
+    color: var(--paper); text-decoration: none; white-space: nowrap;
+    border: 1px solid var(--rule); border-radius: 2px; padding: .5rem .8rem;
+    background: linear-gradient(180deg, #1d2129 0%, #131820 100%);
+    transition: border-color .2s ease, color .2s ease;
+  }
+  .signout-pill:hover { border-color: var(--signal); color: var(--signal); }
+  .signout-pill .ico { width: 14px; height: 14px; }
+
+  /* Icon button (player .ibtn style) --------------------------------- */
+  .ibtn {
+    width: 46px; height: 40px; padding: 0;
+    background: linear-gradient(180deg, #1d2129 0%, #131820 100%);
+    border: 1px solid var(--rule); border-radius: 2px;
+    color: #7e8794; cursor: pointer; text-decoration: none;
+    display: inline-flex; align-items: center; justify-content: center;
+    transition: background .2s ease, color .2s ease;
+  }
+  .ibtn:hover { color: var(--warn); background: linear-gradient(180deg, #252b34 0%, #1a1f27 100%); }
+  .ico { width: 18px; height: 18px; display: block; flex: none; }
+
+  /* =================================================================== */
+  /*  WAITING-ROOM replica (from waiting.html)                           */
+  /* =================================================================== */
+  .wait {
+    position: relative;
+    border: 1px solid var(--rule); border-radius: 2px;
+    background:
+      repeating-linear-gradient(90deg, rgba(255,255,255,.01) 0 1px, transparent 1px 3px),
+      radial-gradient(700px 360px at 50% 38%, rgba(159,230,173,0.05), transparent 65%),
+      linear-gradient(180deg, var(--ink-2) 0%, var(--ink-3) 100%);
+    padding: 2.4rem 2rem 1.6rem;
+    text-align: center;
+    overflow: hidden;
+  }
+  .wait .marquee { font-size: .58rem; letter-spacing: .42em; color: var(--signal); text-transform: uppercase;
+                   display: inline-flex; align-items: center; gap: .8rem; margin-bottom: 1.4rem; }
+  .wait .marquee::before, .wait .marquee::after { content: ''; width: 28px; height: 1px;
+                   background: linear-gradient(to right, transparent, var(--signal), transparent); }
+  .wait h2 { font-weight: 500; font-size: clamp(1.1rem, 2.4vw, 1.5rem); letter-spacing: .015em;
+             line-height: 1.2; margin: 0 0 1rem; text-transform: uppercase; }
+  .wait h2 .em { color: var(--signal); text-shadow: 0 0 14px rgba(159,230,173,.35); }
+  .wait .signal {
+    display: inline-flex; align-items: center; gap: .8rem; padding: .6rem 1.1rem;
+    border: 1px solid var(--rule); border-radius: 2px; background: var(--ink);
+    box-shadow: inset 0 0 18px rgba(0,0,0,.45);
+  }
+  .wait .signal .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--signal);
+                       box-shadow: 0 0 12px rgba(159,230,173,0.75); }
+  .wait .signal .t { font-size: .58rem; letter-spacing: .32em; text-transform: uppercase; color: var(--paper-mute); }
+  .wait .w-footer {
+    margin-top: 2rem; padding-top: 1.2rem; border-top: 1px solid var(--rule);
+    display: flex; justify-content: space-between; align-items: baseline; gap: 1.5rem;
+    font-weight: 500; font-size: .55rem; letter-spacing: .3em; text-transform: uppercase; color: var(--paper-mute);
+  }
+  .wait .w-footer.three { justify-content: space-between; }
+  .wait .w-footer a { color: var(--paper); text-decoration: none; }
+  .wait .w-footer a:hover { color: var(--signal); }
+  .wait .w-footer .group { display: inline-flex; gap: 1.2rem; align-items: baseline; }
+  /* Corner icon, pinned to the standby screen's top-right. */
+  .wait .corner { position: absolute; top: .9rem; right: .9rem; }
+</style>
+</head>
+<body>
+
+<!-- Icon defs reused from player.html. i-exit is the door+arrow logout glyph. -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <symbol id="i-exit" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4H5v16h9M11 12h9M16 8l4 4-4 4"/></symbol>
+</defs></svg>
+
+<div class="page-head">
+  <div class="eyebrow">Throwaway design gallery</div>
+  <h1>Where should "sign out" live?</h1>
+  <p>
+    Served at <code>/mockups</code>, no login required — shareable for quick opinions.
+    The library already hides a logout link mid-sentence in its footer; the waiting
+    room has none. Below are placement &amp; style options for both screens, rendered
+    in the real Console palette. Pick a direction (e.g. "Library&nbsp;L2 + Waiting&nbsp;W1")
+    and I'll wire it into the real pages and delete this gallery.
+  </p>
+</div>
+
+<!-- ===================================================================== -->
+<div class="section-title">Library screen <span>· has a header (brand · search · count) and a footer</span></div>
+<div class="grid">
+
+  <!-- L1 — header text link -->
+  <div class="mock">
+    <div class="meta">
+      <span class="tag">L1</span>
+      <span class="name">Header · plain text link</span>
+      <span class="note">A bare "sign out →" in a 4th header cell, right of the title count. Quietest option; matches footer typography.</span>
+    </div>
+    <div class="stage">
+      <div class="lib-header with-slot">
+        <div class="brand">
+          <span class="one">The Library</span>
+          <span class="two">Late Show · Pick a Title</span>
+          <span class="who"><span class="dot"></span><span class="nm">Raw Socket</span> · <span class="role">host</span></span>
+        </div>
+        <label class="search-wrap"><span class="ph">search titles</span></label>
+        <span class="count">128 titles</span>
+        <a class="signout-text" href="#">sign out <span class="arrow">→</span></a>
+      </div>
+    </div>
+  </div>
+
+  <!-- L2 — header bordered pill -->
+  <div class="mock">
+    <div class="meta">
+      <span class="tag">L2</span>
+      <span class="name">Header · bordered pill</span>
+      <span class="note">Same slot, but a bordered button with the exit glyph — reads clearly as a control, mint on hover.</span>
+    </div>
+    <div class="stage">
+      <div class="lib-header with-slot">
+        <div class="brand">
+          <span class="one">The Library</span>
+          <span class="two">Late Show · Pick a Title</span>
+          <span class="who"><span class="dot"></span><span class="nm">Raw Socket</span> · <span class="role">host</span></span>
+        </div>
+        <label class="search-wrap"><span class="ph">search titles</span></label>
+        <span class="count">128 titles</span>
+        <a class="signout-pill" href="#"><svg class="ico"><use href="#i-exit"/></svg> sign out</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- L3 — header icon button (player style) -->
+  <div class="mock">
+    <div class="meta">
+      <span class="tag">L3</span>
+      <span class="name">Header · icon button (player .ibtn style)</span>
+      <span class="note">Icon-only door+arrow, identical to the player's exit/admin buttons. Most compact; relies on the title tooltip.</span>
+    </div>
+    <div class="stage">
+      <div class="lib-header with-slot">
+        <div class="brand">
+          <span class="one">The Library</span>
+          <span class="two">Late Show · Pick a Title</span>
+          <span class="who"><span class="dot"></span><span class="nm">Raw Socket</span> · <span class="role">host</span></span>
+        </div>
+        <label class="search-wrap"><span class="ph">search titles</span></label>
+        <span class="count">128 titles</span>
+        <a class="ibtn" href="#" title="Sign out"><svg class="ico"><use href="#i-exit"/></svg></a>
+      </div>
+    </div>
+  </div>
+
+  <!-- L4 — next to the identity chip -->
+  <div class="mock">
+    <div class="meta">
+      <span class="tag">L4</span>
+      <span class="name">Header · attached to the "who" chip</span>
+      <span class="note">Sits right after "Raw Socket · host", reading as "this is you → sign out". Keeps the right side (search/count) untouched.</span>
+    </div>
+    <div class="stage">
+      <div class="lib-header">
+        <div class="brand">
+          <span class="one">The Library</span>
+          <span class="two">Late Show · Pick a Title</span>
+          <span class="who"><span class="dot"></span><span class="nm">Raw Socket</span> · <span class="role">host</span> &nbsp;·&nbsp; <a class="signout-text" href="#">sign out</a></span>
+        </div>
+        <label class="search-wrap"><span class="ph">search titles</span></label>
+        <span class="count">128 titles</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- L5 — footer, current (for reference) -->
+  <div class="mock">
+    <div class="meta">
+      <span class="tag">L5</span>
+      <span class="name">Footer · current (for reference)</span>
+      <span class="note">What ships today — logout buried mid-sentence. Easy to miss; shown here so the alternatives have a baseline.</span>
+    </div>
+    <div class="stage">
+      <div class="lib-footer">· intermission · grab a drink · <a href="#">log out</a> ·</div>
+    </div>
+  </div>
+
+  <!-- L6 — footer, standalone right -->
+  <div class="mock">
+    <div class="meta">
+      <span class="tag">L6</span>
+      <span class="name">Footer · standalone, right-aligned</span>
+      <span class="note">Pull logout out of the sentence into its own footer item. Low-key but discoverable, and leaves the header alone.</span>
+    </div>
+    <div class="stage">
+      <div class="lib-footer split">
+        <span>· intermission · grab a drink ·</span>
+        <a class="signout-text" href="#">sign out <span class="arrow">→</span></a>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ===================================================================== -->
+<div class="section-title">Waiting room <span>· centered standby screen, footer only — no header to host a button</span></div>
+<div class="grid">
+
+  <!-- W1 — footer, appended to the back link group -->
+  <div class="mock">
+    <div class="meta">
+      <span class="tag">W1</span>
+      <span class="name">Footer · grouped with "back to library"</span>
+      <span class="note">Keeps the existing left/right footer; "sign out" rides alongside the back link on the right. Mirrors Library L6.</span>
+    </div>
+    <div class="stage">
+      <div class="wait">
+        <div class="marquee">Standby · Awaiting Source</div>
+        <h2>The console is live<br><span class="em">but no source is cued.</span></h2>
+        <div class="signal"><span class="dot"></span><span class="t">listening…</span></div>
+        <div class="w-footer">
+          <span>Late Show · Console</span>
+          <span class="group"><a href="#">← back to library</a><a href="#">sign out</a></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- W2 — footer, three columns -->
+  <div class="mock">
+    <div class="meta">
+      <span class="tag">W2</span>
+      <span class="name">Footer · three even columns</span>
+      <span class="note">Console label · back to library · sign out, spread across the footer. Most symmetric, gives logout its own anchor.</span>
+    </div>
+    <div class="stage">
+      <div class="wait">
+        <div class="marquee">Standby · Awaiting Source</div>
+        <h2>The console is live<br><span class="em">but no source is cued.</span></h2>
+        <div class="signal"><span class="dot"></span><span class="t">listening…</span></div>
+        <div class="w-footer three">
+          <span>Late Show · Console</span>
+          <a href="#">← back to library</a>
+          <a href="#">sign out →</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- W3 — corner icon button -->
+  <div class="mock">
+    <div class="meta">
+      <span class="tag">W3</span>
+      <span class="name">Corner · icon button, top-right</span>
+      <span class="note">Door+arrow pinned to the standby screen's corner, like the player. Stays out of the centered copy; pairs well with Library L3.</span>
+    </div>
+    <div class="stage">
+      <div class="wait">
+        <a class="ibtn corner" href="#" title="Sign out"><svg class="ico"><use href="#i-exit"/></svg></a>
+        <div class="marquee">Standby · Awaiting Source</div>
+        <h2>The console is live<br><span class="em">but no source is cued.</span></h2>
+        <div class="signal"><span class="dot"></span><span class="t">listening…</span></div>
+        <div class="w-footer">
+          <span>Late Show · Console</span>
+          <a href="#">← back to library</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>
