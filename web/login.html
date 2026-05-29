@@ -179,19 +179,16 @@
 <main>
   <div class="marquee">Late Show · Console · Est. MMXXVI</div>
   <h1>Sign in.</h1>
-  <p class="sub">a private screening — password required</p>
-  <form method="post" action="/login">
-    <label class="field">
-      <input type="text" name="name" placeholder="your name" autofocus autocomplete="nickname" maxlength="16" pattern="[\x20-\x7e]+" title="16 chars max, printable ASCII only">
-    </label>
-    <label class="field">
-      <input type="password" name="password" placeholder="passphrase" autocomplete="current-password">
-    </label>
-    <div class="row">
-      <span class="hint">shared with the party</span>
-      <button type="submit">Enter <span class="arrow">→</span></button>
+  <p class="sub">a private screening — google sign-in required</p>
+  <p id="denied" class="sub" hidden style="color:#f0a830">that account isn't on the guest list.</p>
+  <form method="post" action="/oauth/start">
+    <div class="row" style="justify-content:flex-start">
+      <button type="submit">Sign in with Google <span class="arrow">→</span></button>
     </div>
   </form>
 </main>
+<script>
+  if (location.search.indexOf('error=denied') >= 0) document.getElementById('denied').hidden = false;
+</script>
 </body>
 </html>

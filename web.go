@@ -29,9 +29,6 @@ var indexCSS []byte
 //go:embed web/index.js
 var indexJS []byte
 
-//go:embed web/admin_login.html
-var adminLoginHTML []byte
-
 //go:embed web/admin.html
 var adminHTML []byte
 
