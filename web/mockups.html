@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>plex-watchparty · header fine-tuning</title>
+<title>plex-watchparty · header buttons</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
@@ -18,21 +18,19 @@
   h1{font-weight:600;letter-spacing:.04em;font-size:1.2rem}
   h1::before{content:'// ';color:var(--signal)}
   h2{font-weight:600;font-size:.9rem;letter-spacing:.1em;text-transform:uppercase;color:var(--signal);margin:2.6rem 0 .3rem}
-  h3{font-weight:500;font-size:.62rem;letter-spacing:.25em;text-transform:uppercase;color:var(--paper-mute);margin:1.5rem 0 .4rem}
-  .cap{color:var(--paper-mute);font-size:.78rem;max-width:78ch;margin:.2rem 0 .9rem}
+  h3{font-weight:500;font-size:.62rem;letter-spacing:.25em;text-transform:uppercase;color:var(--paper-mute);margin:1.6rem 0 .4rem}
+  .cap{color:var(--paper-mute);font-size:.78rem;max-width:80ch;margin:.2rem 0 .9rem}
   .cap b{color:var(--paper)}
   .frame{border:1px dashed var(--rule-hi);border-radius:4px;overflow:hidden;margin-bottom:1rem}
-  .frame .tag{font-size:.55rem;letter-spacing:.2em;text-transform:uppercase;color:var(--paper-dim);padding:.3rem .6rem;background:var(--ink);display:flex;justify-content:space-between}
-  .frame .tag .h{color:var(--signal-deep)}
+  .frame .tag{font-size:.55rem;letter-spacing:.2em;text-transform:uppercase;color:var(--paper-dim);padding:.3rem .6rem;background:var(--ink)}
   .backlink{display:inline-block;margin-bottom:1.5rem;color:var(--paper-mute);font-size:.7rem;letter-spacing:.15em;text-transform:uppercase;text-decoration:none;border:1px solid var(--rule);padding:.3rem .7rem;border-radius:3px}
   .backlink:hover{color:var(--signal);border-color:var(--signal-deep)}
 
-  /* ---- shared primitives (lifted from player.css) ---- */
+  /* ---- shared primitives ---- */
   .led{width:7px;height:7px;border-radius:50%;display:inline-block;vertical-align:middle;margin-right:.4rem;background:#3a424e}
   .led.on{background:var(--signal);box-shadow:0 0 8px rgba(159,230,173,.7)}
   .led.amber{background:var(--warn);box-shadow:0 0 8px rgba(240,168,48,.6)}
 
-  /* ---- two-tier header ---- */
   .hdr{background:linear-gradient(180deg,var(--ink-2),var(--ink-3));border-bottom:1px solid var(--rule);
        box-shadow:inset 0 1px 0 rgba(255,255,255,.04),inset 0 -1px 0 rgba(0,0,0,.5)}
   .strip{display:flex;align-items:stretch;border-bottom:1px solid var(--rule);
@@ -43,41 +41,56 @@
   .chip .mint{color:var(--signal)}
   .strip .pass{margin-left:auto;border-right:0;border-left:1px solid var(--rule);padding:0}
   .strip select{background:linear-gradient(180deg,#1d2129,#131820);border:0;color:#9aa3b1;font-family:var(--mono);
-        font-size:.6rem;font-weight:500;letter-spacing:.2em;text-transform:uppercase;cursor:pointer;
-        padding:.4rem 1rem;height:100%}
+        font-size:.6rem;font-weight:500;letter-spacing:.2em;text-transform:uppercase;cursor:pointer;padding:.4rem 1rem;height:100%}
 
   .ctl{display:flex;align-items:stretch}
-  .btn{background:linear-gradient(180deg,#1d2129,#131820);border:0;border-right:1px solid var(--rule);color:#8a92a0;
-       font-family:var(--mono);font-size:.64rem;font-weight:500;letter-spacing:.22em;text-transform:uppercase;
-       cursor:pointer;padding:0 1.05rem;display:inline-flex;align-items:center;gap:.5rem}
-  .btn.primary{color:var(--signal)} .btn.primary .led{background:var(--signal);box-shadow:0 0 9px rgba(159,230,173,.8)}
-  .btn.warn{color:#b89260} .btn.warn .led{background:#b89260}
-  .group{display:flex;align-items:stretch}
-  .group.left .btn:first-child{border-left:0}
   .title{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
        text-align:center;background:var(--ink);box-shadow:inset 0 0 40px rgba(0,0,0,.65);
        border-left:1px solid var(--rule);border-right:1px solid var(--rule);padding:.45rem 1rem}
   .title .k{font-size:.5rem;letter-spacing:.3em;text-transform:uppercase;color:var(--paper-mute);margin-bottom:.2rem}
-  .title .name{font-size:var(--tf,1.35rem);font-weight:600;letter-spacing:.02em;color:var(--paper);
+  .title .name{font-size:1.35rem;font-weight:600;letter-spacing:.02em;color:var(--paper);
        white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+  .group{display:flex;align-items:stretch}
 
-  /* viewer "centered" variant: 3-col grid keeps the title dead-center
-     while the tools stay pinned to the right edge */
-  .ctl.centered{display:grid;grid-template-columns:1fr auto 1fr}
-  .ctl.centered .title{grid-column:2}
-  .ctl.centered .group{grid-column:3;justify-self:end}
+  /* base button */
+  .btn{background:linear-gradient(180deg,#1d2129,#131820);border:0;border-right:1px solid var(--rule);color:#8a92a0;
+       font-family:var(--mono);font-size:.64rem;font-weight:500;letter-spacing:.22em;text-transform:uppercase;
+       cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:.5rem;padding:0 1.05rem}
+  .group.left .btn:first-child{border-left:0}
+  .btn svg{width:18px;height:18px;display:block;flex:none}
+
+  /* compact icon-only button — the smaller view tools */
+  .ibtn{width:46px;padding:0;color:#7e8794}
+  .ibtn:hover{color:var(--paper);background:linear-gradient(180deg,#222833,#161b22)}
+  .ibtn.warn{color:#a07a48}.ibtn.warn:hover{color:var(--warn)}
+
+  /* transport — primary, lit when active */
+  .ibtn.primary{color:var(--signal);background:linear-gradient(180deg,#1c2a22,#141d18)}
+  .ibtn.primary svg{filter:drop-shadow(0 0 5px rgba(159,230,173,.55))}
+  .ibtn.idle{color:#7e8794;background:linear-gradient(180deg,#1d2129,#131820)}
+  .tbtn{padding:0 1rem;gap:.55rem}
+  .tbtn svg{width:14px;height:14px}
 </style>
 </head>
 <body>
+<!-- icon sprite -->
+<svg style="display:none" aria-hidden="true"><defs>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" fill="currentColor"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 24 24"><rect x="6" y="5" width="4" height="14" fill="currentColor"/><rect x="14" y="5" width="4" height="14" fill="currentColor"/></symbol>
+  <symbol id="i-vol" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16.5 8.5a5 5 0 010 7"/></symbol>
+  <symbol id="i-fit" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="6" width="18" height="12" rx="1"/><path d="M3 10.5h18M3 13.5h18" opacity=".45"/></symbol>
+  <symbol id="i-fs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></symbol>
+  <symbol id="i-admin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="8" x2="20" y2="8"/><circle cx="9" cy="8" r="2.4" fill="currentColor" stroke="none"/><line x1="4" y1="16" x2="20" y2="16"/><circle cx="15" cy="16" r="2.4" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-exit" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4H5v16h9M11 12h9M16 8l4 4-4 4"/></symbol>
+</defs></svg>
+
 <a class="backlink" href="/admin">&larr; back to admin</a>
-<h1>Header fine-tuning — title size &amp; viewer box</h1>
-<p class="cap">Same chosen two-tier layout, with <b>Give&nbsp;Remote&nbsp;→</b> as the hand-off wording. Pick a <b>title size</b> from §1 and a <b>viewer center-box</b> treatment from §2. Each frame's tag shows the resulting <b>Tier&nbsp;2 (control-row) height</b> — bigger title = taller bar = a little less video.</p>
+<h1>Header buttons — transport symbols &amp; compact view tools</h1>
+<p class="cap">Locked: title <b>1.35rem</b>, viewer box <b>A (stretch)</b>, hand-off <b>Give&nbsp;Remote&nbsp;→</b>. These three variants differ only in <b>how transport works</b>; all share the new <b>compact icon-only view tools</b> (Volume / Fit / Fullscreen) — 46px squares instead of wide text buttons. Hover any icon for its tooltip.</p>
 
-<h2>1 · Title box size (host view)</h2>
-<p class="cap">Four sizes, smallest to largest. Everything else is identical. Watch the control-row height climb on the right side of each tag.</p>
-
-<h3>S — 1.15rem</h3>
-<div class="frame" data-h><div class="tag"><span>desktop · host</span><span></span></div>
+<h2>1 · Two icon buttons (Play / Pause, the active one lit)</h2>
+<p class="cap">Closest to today's model — two separate buttons, keeping the green "is it playing" signal. Here it's playing, so Play is lit and Pause is idle.</p>
+<div class="frame"><div class="tag">desktop · host</div>
   <div class="hdr">
     <div class="strip">
       <div class="chip"><span class="led on"></span><span class="k">role</span> <span class="mint">Host</span></div>
@@ -85,18 +98,28 @@
       <div class="chip"><span class="k">sync</span> locked</div>
       <div class="chip"><span class="k">audience</span> 4</div>
       <div class="chip"><span class="k">user bw / total</span> 2.1 / 9.4 Mbps</div>
-      <div class="chip pass"><select><option>Give Remote →</option><option>Bob</option><option>Carol</option></select></div>
+      <div class="chip pass"><select><option>Give Remote →</option><option>Bob</option></select></div>
     </div>
-    <div class="ctl" style="--tf:1.15rem">
-      <div class="group left"><button class="btn primary"><span class="led on"></span>Run</button><button class="btn"><span class="led"></span>Pause</button></div>
+    <div class="ctl">
+      <div class="group left">
+        <button class="btn ibtn primary" title="Play"><svg><use href="#i-play"/></svg></button>
+        <button class="btn ibtn idle" title="Pause"><svg><use href="#i-pause"/></svg></button>
+      </div>
       <div class="title"><div class="k">Now playing</div><div class="name">Blade Runner 2049</div></div>
-      <div class="group"><button class="btn">Vol</button><button class="btn"><span class="led"></span>Fit</button><button class="btn"><span class="led"></span>⛶</button><button class="btn"><span class="led"></span>Admin</button><button class="btn warn"><span class="led"></span>Exit</button></div>
+      <div class="group">
+        <button class="btn ibtn" title="Volume"><svg><use href="#i-vol"/></svg></button>
+        <button class="btn ibtn" title="Fit / fill screen"><svg><use href="#i-fit"/></svg></button>
+        <button class="btn ibtn" title="Fullscreen"><svg><use href="#i-fs"/></svg></button>
+        <button class="btn ibtn" title="Admin panel"><svg><use href="#i-admin"/></svg></button>
+        <button class="btn ibtn warn" title="Exit to lobby"><svg><use href="#i-exit"/></svg></button>
+      </div>
     </div>
   </div>
 </div>
 
-<h3>M — 1.45rem</h3>
-<div class="frame" data-h><div class="tag"><span>desktop · host</span><span></span></div>
+<h2>2 · Single play/pause toggle (one button, flips with state)</h2>
+<p class="cap">The standard media-player pattern: one button shows ⏸ while playing (press to pause), ▶ while paused. Frees a slot and is unambiguous. Shown mid-playback (⏸).</p>
+<div class="frame"><div class="tag">desktop · host</div>
   <div class="hdr">
     <div class="strip">
       <div class="chip"><span class="led on"></span><span class="k">role</span> <span class="mint">Host</span></div>
@@ -104,18 +127,27 @@
       <div class="chip"><span class="k">sync</span> locked</div>
       <div class="chip"><span class="k">audience</span> 4</div>
       <div class="chip"><span class="k">user bw / total</span> 2.1 / 9.4 Mbps</div>
-      <div class="chip pass"><select><option>Give Remote →</option><option>Bob</option><option>Carol</option></select></div>
+      <div class="chip pass"><select><option>Give Remote →</option><option>Bob</option></select></div>
     </div>
-    <div class="ctl" style="--tf:1.45rem">
-      <div class="group left"><button class="btn primary"><span class="led on"></span>Run</button><button class="btn"><span class="led"></span>Pause</button></div>
+    <div class="ctl">
+      <div class="group left">
+        <button class="btn ibtn primary" title="Pause" style="width:54px"><svg><use href="#i-pause"/></svg></button>
+      </div>
       <div class="title"><div class="k">Now playing</div><div class="name">Blade Runner 2049</div></div>
-      <div class="group"><button class="btn">Vol</button><button class="btn"><span class="led"></span>Fit</button><button class="btn"><span class="led"></span>⛶</button><button class="btn"><span class="led"></span>Admin</button><button class="btn warn"><span class="led"></span>Exit</button></div>
+      <div class="group">
+        <button class="btn ibtn" title="Volume"><svg><use href="#i-vol"/></svg></button>
+        <button class="btn ibtn" title="Fit / fill screen"><svg><use href="#i-fit"/></svg></button>
+        <button class="btn ibtn" title="Fullscreen"><svg><use href="#i-fs"/></svg></button>
+        <button class="btn ibtn" title="Admin panel"><svg><use href="#i-admin"/></svg></button>
+        <button class="btn ibtn warn" title="Exit to lobby"><svg><use href="#i-exit"/></svg></button>
+      </div>
     </div>
   </div>
 </div>
 
-<h3>L — 1.8rem</h3>
-<div class="frame" data-h><div class="tag"><span>desktop · host</span><span></span></div>
+<h2>3 · Symbol + label transport (icon with a word), icon-only tools</h2>
+<p class="cap">If you want the transport to stay self-explanatory: ▶&nbsp;Play / ⏸&nbsp;Pause keep a word; only the secondary tools shrink to icons. A middle ground between today and pure icons.</p>
+<div class="frame"><div class="tag">desktop · host</div>
   <div class="hdr">
     <div class="strip">
       <div class="chip"><span class="led on"></span><span class="k">role</span> <span class="mint">Host</span></div>
@@ -123,40 +155,28 @@
       <div class="chip"><span class="k">sync</span> locked</div>
       <div class="chip"><span class="k">audience</span> 4</div>
       <div class="chip"><span class="k">user bw / total</span> 2.1 / 9.4 Mbps</div>
-      <div class="chip pass"><select><option>Give Remote →</option><option>Bob</option><option>Carol</option></select></div>
+      <div class="chip pass"><select><option>Give Remote →</option><option>Bob</option></select></div>
     </div>
-    <div class="ctl" style="--tf:1.8rem">
-      <div class="group left"><button class="btn primary"><span class="led on"></span>Run</button><button class="btn"><span class="led"></span>Pause</button></div>
+    <div class="ctl">
+      <div class="group left">
+        <button class="btn tbtn primary" title="Play"><svg><use href="#i-play"/></svg>Play</button>
+        <button class="btn tbtn idle" title="Pause"><svg><use href="#i-pause"/></svg>Pause</button>
+      </div>
       <div class="title"><div class="k">Now playing</div><div class="name">Blade Runner 2049</div></div>
-      <div class="group"><button class="btn">Vol</button><button class="btn"><span class="led"></span>Fit</button><button class="btn"><span class="led"></span>⛶</button><button class="btn"><span class="led"></span>Admin</button><button class="btn warn"><span class="led"></span>Exit</button></div>
+      <div class="group">
+        <button class="btn ibtn" title="Volume"><svg><use href="#i-vol"/></svg></button>
+        <button class="btn ibtn" title="Fit / fill screen"><svg><use href="#i-fit"/></svg></button>
+        <button class="btn ibtn" title="Fullscreen"><svg><use href="#i-fs"/></svg></button>
+        <button class="btn ibtn" title="Admin panel"><svg><use href="#i-admin"/></svg></button>
+        <button class="btn ibtn warn" title="Exit to lobby"><svg><use href="#i-exit"/></svg></button>
+      </div>
     </div>
   </div>
 </div>
 
-<h3>XL — 2.2rem</h3>
-<div class="frame" data-h><div class="tag"><span>desktop · host</span><span></span></div>
-  <div class="hdr">
-    <div class="strip">
-      <div class="chip"><span class="led on"></span><span class="k">role</span> <span class="mint">Host</span></div>
-      <div class="chip"><span class="k">driving</span> <span class="mint">Alice (you)</span></div>
-      <div class="chip"><span class="k">sync</span> locked</div>
-      <div class="chip"><span class="k">audience</span> 4</div>
-      <div class="chip"><span class="k">user bw / total</span> 2.1 / 9.4 Mbps</div>
-      <div class="chip pass"><select><option>Give Remote →</option><option>Bob</option><option>Carol</option></select></div>
-    </div>
-    <div class="ctl" style="--tf:2.2rem">
-      <div class="group left"><button class="btn primary"><span class="led on"></span>Run</button><button class="btn"><span class="led"></span>Pause</button></div>
-      <div class="title"><div class="k">Now playing</div><div class="name">Blade Runner 2049</div></div>
-      <div class="group"><button class="btn">Vol</button><button class="btn"><span class="led"></span>Fit</button><button class="btn"><span class="led"></span>⛶</button><button class="btn"><span class="led"></span>Admin</button><button class="btn warn"><span class="led"></span>Exit</button></div>
-    </div>
-  </div>
-</div>
-
-<h2>2 · Viewer center-box treatment</h2>
-<p class="cap">A non-driving viewer has no transport buttons on the left, so the title box has free space there. Both shown at the M (1.45rem) size for comparison.</p>
-
-<h3>A — Stretch left (box fills to the left edge, text centered inside it)</h3>
-<div class="frame"><div class="tag"><span>desktop · viewer</span><span></span></div>
+<h2>Viewer view (whichever transport you pick, viewers get no transport)</h2>
+<p class="cap">Box A stretch, compact icon tools, no transport / Pass / Admin.</p>
+<div class="frame"><div class="tag">desktop · viewer</div>
   <div class="hdr">
     <div class="strip">
       <div class="chip"><span class="led amber"></span><span class="k">role</span> Viewer</div>
@@ -165,40 +185,18 @@
       <div class="chip"><span class="k">audience</span> 4</div>
       <div class="chip"><span class="k">user bw / total</span> 1.8 / 9.4 Mbps</div>
     </div>
-    <div class="ctl" style="--tf:1.45rem">
+    <div class="ctl">
       <div class="title"><div class="k">Now playing</div><div class="name">Blade Runner 2049</div></div>
-      <div class="group"><button class="btn">Vol</button><button class="btn"><span class="led"></span>Fit</button><button class="btn"><span class="led"></span>⛶</button><button class="btn warn"><span class="led"></span>Exit</button></div>
+      <div class="group">
+        <button class="btn ibtn" title="Volume"><svg><use href="#i-vol"/></svg></button>
+        <button class="btn ibtn" title="Fit / fill screen"><svg><use href="#i-fit"/></svg></button>
+        <button class="btn ibtn" title="Fullscreen"><svg><use href="#i-fs"/></svg></button>
+        <button class="btn ibtn warn" title="Exit to lobby"><svg><use href="#i-exit"/></svg></button>
+      </div>
     </div>
   </div>
 </div>
 
-<h3>B — Centered (title pinned to true center, tools at the right edge, symmetric empty gutter on the left)</h3>
-<div class="frame"><div class="tag"><span>desktop · viewer</span><span></span></div>
-  <div class="hdr">
-    <div class="strip">
-      <div class="chip"><span class="led amber"></span><span class="k">role</span> Viewer</div>
-      <div class="chip"><span class="k">driving</span> <span class="mint">Alice</span></div>
-      <div class="chip"><span class="k">sync</span> following</div>
-      <div class="chip"><span class="k">audience</span> 4</div>
-      <div class="chip"><span class="k">user bw / total</span> 1.8 / 9.4 Mbps</div>
-    </div>
-    <div class="ctl centered" style="--tf:1.45rem">
-      <div class="title"><div class="k">Now playing</div><div class="name">Blade Runner 2049</div></div>
-      <div class="group"><button class="btn">Vol</button><button class="btn"><span class="led"></span>Fit</button><button class="btn"><span class="led"></span>⛶</button><button class="btn warn"><span class="led"></span>Exit</button></div>
-    </div>
-  </div>
-</div>
-
-<p class="cap" style="margin-top:1.5rem">Tell me a <b>title size</b> (S / M / L / XL, or a specific rem) and a <b>viewer box</b> (A stretch / B centered) and I'll lock the design and write the spec.</p>
-
-<script>
-  // Annotate each §1 frame's tag with its control-row height.
-  for (const f of document.querySelectorAll('.frame[data-h]')) {
-    const ctl = f.querySelector('.ctl');
-    const slot = f.querySelector('.tag .h, .tag span:last-child');
-    if (ctl && slot) slot.textContent = 'Tier 2 height: ' + Math.round(ctl.getBoundingClientRect().height) + 'px';
-    if (slot) slot.classList.add('h');
-  }
-</script>
+<p class="cap" style="margin-top:1.5rem">Pick a <b>transport style</b> (1 two-buttons / 2 single-toggle / 3 symbol+label) and confirm the <b>icon set</b> reads OK (Volume / Fit / Fullscreen / Admin / Exit). Then I lock the design and write the spec.</p>
 </body>
 </html>
