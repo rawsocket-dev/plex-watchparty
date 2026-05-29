@@ -3,6 +3,11 @@ const titleEl = document.getElementById('title');
 const syncEl  = document.getElementById('sync');
 const joinEl  = document.getElementById('join');
 const bwEl    = document.getElementById('bw');
+// #wrap is the fullscreen target and carries the .playing / .fill / .fs
+// state classes the top-bar status lights key off. Declared up here with
+// the other element refs so applyState (and any early caller) can touch
+// it without tripping a temporal-dead-zone error.
+const wrapEl  = document.getElementById('wrap');
 
 // Default to host until /api/whoami answers. Viewers can't seek or
 // drive playback; their scrub-bar interactions silently no-op and
@@ -739,8 +744,8 @@ document.getElementById('library-link').addEventListener('click', (e) => {
 // Fullscreen toggle. Fullscreens #wrap (not the bare <video>) so the
 // top bar + scrub bar stay visible — same chrome as windowed mode,
 // just bigger. The Fullscreen API is per-tab and entirely client-
-// side; nothing about it touches the host/viewer sync.
-const wrapEl = document.getElementById('wrap');
+// side; nothing about it touches the host/viewer sync. (wrapEl is
+// declared with the other element refs at the top of this file.)
 document.getElementById('fullscreen').onclick = () => {
   if (document.fullscreenElement) {
     document.exitFullscreen();
