@@ -263,6 +263,8 @@ body.viewer .role-cell .r-viewer { display: inline; }
 #admin-link[hidden] { display: none; }
 #host-cell[hidden], #handoff[hidden] { display: none; }
 .host-cell .v { color: var(--signal); }
+/* Chevron is wired up by the hand-off picker (later task); inert until then. */
+.host-cell .chev { display: none; }
 #handoff {
   background: linear-gradient(180deg, #1d2129 0%, #131820 100%);
   border: 0; border-left: 1px solid var(--rule);
@@ -270,7 +272,7 @@ body.viewer .role-cell .r-viewer { display: inline; }
   font-size: .6rem; letter-spacing: .15em; cursor: pointer;
 }
 
-/* Volume control — cell-btn footprint with SVG speaker icon and a
+/* Volume control — ibtn footprint with SVG speaker icon and a
    hover/focus-revealed slider popover. */
 .vol-cell {
   position: relative;
