@@ -147,11 +147,15 @@ ALLOWED_EMAILS=you@example.com go run .
 
 **Roles:**
 
-There are three tiers. Everyone in `ALLOWED_EMAILS` can sign in and watch
-(*viewer*). Anyone whose email also appears in `HOST_EMAILS` can pick a movie,
-play, pause, and seek (*host*); if `HOST_EMAILS` is empty, every allowed user
-can drive. Anyone in `ADMIN_EMAILS` can open the `/admin` maintenance panel
-after signing in.
+Everyone in `ALLOWED_EMAILS` can sign in and watch (*viewer*). `HOST_EMAILS`
+lists who *may* drive, but at any moment exactly one of them — the **active
+host** — actually holds the controls (pick / play / pause / seek). The first
+eligible person to join becomes the active host; if they leave, control passes
+to a random remaining eligible viewer. An admin can reassign the active host
+from the `/admin` roster, and the current host can "pass the remote" to another
+viewer from the player; everyone else sees a **Host** indicator of who's
+driving. If `HOST_EMAILS` is empty, every signed-in user is eligible. Anyone in
+`ADMIN_EMAILS` can open the `/admin` maintenance panel after signing in.
 
 [Finding your Plex token.](https://support.plex.tv/articles/204059436-finding-an-authentication-token-x-plex-token/)
 
