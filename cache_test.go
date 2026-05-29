@@ -222,6 +222,32 @@ func TestCacheClearAll(t *testing.T) {
 	}
 }
 
+func TestCacheClearResetsHitRate(t *testing.T) {
+	dir := t.TempDir()
+	c := NewSegmentCache(dir, 10<<20)
+	c.RecordHit()
+	c.RecordHit()
+	c.RecordMiss()
+	if s := c.Stats(); s.Hits != 2 || s.Misses != 1 {
+		t.Fatalf("pre-clear: hits=%d misses=%d, want 2/1", s.Hits, s.Misses)
+	}
+	c.Clear()
+	if s := c.Stats(); s.Hits != 0 || s.Misses != 0 {
+		t.Errorf("after Clear: hits=%d misses=%d, want both 0 (clear-all resets the hit-rate stats)", s.Hits, s.Misses)
+	}
+}
+
+func TestCacheClearMovieKeepsHitRate(t *testing.T) {
+	dir := t.TempDir()
+	c := NewSegmentCache(dir, 10<<20)
+	c.RecordHit()
+	c.RecordMiss()
+	c.ClearMovie("nope") // partial clear must not touch the global counters
+	if s := c.Stats(); s.Hits != 1 || s.Misses != 1 {
+		t.Errorf("after ClearMovie: hits=%d misses=%d, want 1/1 (partial clear leaves counters)", s.Hits, s.Misses)
+	}
+}
+
 func TestCacheClearMovie(t *testing.T) {
 	dir := t.TempDir()
 	c := NewSegmentCache(dir, 10<<20)

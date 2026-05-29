@@ -393,6 +393,12 @@ func (c *SegmentCache) Clear() (entries int, bytes int64) {
 	c.lru = list.New()
 	c.totalBytes = 0
 	c.rangesCache = make(map[string][][2]float64)
+	// Clearing the whole cache also resets the hit-rate counters: the
+	// lifetime tally is meaningless against a now-empty cache, so the
+	// admin panel shows "since last clear" rather than stale boot-time
+	// history. (ClearMovie, a partial clear, intentionally leaves them.)
+	c.hits.Store(0)
+	c.misses.Store(0)
 	return entries, bytes
 }
 
