@@ -10,7 +10,7 @@ window.escapeHTML = function (s) {
   })[c]);
 };
 
-// fetchWhoami returns {role, hostEnabled, name}. Cached in
+// fetchWhoami returns {email, role, isAdmin, name}. Cached in
 // sessionStorage for 60s so page-to-page navigation (library →
 // /watch → waiting room) doesn't refetch on every load.
 window.fetchWhoami = async function () {

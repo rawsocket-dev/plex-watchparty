@@ -50,8 +50,8 @@ async function api(path, opts) {
   opts.credentials = 'same-origin';
   const r = await fetch(path, opts);
   if (r.status === 401) {
-    // Cookie expired — bounce to sign-in.
-    window.location.href = '/admin/login';
+    // Cookie expired — bounce to the shared Google sign-in.
+    window.location.href = '/login';
     throw new Error('unauthorized');
   }
   if (!r.ok) {
