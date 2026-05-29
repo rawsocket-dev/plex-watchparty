@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>plex-watchparty · player header redesign — chosen direction</title>
+<title>plex-watchparty · header fine-tuning</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
@@ -17,11 +17,13 @@
   body{margin:0;background:var(--ink-3);color:var(--paper);font-family:var(--mono);padding:2rem;line-height:1.5}
   h1{font-weight:600;letter-spacing:.04em;font-size:1.2rem}
   h1::before{content:'// ';color:var(--signal)}
-  h2{font-weight:600;font-size:.9rem;letter-spacing:.1em;text-transform:uppercase;color:var(--signal);margin:2.5rem 0 .3rem}
-  .cap{color:var(--paper-mute);font-size:.78rem;max-width:74ch;margin:.2rem 0 .9rem}
+  h2{font-weight:600;font-size:.9rem;letter-spacing:.1em;text-transform:uppercase;color:var(--signal);margin:2.6rem 0 .3rem}
+  h3{font-weight:500;font-size:.62rem;letter-spacing:.25em;text-transform:uppercase;color:var(--paper-mute);margin:1.5rem 0 .4rem}
+  .cap{color:var(--paper-mute);font-size:.78rem;max-width:78ch;margin:.2rem 0 .9rem}
   .cap b{color:var(--paper)}
-  .frame{border:1px dashed var(--rule-hi);border-radius:4px;overflow:hidden;margin-bottom:.5rem}
-  .frame .tag{font-size:.55rem;letter-spacing:.2em;text-transform:uppercase;color:var(--paper-dim);padding:.3rem .6rem;background:var(--ink)}
+  .frame{border:1px dashed var(--rule-hi);border-radius:4px;overflow:hidden;margin-bottom:1rem}
+  .frame .tag{font-size:.55rem;letter-spacing:.2em;text-transform:uppercase;color:var(--paper-dim);padding:.3rem .6rem;background:var(--ink);display:flex;justify-content:space-between}
+  .frame .tag .h{color:var(--signal-deep)}
   .backlink{display:inline-block;margin-bottom:1.5rem;color:var(--paper-mute);font-size:.7rem;letter-spacing:.15em;text-transform:uppercase;text-decoration:none;border:1px solid var(--rule);padding:.3rem .7rem;border-radius:3px}
   .backlink:hover{color:var(--signal);border-color:var(--signal-deep)}
 
@@ -33,22 +35,18 @@
   /* ---- two-tier header ---- */
   .hdr{background:linear-gradient(180deg,var(--ink-2),var(--ink-3));border-bottom:1px solid var(--rule);
        box-shadow:inset 0 1px 0 rgba(255,255,255,.04),inset 0 -1px 0 rgba(0,0,0,.5)}
-
-  /* tier 1: status strip */
   .strip{display:flex;align-items:stretch;border-bottom:1px solid var(--rule);
          background:repeating-linear-gradient(90deg,rgba(255,255,255,.014) 0 1px,transparent 1px 3px)}
   .chip{display:inline-flex;align-items:center;gap:.45rem;font-size:.7rem;letter-spacing:.08em;color:var(--paper);
         padding:.4rem .85rem;border-right:1px solid var(--rule);white-space:nowrap}
   .chip .k{color:var(--paper-mute);font-size:.5rem;letter-spacing:.22em;text-transform:uppercase}
   .chip .mint{color:var(--signal)}
-  .grow{flex:1;min-width:0}
   .strip .pass{margin-left:auto;border-right:0;border-left:1px solid var(--rule);padding:0}
   .strip select{background:linear-gradient(180deg,#1d2129,#131820);border:0;color:#9aa3b1;font-family:var(--mono);
         font-size:.6rem;font-weight:500;letter-spacing:.2em;text-transform:uppercase;cursor:pointer;
         padding:.4rem 1rem;height:100%}
 
-  /* tier 2: control row */
-  .ctl{display:flex;align-items:stretch;min-height:60px}
+  .ctl{display:flex;align-items:stretch}
   .btn{background:linear-gradient(180deg,#1d2129,#131820);border:0;border-right:1px solid var(--rule);color:#8a92a0;
        font-family:var(--mono);font-size:.64rem;font-weight:500;letter-spacing:.22em;text-transform:uppercase;
        cursor:pointer;padding:0 1.05rem;display:inline-flex;align-items:center;gap:.5rem}
@@ -56,23 +54,30 @@
   .btn.warn{color:#b89260} .btn.warn .led{background:#b89260}
   .group{display:flex;align-items:stretch}
   .group.left .btn:first-child{border-left:0}
-  .ctl .title{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  .title{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
        text-align:center;background:var(--ink);box-shadow:inset 0 0 40px rgba(0,0,0,.65);
-       border-left:1px solid var(--rule);border-right:1px solid var(--rule);padding:.3rem 1rem}
-  .ctl .title .k{font-size:.5rem;letter-spacing:.3em;text-transform:uppercase;color:var(--paper-mute);margin-bottom:.15rem}
-  .ctl .title .name{font-size:1.35rem;font-weight:600;letter-spacing:.02em;color:var(--paper);
+       border-left:1px solid var(--rule);border-right:1px solid var(--rule);padding:.45rem 1rem}
+  .title .k{font-size:.5rem;letter-spacing:.3em;text-transform:uppercase;color:var(--paper-mute);margin-bottom:.2rem}
+  .title .name{font-size:var(--tf,1.35rem);font-weight:600;letter-spacing:.02em;color:var(--paper);
        white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
-  .spacer{flex:0 0 0}
+
+  /* viewer "centered" variant: 3-col grid keeps the title dead-center
+     while the tools stay pinned to the right edge */
+  .ctl.centered{display:grid;grid-template-columns:1fr auto 1fr}
+  .ctl.centered .title{grid-column:2}
+  .ctl.centered .group{grid-column:3;justify-self:end}
 </style>
 </head>
 <body>
 <a class="backlink" href="/admin">&larr; back to admin</a>
-<h1>Player header — chosen direction (refined B)</h1>
-<p class="cap">Two-tier layout. <b>Tier&nbsp;1</b> is a thin status strip: role · who's driving · sync · audience · bandwidth, with <b>Pass&nbsp;control moved here</b> on the right, next to the "driving" indicator it affects. <b>Tier&nbsp;2</b> is the control row: transport on the left, a <b>large centered movie-title box</b> for easy reading, and view/admin/exit on the right. Desktop only — phones aren't a target.</p>
+<h1>Header fine-tuning — title size &amp; viewer box</h1>
+<p class="cap">Same chosen two-tier layout, with <b>Give&nbsp;Remote&nbsp;→</b> as the hand-off wording. Pick a <b>title size</b> from §1 and a <b>viewer center-box</b> treatment from §2. Each frame's tag shows the resulting <b>Tier&nbsp;2 (control-row) height</b> — bigger title = taller bar = a little less video.</p>
 
-<h2>Host view (busiest)</h2>
-<p class="cap">The active host sees everything: transport, view tools, Pass control, Admin, Exit.</p>
-<div class="frame"><div class="tag">desktop · active host</div>
+<h2>1 · Title box size (host view)</h2>
+<p class="cap">Four sizes, smallest to largest. Everything else is identical. Watch the control-row height climb on the right side of each tag.</p>
+
+<h3>S — 1.15rem</h3>
+<div class="frame" data-h><div class="tag"><span>desktop · host</span><span></span></div>
   <div class="hdr">
     <div class="strip">
       <div class="chip"><span class="led on"></span><span class="k">role</span> <span class="mint">Host</span></div>
@@ -80,28 +85,78 @@
       <div class="chip"><span class="k">sync</span> locked</div>
       <div class="chip"><span class="k">audience</span> 4</div>
       <div class="chip"><span class="k">user bw / total</span> 2.1 / 9.4 Mbps</div>
-      <div class="chip pass"><select><option>Pass control →</option><option>Bob</option><option>Carol</option></select></div>
+      <div class="chip pass"><select><option>Give Remote →</option><option>Bob</option><option>Carol</option></select></div>
     </div>
-    <div class="ctl">
-      <div class="group left">
-        <button class="btn primary"><span class="led on"></span>Run</button>
-        <button class="btn"><span class="led"></span>Pause</button>
-      </div>
+    <div class="ctl" style="--tf:1.15rem">
+      <div class="group left"><button class="btn primary"><span class="led on"></span>Run</button><button class="btn"><span class="led"></span>Pause</button></div>
       <div class="title"><div class="k">Now playing</div><div class="name">Blade Runner 2049</div></div>
-      <div class="group">
-        <button class="btn">Vol</button>
-        <button class="btn"><span class="led"></span>Fit</button>
-        <button class="btn"><span class="led"></span>⛶</button>
-        <button class="btn"><span class="led"></span>Admin</button>
-        <button class="btn warn"><span class="led"></span>Exit</button>
-      </div>
+      <div class="group"><button class="btn">Vol</button><button class="btn"><span class="led"></span>Fit</button><button class="btn"><span class="led"></span>⛶</button><button class="btn"><span class="led"></span>Admin</button><button class="btn warn"><span class="led"></span>Exit</button></div>
     </div>
   </div>
 </div>
 
-<h2>Viewer view</h2>
-<p class="cap">A non-driving viewer: no transport, no Pass control, no Admin. The strip shows who's driving; the title box and view tools (Fit / Fullscreen / Exit) remain. Note it still reads as a deliberate layout, not a row of gaps.</p>
-<div class="frame"><div class="tag">desktop · viewer</div>
+<h3>M — 1.45rem</h3>
+<div class="frame" data-h><div class="tag"><span>desktop · host</span><span></span></div>
+  <div class="hdr">
+    <div class="strip">
+      <div class="chip"><span class="led on"></span><span class="k">role</span> <span class="mint">Host</span></div>
+      <div class="chip"><span class="k">driving</span> <span class="mint">Alice (you)</span></div>
+      <div class="chip"><span class="k">sync</span> locked</div>
+      <div class="chip"><span class="k">audience</span> 4</div>
+      <div class="chip"><span class="k">user bw / total</span> 2.1 / 9.4 Mbps</div>
+      <div class="chip pass"><select><option>Give Remote →</option><option>Bob</option><option>Carol</option></select></div>
+    </div>
+    <div class="ctl" style="--tf:1.45rem">
+      <div class="group left"><button class="btn primary"><span class="led on"></span>Run</button><button class="btn"><span class="led"></span>Pause</button></div>
+      <div class="title"><div class="k">Now playing</div><div class="name">Blade Runner 2049</div></div>
+      <div class="group"><button class="btn">Vol</button><button class="btn"><span class="led"></span>Fit</button><button class="btn"><span class="led"></span>⛶</button><button class="btn"><span class="led"></span>Admin</button><button class="btn warn"><span class="led"></span>Exit</button></div>
+    </div>
+  </div>
+</div>
+
+<h3>L — 1.8rem</h3>
+<div class="frame" data-h><div class="tag"><span>desktop · host</span><span></span></div>
+  <div class="hdr">
+    <div class="strip">
+      <div class="chip"><span class="led on"></span><span class="k">role</span> <span class="mint">Host</span></div>
+      <div class="chip"><span class="k">driving</span> <span class="mint">Alice (you)</span></div>
+      <div class="chip"><span class="k">sync</span> locked</div>
+      <div class="chip"><span class="k">audience</span> 4</div>
+      <div class="chip"><span class="k">user bw / total</span> 2.1 / 9.4 Mbps</div>
+      <div class="chip pass"><select><option>Give Remote →</option><option>Bob</option><option>Carol</option></select></div>
+    </div>
+    <div class="ctl" style="--tf:1.8rem">
+      <div class="group left"><button class="btn primary"><span class="led on"></span>Run</button><button class="btn"><span class="led"></span>Pause</button></div>
+      <div class="title"><div class="k">Now playing</div><div class="name">Blade Runner 2049</div></div>
+      <div class="group"><button class="btn">Vol</button><button class="btn"><span class="led"></span>Fit</button><button class="btn"><span class="led"></span>⛶</button><button class="btn"><span class="led"></span>Admin</button><button class="btn warn"><span class="led"></span>Exit</button></div>
+    </div>
+  </div>
+</div>
+
+<h3>XL — 2.2rem</h3>
+<div class="frame" data-h><div class="tag"><span>desktop · host</span><span></span></div>
+  <div class="hdr">
+    <div class="strip">
+      <div class="chip"><span class="led on"></span><span class="k">role</span> <span class="mint">Host</span></div>
+      <div class="chip"><span class="k">driving</span> <span class="mint">Alice (you)</span></div>
+      <div class="chip"><span class="k">sync</span> locked</div>
+      <div class="chip"><span class="k">audience</span> 4</div>
+      <div class="chip"><span class="k">user bw / total</span> 2.1 / 9.4 Mbps</div>
+      <div class="chip pass"><select><option>Give Remote →</option><option>Bob</option><option>Carol</option></select></div>
+    </div>
+    <div class="ctl" style="--tf:2.2rem">
+      <div class="group left"><button class="btn primary"><span class="led on"></span>Run</button><button class="btn"><span class="led"></span>Pause</button></div>
+      <div class="title"><div class="k">Now playing</div><div class="name">Blade Runner 2049</div></div>
+      <div class="group"><button class="btn">Vol</button><button class="btn"><span class="led"></span>Fit</button><button class="btn"><span class="led"></span>⛶</button><button class="btn"><span class="led"></span>Admin</button><button class="btn warn"><span class="led"></span>Exit</button></div>
+    </div>
+  </div>
+</div>
+
+<h2>2 · Viewer center-box treatment</h2>
+<p class="cap">A non-driving viewer has no transport buttons on the left, so the title box has free space there. Both shown at the M (1.45rem) size for comparison.</p>
+
+<h3>A — Stretch left (box fills to the left edge, text centered inside it)</h3>
+<div class="frame"><div class="tag"><span>desktop · viewer</span><span></span></div>
   <div class="hdr">
     <div class="strip">
       <div class="chip"><span class="led amber"></span><span class="k">role</span> Viewer</div>
@@ -110,24 +165,40 @@
       <div class="chip"><span class="k">audience</span> 4</div>
       <div class="chip"><span class="k">user bw / total</span> 1.8 / 9.4 Mbps</div>
     </div>
-    <div class="ctl">
+    <div class="ctl" style="--tf:1.45rem">
       <div class="title"><div class="k">Now playing</div><div class="name">Blade Runner 2049</div></div>
-      <div class="group">
-        <button class="btn">Vol</button>
-        <button class="btn"><span class="led"></span>Fit</button>
-        <button class="btn"><span class="led"></span>⛶</button>
-        <button class="btn warn"><span class="led"></span>Exit</button>
-      </div>
+      <div class="group"><button class="btn">Vol</button><button class="btn"><span class="led"></span>Fit</button><button class="btn"><span class="led"></span>⛶</button><button class="btn warn"><span class="led"></span>Exit</button></div>
     </div>
   </div>
 </div>
 
-<h2 style="color:var(--paper-mute)">— what I still need from you —</h2>
-<p class="cap">
-1. <b>Title box size</b> — 1.35rem here. Bigger? Smaller?<br>
-2. <b>Viewer's center box</b> — should it stay centered like the host's, or stretch full-width since there are no transport buttons on its left? (Shown stretched-left here.)<br>
-3. <b>Pass control wording</b> — keep "Pass control →", or "Hand off →" / "Give remote →"?<br>
-If this looks right, say the word and I'll write the spec.
-</p>
+<h3>B — Centered (title pinned to true center, tools at the right edge, symmetric empty gutter on the left)</h3>
+<div class="frame"><div class="tag"><span>desktop · viewer</span><span></span></div>
+  <div class="hdr">
+    <div class="strip">
+      <div class="chip"><span class="led amber"></span><span class="k">role</span> Viewer</div>
+      <div class="chip"><span class="k">driving</span> <span class="mint">Alice</span></div>
+      <div class="chip"><span class="k">sync</span> following</div>
+      <div class="chip"><span class="k">audience</span> 4</div>
+      <div class="chip"><span class="k">user bw / total</span> 1.8 / 9.4 Mbps</div>
+    </div>
+    <div class="ctl centered" style="--tf:1.45rem">
+      <div class="title"><div class="k">Now playing</div><div class="name">Blade Runner 2049</div></div>
+      <div class="group"><button class="btn">Vol</button><button class="btn"><span class="led"></span>Fit</button><button class="btn"><span class="led"></span>⛶</button><button class="btn warn"><span class="led"></span>Exit</button></div>
+    </div>
+  </div>
+</div>
+
+<p class="cap" style="margin-top:1.5rem">Tell me a <b>title size</b> (S / M / L / XL, or a specific rem) and a <b>viewer box</b> (A stretch / B centered) and I'll lock the design and write the spec.</p>
+
+<script>
+  // Annotate each §1 frame's tag with its control-row height.
+  for (const f of document.querySelectorAll('.frame[data-h]')) {
+    const ctl = f.querySelector('.ctl');
+    const slot = f.querySelector('.tag .h, .tag span:last-child');
+    if (ctl && slot) slot.textContent = 'Tier 2 height: ' + Math.round(ctl.getBoundingClientRect().height) + 'px';
+    if (slot) slot.classList.add('h');
+  }
+</script>
 </body>
 </html>
