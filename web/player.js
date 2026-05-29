@@ -15,6 +15,7 @@ const wrapEl  = document.getElementById('wrap');
 // their buttons are hidden via the .viewer body class.
 let isHost = false;            // "is the ACTIVE host" — drives control visibility
 let lastActiveHostName;        // undefined initially
+let myName = '';               // our display name (from whoami) — for the "(you)" label
 function applyWhoami(d) {
   if (!d) return;
   isHost = !!d.isActiveHost;
@@ -27,7 +28,6 @@ fetchWhoami().then(applyWhoami);
 // Hand-off picker: the "Driving" chip (#host-cell) is the trigger. For the
 // active host it opens a popover of connected users; clicking one POSTs to
 // /api/host/handoff. Viewers see the chip read-only (no chevron, no open).
-let myName = '';
 const hostCell    = document.getElementById('host-cell');
 const handoffPop  = document.getElementById('handoff-pop');
 const handoffList = document.getElementById('handoff-list');
@@ -311,7 +311,7 @@ const viewersRosterEl = viewersEl.querySelector('.roster');
 function renderViewers(list) {
   if (!Array.isArray(list) || list.length === 0) {
     viewersEl.hidden = true;
-    if (handoffList) handoffList.innerHTML = '';
+    if (handoffList) { handoffList.innerHTML = ''; closeHandoff(); }
     return;
   }
   viewersEl.hidden = false;

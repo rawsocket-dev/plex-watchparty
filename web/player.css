@@ -266,6 +266,7 @@ body.viewer .role-cell .r-viewer { display: inline; }
 .host-cell .v { color: var(--signal); }
 .host-cell .chev { color: var(--paper-mute); font-size: .6rem; margin-left: .1rem; }
 .host-cell .chev[hidden] { display: none; }
+.host-cell.open .chev { color: var(--signal); }
 .host-cell.click { cursor: pointer; }
 .host-cell.click:hover { background: rgba(159,230,173,.06); }
 body.viewer .host-cell { cursor: default; }
