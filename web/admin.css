@@ -235,6 +235,7 @@ table button.row-action {
 table button.row-action:hover {
   color: var(--danger); border-color: var(--danger);
 }
+.host-badge { color: var(--signal); font-size: .6rem; letter-spacing: .2em; text-transform: uppercase; }
 
 footer {
   padding: 1.5rem clamp(1.25rem, 3vw, 2.5rem) 2rem;

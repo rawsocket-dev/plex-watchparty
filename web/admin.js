@@ -191,7 +191,7 @@ function renderLibrary(l) {
 function renderViewers(viewers) {
   const rows = $('viewer-rows');
   if (!viewers || viewers.length === 0) {
-    rows.innerHTML = '<tr class="empty-row"><td colspan="8">no connections</td></tr>';
+    rows.innerHTML = '<tr class="empty-row"><td colspan="9">no connections</td></tr>';
     return;
   }
   rows.innerHTML = viewers.map(v => {
@@ -216,6 +216,9 @@ function renderViewers(viewers) {
       '<td>' + pos + '</td>' +
       '<td>' + fmtSeconds(v.connectedSec) + '</td>' +
       '<td>' + escapeHTML(v.id) + '</td>' +
+      '<td>' + (v.isActiveHost
+        ? '<span class="host-badge">▶ host</span>'
+        : '<button class="row-action" data-action="make-host" data-id="' + escapeHTML(v.id) + '">Make host</button>') + '</td>' +
       '<td><button class="row-action" data-action="kick" data-id="' + escapeHTML(v.id) + '">Kick</button></td>' +
     '</tr>';
   }).join('');
@@ -297,6 +300,11 @@ document.body.addEventListener('click', (e) => {
     const id = btn.dataset.id;
     if (!confirm('Kick this connection? The viewer\'s browser will auto-reconnect.')) return;
     doAction('kick ' + id, () => api('/admin/api/viewers/kick?id=' + encodeURIComponent(id), {method: 'POST'}));
+  } else if (action === 'make-host') {
+    api('/admin/api/host/set?id=' + encodeURIComponent(btn.dataset.id), { method: 'POST' })
+      .then(() => refresh())
+      .catch(err => setStatus('make-host: ' + err.message, 'err'));
+    return;
   }
 });
 
