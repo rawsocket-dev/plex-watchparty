@@ -380,11 +380,14 @@
     ell.textContent = '.'.repeat(dots);
   }, 420);
 
-  // Subtle role detection so the copy reads right depending on whether
-  // the visitor can do anything about the empty screen.
-  fetchWhoami().then(d => {
-    if (d && d.role === 'host') document.body.classList.add('host');
-  });
+  // Subtle role detection so the copy reads right depending on whether the
+  // visitor can do anything about the empty screen. Keys off the ACTIVE
+  // host (who can actually pick), not mere host-eligibility.
+  let lastActiveHostName;
+  function applyHostRole(d) {
+    document.body.classList.toggle('host', !!(d && d.isActiveHost));
+  }
+  fetchWhoami().then(applyHostRole);
 
   // Resume-after-restart wiring. The server tags every state broadcast
   // with `resume` when no live session is active but a persisted hint
@@ -458,7 +461,15 @@
       setTimeout(() => { window.location.href = '/watch'; }, 350);
       return;
     }
-    if (s && s.resume) {
+    if (!s) return;
+    // Track active-host changes (election / hand-off) so the host copy +
+    // resume controls follow without a reload.
+    const hostName = s.activeHostName || '';
+    if (hostName !== lastActiveHostName) {
+      lastActiveHostName = hostName;
+      fetch('/api/whoami', { cache: 'no-store' }).then(r => r.ok ? r.json() : null).then(applyHostRole).catch(() => {});
+    }
+    if (s.resume) {
       paintResumeHint(s.resume);
     }
   });

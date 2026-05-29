@@ -25,7 +25,8 @@ function bucketFor(title) {
 
 // escapeHTML provided by /static/common.js
 
-let isHost = true; // optimistic until /api/whoami answers
+let isHost = false;       // true only when THIS user is the active host (can pick)
+let lastActiveHostName;   // tracks election / hand-off changes seen over the SSE
 
 // --- Resume-after-restart banner --------------------------------------------
 // Asks the server "is there a persisted resume hint?" — populated after a
@@ -298,15 +299,19 @@ function renderWho(role, name) {
   el.hidden = false;
 }
 
+// applyWhoami sets host UI from whoami. Picking is gated on being the
+// single ACTIVE host (isActiveHost), NOT on host-eligibility — otherwise
+// every eligible friend would see the picker and read as a host. The guest
+// card shows for everyone who isn't currently driving.
+function applyWhoami(d) {
+  isHost = !!(d && d.isActiveHost);
+  renderWho(isHost ? 'host' : 'viewer', d && d.name);
+  document.body.classList.toggle('guest', !isHost);
+  document.getElementById('guest').classList.toggle('show', !isHost);
+}
+
 async function loadWhoami() {
-  const d = await fetchWhoami();
-  if (!d) { renderWho('viewer', 'guest'); return; }
-  isHost = d.role === 'host';
-  renderWho(d.role, d.name);
-  if (!isHost) {
-    document.body.classList.add('guest');
-    document.getElementById('guest').classList.add('show');
-  }
+  applyWhoami(await fetchWhoami());
 }
 
 searchEl.addEventListener('input', applyFilter);
@@ -336,5 +341,13 @@ function renderHere(viewers) {
   ).join('');
 }
 openLiveEvents((s) => {
-  if (s && s.viewers) renderHere(s.viewers);
+  if (!s) return;
+  if (s.viewers) renderHere(s.viewers);
+  // Re-fetch whoami (cache-bypassing) whenever the active host changes, so
+  // the picker / guest card track election + hand-off without a reload.
+  const name = s.activeHostName || '';
+  if (name !== lastActiveHostName) {
+    lastActiveHostName = name;
+    fetch('/api/whoami', { cache: 'no-store' }).then(r => r.ok ? r.json() : null).then(applyWhoami).catch(() => {});
+  }
 });

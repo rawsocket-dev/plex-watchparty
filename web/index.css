@@ -133,6 +133,7 @@ header {
   font-family: var(--mono); font-weight: 500;
   font-size: .82rem; letter-spacing: .03em;
   text-transform: none; color: var(--paper);
+  white-space: nowrap;
 }
 .brand .here .here-roster .role {
   font-size: .55rem; letter-spacing: .25em;

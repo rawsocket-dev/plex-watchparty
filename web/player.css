@@ -45,7 +45,9 @@ html, body {
   opacity: 0; pointer-events: none;
 }
 #wrap.chrome-hidden #scrub { opacity: 0; pointer-events: none; }
-#wrap.chrome-hidden { cursor: none; }
+/* Cursor auto-hide is independent of the toolbar: it returns on any
+   movement, while the toolbar only returns near the top. */
+#wrap.cursor-hidden { cursor: none; }
 
 /* Top bar — studio control panel.
    Two repeating-linear-gradient layers fake the brushed-aluminum grain;
@@ -231,6 +233,7 @@ body.viewer .role-cell .r-viewer { display: inline; }
   letter-spacing: .03em;
   font-family: var(--mono);
   font-size: .82rem;
+  white-space: nowrap;
 }
 .viewers-cell .roster .row .role {
   font-size: .55rem; letter-spacing: .25em; color: var(--paper-mute);
@@ -309,7 +312,7 @@ body.viewer .host-cell { cursor: default; }
   letter-spacing: .04em; text-align: left;
 }
 .pop-u:hover { background: rgba(159,230,173,.08); }
-.pop-u .nm { font-size: .8rem; }
+.pop-u .nm { font-size: .8rem; white-space: nowrap; }
 .pop-u .arr { margin-left: auto; color: var(--paper-mute); }
 .pop-u:hover .arr { color: var(--signal); }
 .pop-empty { padding: .6rem .8rem; color: var(--paper-mute); font-size: .72rem; border-top: 1px solid var(--rule); }

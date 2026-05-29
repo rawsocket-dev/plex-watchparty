@@ -685,30 +685,28 @@ openLiveEvents((msg) => {
   applyState(msg, 'sse');
 });
 
-// --- Auto-hide the toolbar while playing -----------------------------
-// After CHROME_IDLE_MS of no pointer movement during playback, the top
-// toolbar + scrub bar slide away for an unobstructed picture. Any pointer
-// movement, a keypress, or the movie pausing brings them straight back.
-// Never hides while paused or while the hand-off picker is open.
-const CHROME_IDLE_MS = 15000;
-let chromeTimer = null;
+// --- Auto-hide chrome + cursor while playing -------------------------
+// After IDLE_MS of inactivity during playback the cursor hides and the
+// toolbar + scrub slide away for an unobstructed picture. The cursor
+// returns on ANY pointer movement; the toolbar returns only when the
+// pointer is near the TOP (where the controls live) — so drifting the
+// mouse over the video doesn't keep popping the bar up — or whenever
+// playback pauses. Never hides while paused or while the hand-off picker
+// is open.
+const IDLE_MS = 5000;
+let chromeTimer = null;   // hides the toolbar; reset by near-top activity
+let cursorTimer = null;   // hides the cursor; reset by any activity
 let chromePlaying = false;
+let chromeZone = 120;     // px from the top that counts as "near the top"
 
 function syncChromeHeight() {
   const bar = document.getElementById('bar');
   const scrub = document.getElementById('scrub');
   const h = (bar ? bar.offsetHeight : 0) + (scrub ? scrub.offsetHeight : 0);
-  if (h > 0) wrapEl.style.setProperty('--chrome-h', h + 'px');
-}
-
-function armChromeTimer() {
-  if (chromeTimer) clearTimeout(chromeTimer);
-  chromeTimer = chromePlaying ? setTimeout(hideChrome, CHROME_IDLE_MS) : null;
-}
-
-function showChrome() {
-  wrapEl.classList.remove('chrome-hidden');
-  armChromeTimer(); // re-arms while playing; leaves it cleared while paused
+  if (h > 0) {
+    wrapEl.style.setProperty('--chrome-h', h + 'px');
+    chromeZone = Math.max(h, 80);
+  }
 }
 
 function hideChrome() {
@@ -718,23 +716,53 @@ function hideChrome() {
   syncChromeHeight();                           // measure before collapsing
   wrapEl.classList.add('chrome-hidden');
 }
+function showChrome() {
+  wrapEl.classList.remove('chrome-hidden');
+  if (chromeTimer) clearTimeout(chromeTimer);
+  chromeTimer = chromePlaying ? setTimeout(hideChrome, IDLE_MS) : null;
+}
 
-// Called from applyState on every state tick so play/pause flips re-arm or
-// cancel the countdown.
+function hideCursor() {
+  cursorTimer = null;
+  if (chromePlaying) wrapEl.classList.add('cursor-hidden');
+}
+function showCursor() {
+  wrapEl.classList.remove('cursor-hidden');
+  if (cursorTimer) clearTimeout(cursorTimer);
+  cursorTimer = chromePlaying ? setTimeout(hideCursor, IDLE_MS) : null;
+}
+
+// Called from applyState whenever the shared playing state flips.
 function setChromePlaying(playing) {
   chromePlaying = playing;
   if (!playing) {
+    // Paused → controls + cursor stay up; stop the hide countdowns.
     if (chromeTimer) { clearTimeout(chromeTimer); chromeTimer = null; }
-    wrapEl.classList.remove('chrome-hidden'); // paused → controls stay up
-  } else if (!chromeTimer && !wrapEl.classList.contains('chrome-hidden')) {
-    armChromeTimer(); // playing and visible → start the countdown
+    if (cursorTimer) { clearTimeout(cursorTimer); cursorTimer = null; }
+    wrapEl.classList.remove('chrome-hidden', 'cursor-hidden');
+    return;
+  }
+  // Playing → start counting down (only if currently visible).
+  if (!chromeTimer && !wrapEl.classList.contains('chrome-hidden')) {
+    chromeTimer = setTimeout(hideChrome, IDLE_MS);
+  }
+  if (!cursorTimer && !wrapEl.classList.contains('cursor-hidden')) {
+    cursorTimer = setTimeout(hideCursor, IDLE_MS);
   }
 }
 
-// Any sign of life reveals the chrome and restarts the idle countdown.
-['mousemove', 'pointerdown', 'touchstart', 'keydown'].forEach((evt) =>
-  window.addEventListener(evt, showChrome, { passive: true })
+// Pointer activity: the cursor returns on ANY movement; the toolbar only
+// when the pointer is near the top.
+function onPointerActivity(e) {
+  showCursor();
+  if (typeof e.clientY !== 'number' || e.clientY <= chromeZone) {
+    showChrome();
+  }
+}
+['pointermove', 'pointerdown'].forEach((evt) =>
+  window.addEventListener(evt, onPointerActivity, { passive: true })
 );
+window.addEventListener('resize', syncChromeHeight);
 
 // Heartbeat: tell the server what we're actually seeing every 5 s.
 // Admin panel uses this to render "viewer N is at HH:MM:SS, paused/
