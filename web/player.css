@@ -34,15 +34,25 @@ html, body {
    Two repeating-linear-gradient layers fake the brushed-aluminum grain;
    inset shadows give cells the "recessed-into-the-rack" feel. */
 #bar {
-  display: grid;
-  grid-template-columns: minmax(0, auto) minmax(0, 1fr) minmax(0, auto);
-  align-items: stretch;
+  display: flex;
+  flex-direction: column;
   background:
     repeating-linear-gradient(90deg, rgba(255,255,255,.014) 0 1px, transparent 1px 3px),
     linear-gradient(180deg, var(--ink-2) 0%, var(--ink-3) 100%);
   border-bottom: 1px solid var(--rule);
   box-shadow: inset 0 1px 0 rgba(255,255,255,.04), inset 0 -1px 0 rgba(0,0,0,.5);
 }
+/* Tier 1 — thin status strip; reuses the existing .cell sub-styles
+   (role dot, bw slash, viewers roster) but laid out horizontally. */
+.strip { display: flex; align-items: stretch; border-bottom: 1px solid var(--rule); }
+.strip .cell {
+  flex-direction: row; align-items: center; gap: .55rem;
+  min-height: 0; padding: .42rem .9rem;
+  box-shadow: inset 1px 0 0 rgba(255,255,255,.025);
+}
+.strip .cell .lbl { font-size: .5rem; }
+/* Tier 2 — control row. */
+.ctl { display: flex; align-items: stretch; min-height: 60px; }
 .cell-group { display: flex; align-items: stretch; }
 .cell {
   border-right: 1px solid var(--rule);
@@ -143,21 +153,24 @@ body.viewer .role-cell .r-viewer { display: inline; }
 /* Title cell — the marquee. Darker recessed well (Console title-well
    style) with a label above. Mono font, title-case preserved. */
 .title-cell {
+  flex: 1;
   border-left: 1px solid var(--rule);
   border-right: 1px solid var(--rule);
   background: var(--ink);
   box-shadow: inset 0 0 30px rgba(0,0,0,.6);
-  padding: .55rem 1.4rem;
+  padding: .4rem 1.4rem;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   justify-content: center;
-  align-items: stretch;
-  text-align: left;
+  text-align: center;
 }
 .title-cell .lbl { color: var(--paper-dim); }
 .title-cell .v {
   font-family: var(--mono);
   font-weight: 500;
-  font-size: clamp(.95rem, 1.6vw, 1.2rem);
+  font-size: 1.35rem;
   letter-spacing: .04em;
   color: var(--paper);
   text-transform: none;
@@ -208,74 +221,45 @@ body.viewer .role-cell .r-viewer { display: inline; }
 }
 .viewers-cell .roster .row.host .role { color: var(--signal); }
 
-/* Right-side action buttons — Console "switch" treatment.
-   Each carries a small LED dot; primary (Run) has it lit green,
-   warn variant (Out / library exit) glows amber, the rest are dim.
-   Buttons are mono uppercase, gradient-bg, no border-radius. */
-.cell-btn {
+/* Tier-2 buttons. Transport = icon + label (.tbtn); view tools = 46px
+   icon squares (.ibtn). The button that reflects current state glows
+   mint (mint text/icon + a mint top edge + faint green fill), driven by
+   the same #wrap.playing / .fill / .fs classes the old LED dots used. */
+.ico { width: 18px; height: 18px; display: block; flex: none; }
+
+.tbtn, .ibtn {
   background: linear-gradient(180deg, #1d2129 0%, #131820 100%);
-  border: 0;
-  border-left: 1px solid var(--rule);
-  color: #8a92a0;
-  font-family: var(--mono);
-  font-size: .65rem;
-  font-weight: 500;
-  letter-spacing: .25em;
-  text-transform: uppercase;
-  cursor: pointer;
-  padding: 0 1.2rem;
-  min-width: 3.4rem;
-  min-height: 56px;
-  transition: background .2s ease, color .2s ease;
-  text-decoration: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: .6rem;
-  box-shadow: inset 0 0 18px rgba(0,0,0,.45);
+  border: 0; border-right: 1px solid var(--rule);
+  color: #7e8794;
+  font-family: var(--mono); font-size: .64rem; font-weight: 500;
+  letter-spacing: .22em; text-transform: uppercase;
+  cursor: pointer; text-decoration: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  transition: background .2s ease;
 }
-.cell-btn .led {
-  width: 8px; height: 8px;
-  border-radius: 50%;
-  background: #3a424e;
-  box-shadow: inset 0 0 2px rgba(0,0,0,.6);
-  flex-shrink: 0;
-  transition: background .2s, box-shadow .2s;
+.cell-group.left .tbtn:first-child { border-left: 1px solid var(--rule); }
+.tbtn { padding: 0 1rem; gap: .55rem; }
+.tbtn .ico { width: 14px; height: 14px; }
+.ibtn { width: 46px; padding: 0; }
+.tbtn:hover, .ibtn:hover { color: var(--paper); background: linear-gradient(180deg, #252b34 0%, #1a1f27 100%); }
+
+/* lit / engaged state */
+#wrap.playing #play,
+#wrap:not(.playing) #pause,
+#wrap.fill #zoom,
+#wrap.fs #fullscreen {
+  color: var(--signal);
+  background: linear-gradient(180deg, #1d2c23 0%, #131e18 100%);
+  box-shadow: inset 0 2px 0 var(--signal-deep);
 }
-.cell-btn:hover { background: linear-gradient(180deg, #252b34 0%, #1a1f27 100%); color: var(--paper); }
-.cell-btn:hover .led { background: var(--paper-mute); }
-.cell-btn.primary { color: var(--signal); }
-/* Run / Pause status lights track live playback (mirrors the zoom +
-   fullscreen active indicators below): Run glows mint while playing,
-   Pause glows amber while paused. When neither matches, the .led falls
-   back to the dark base above. */
-#wrap.playing #play .led {
-  background: var(--signal);
-  box-shadow: 0 0 10px rgba(159,230,173,.8), inset 0 0 2px rgba(255,255,255,.4);
-}
-#wrap:not(.playing) #pause .led {
-  background: var(--warn);
-  box-shadow: 0 0 10px rgba(240,168,48,.7);
-}
-.cell-btn.warn { color: #b89260; }
-.cell-btn.warn:hover { color: var(--warn); }
-/* Exit's dot stays dark like the other idle buttons — it only lights
-   amber on hover, rather than burning amber permanently. */
-.cell-btn.warn:hover .led {
-  background: var(--warn);
-  box-shadow: 0 0 10px rgba(240,168,48,.7);
-}
-#fullscreen { font-size: 1.05rem; letter-spacing: 0; }
-#wrap.fill #zoom { color: var(--signal); }
-#wrap.fill #zoom .led {
-  background: var(--signal);
-  box-shadow: 0 0 10px rgba(159,230,173,.8);
-}
-#wrap.fs #fullscreen { color: var(--signal); }
-#wrap.fs #fullscreen .led {
-  background: var(--signal);
-  box-shadow: 0 0 10px rgba(159,230,173,.8);
-}
+#wrap.playing #play .ico,
+#wrap:not(.playing) #pause .ico,
+#wrap.fill #zoom .ico,
+#wrap.fs #fullscreen .ico { filter: drop-shadow(0 0 6px rgba(159,230,173,.75)); }
+
+/* Exit stays neutral, warming to amber on hover only. */
+.ibtn.warn { color: #a07a48; }
+.ibtn.warn:hover { color: var(--warn); }
 #admin-link[hidden] { display: none; }
 #host-cell[hidden], #handoff[hidden] { display: none; }
 .host-cell .v { color: var(--signal); }

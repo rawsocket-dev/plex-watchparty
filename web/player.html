@@ -10,59 +10,76 @@
 <link rel="stylesheet" href="/static/player.css">
 </head>
 <body>
+<svg style="display:none" aria-hidden="true"><defs>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" fill="currentColor"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 24 24"><rect x="6" y="5" width="4" height="14" fill="currentColor"/><rect x="14" y="5" width="4" height="14" fill="currentColor"/></symbol>
+  <symbol id="i-fit" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="6" width="18" height="12" rx="1"/><path d="M3 10.5h18M3 13.5h18" opacity=".45"/></symbol>
+  <symbol id="i-fs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></symbol>
+  <symbol id="i-admin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="8" x2="20" y2="8"/><circle cx="9" cy="8" r="2.4" fill="currentColor" stroke="none"/><line x1="4" y1="16" x2="20" y2="16"/><circle cx="15" cy="16" r="2.4" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-exit" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4H5v16h9M11 12h9M16 8l4 4-4 4"/></symbol>
+</defs></svg>
 <div id="wrap">
   <div id="bar">
-    <div class="cell-group">
+    <!-- Tier 1 — status strip -->
+    <div class="strip">
       <div class="cell role-cell">
         <div class="lbl">Role</div>
-        <div class="v">
-          <span class="r-host">Host</span><span class="r-viewer">Viewer</span>
-        </div>
+        <div class="v"><span class="r-host">Host</span><span class="r-viewer">Viewer</span></div>
       </div>
       <div class="cell host-cell" id="host-cell" hidden>
-        <div class="lbl">Host</div>
+        <div class="lbl">Driving</div>
         <div class="v" id="host-name">—</div>
+        <span class="chev" aria-hidden="true">▾</span>
+        <div class="pop" id="handoff-pop" role="menu" hidden>
+          <div class="pop-h">Give remote to</div>
+          <div class="pop-list" id="handoff-list"></div>
+        </div>
       </div>
       <div class="cell sync-cell">
         <div class="lbl">Sync</div>
         <div class="v" id="sync">listening</div>
-      </div>
-      <div class="cell bw-cell" id="bw" hidden>
-        <div class="lbl">User BW / Total</div>
-        <div class="v"></div>
       </div>
       <div class="cell viewers-cell" id="viewers" hidden>
         <div class="lbl">Audience</div>
         <div class="v"><span class="count"></span></div>
         <div class="roster" role="tooltip"></div>
       </div>
-    </div>
-    <div class="cell title-cell">
-      <div class="lbl">Feed_Live · Source 01</div>
-      <div class="v idle" id="title">awaiting the host…</div>
-    </div>
-    <div class="cell-group">
-      <button class="cell-btn primary" id="play"><span class="led"></span>Run</button>
-      <button class="cell-btn" id="pause"><span class="led"></span>Pause</button>
-      <div class="cell-btn vol-cell" id="volume" tabindex="0" title="Volume (click to mute, scroll to adjust)">
-        <svg class="vol-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-          <path class="vol-base" d="M3 9v6h4l5 4V5L7 9H3z"/>
-          <path class="vol-mid"  d="M14 8.5v7c1.2-.8 2-2.1 2-3.5s-.8-2.7-2-3.5z"/>
-          <path class="vol-hi"   d="M14 5v2c2.3.9 4 3.2 4 5.9s-1.7 5-4 5.9v2c3.4-1 6-4.1 6-7.9S17.4 6 14 5z"/>
-          <path class="vol-x"    d="M16.5 12l2.8-2.8-1.4-1.4L15 10.6l-2.8-2.8-1.4 1.4L13.6 12l-2.8 2.8 1.4 1.4L15 13.4l2.8 2.8 1.4-1.4L16.5 12z"/>
-        </svg>
-        <div class="vol-popover" role="group" aria-label="Volume">
-          <input type="range" id="vol-slider" min="0" max="100" step="1" value="100" aria-label="Volume level">
-          <div class="vol-value"><span id="vol-readout">100</span><span class="vol-unit">%</span></div>
-        </div>
+      <div class="cell bw-cell" id="bw" hidden>
+        <div class="lbl">User BW / Total</div>
+        <div class="v"></div>
       </div>
-      <button class="cell-btn" id="zoom" title="Zoom (fit / fill)"><span class="led"></span>Fit</button>
-      <button class="cell-btn" id="fullscreen" title="Fullscreen"><span class="led"></span>⛶</button>
-      <select class="cell-btn" id="handoff" title="Pass control to…" hidden>
-        <option value="">Pass control →</option>
-      </select>
-      <a class="cell-btn" id="admin-link" href="/admin" target="_blank" rel="noopener" title="Maintenance panel" hidden><span class="led"></span>Admin</a>
-      <a class="cell-btn warn" id="library-link" href="/"><span class="led"></span>Exit</a>
+    </div>
+    <!-- Tier 2 — control row -->
+    <div class="ctl">
+      <div class="cell-group left">
+        <button class="tbtn" id="play"><svg class="ico"><use href="#i-play"/></svg>Play</button>
+        <button class="tbtn" id="pause"><svg class="ico"><use href="#i-pause"/></svg>Pause</button>
+      </div>
+      <div class="title-cell" id="title-cell">
+        <div class="lbl">Now Playing</div>
+        <div class="v idle" id="title">awaiting the host…</div>
+      </div>
+      <div class="cell-group right">
+        <div class="ibtn vol-cell" id="volume" tabindex="0" title="Volume (click to mute, scroll to adjust)">
+          <svg class="vol-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path class="vol-base" d="M3 9v6h4l5 4V5L7 9H3z"/>
+            <path class="vol-mid"  d="M14 8.5v7c1.2-.8 2-2.1 2-3.5s-.8-2.7-2-3.5z"/>
+            <path class="vol-hi"   d="M14 5v2c2.3.9 4 3.2 4 5.9s-1.7 5-4 5.9v2c3.4-1 6-4.1 6-7.9S17.4 6 14 5z"/>
+            <path class="vol-x"    d="M16.5 12l2.8-2.8-1.4-1.4L15 10.6l-2.8-2.8-1.4 1.4L13.6 12l-2.8 2.8 1.4 1.4L15 13.4l2.8 2.8 1.4-1.4L16.5 12z"/>
+          </svg>
+          <div class="vol-popover" role="group" aria-label="Volume">
+            <input type="range" id="vol-slider" min="0" max="100" step="1" value="100" aria-label="Volume level">
+            <div class="vol-value"><span id="vol-readout">100</span><span class="vol-unit">%</span></div>
+          </div>
+        </div>
+        <button class="ibtn" id="zoom" title="Fit / fill screen"><svg class="ico"><use href="#i-fit"/></svg></button>
+        <button class="ibtn" id="fullscreen" title="Fullscreen"><svg class="ico"><use href="#i-fs"/></svg></button>
+        <select class="ibtn" id="handoff" title="Pass control to…" hidden>
+          <option value="">Pass control →</option>
+        </select>
+        <a class="ibtn" id="admin-link" href="/admin" target="_blank" rel="noopener" title="Maintenance panel" hidden><svg class="ico"><use href="#i-admin"/></svg></a>
+        <a class="ibtn warn" id="library-link" href="/" title="Exit to lobby"><svg class="ico"><use href="#i-exit"/></svg></a>
+      </div>
     </div>
   </div>
   <div id="scrub" aria-label="Playback position">
