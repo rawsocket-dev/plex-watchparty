@@ -100,18 +100,25 @@ func (a *AuditLog) Record(ev AuditEvent) {
 	if len(a.events) > a.cap {
 		a.events = a.events[len(a.events)-a.cap:]
 	}
-	snapshot := make([]AuditEvent, len(a.events))
-	copy(snapshot, a.events)
 	a.mu.Unlock()
-	a.persist(snapshot)
+	a.persist()
 }
 
-func (a *AuditLog) persist(events []AuditEvent) {
+// persist serializes file rewrites with writeMu, then snapshots the
+// current events (under mu) and atomically writes them. Snapshotting AT
+// WRITE TIME — not at Record time — guarantees the last serialized write
+// reflects the latest committed events, so concurrent Records can't
+// leave a stale (shorter) snapshot as the final on-disk file.
+func (a *AuditLog) persist() {
 	if a.path == "" {
 		return
 	}
 	a.writeMu.Lock()
 	defer a.writeMu.Unlock()
+	a.mu.Lock()
+	events := make([]AuditEvent, len(a.events))
+	copy(events, a.events)
+	a.mu.Unlock()
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf) // Encode appends a newline → JSONL
 	for _, ev := range events {
