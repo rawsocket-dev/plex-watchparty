@@ -714,6 +714,16 @@ func (h *Hub) Snapshot() State {
 	return s
 }
 
+// IsActiveHost reports whether email currently holds the controls.
+func (h *Hub) IsActiveHost(email string) bool {
+	if email == "" {
+		return false
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.activeHost == email
+}
+
 // broadcast marshals the current snapshot once and fans the bytes out
 // to every connected viewer. Stays out of h.state (CachedRanges,
 // Viewers, Resume are computed per-broadcast and stamped onto the
@@ -930,8 +940,9 @@ func (h *Hub) HandleControl(w http.ResponseWriter, r *http.Request) {
 	// AFTER the handler returns — i.e. after Hub.mu has been released —
 	// so the audit file write never happens under the room lock. Each
 	// action branch sets auditDetail; empty detail records nothing.
-	// Role is recorded as "host" because /control is RequireHost-gated;
-	// keep that in sync if the route's gating ever changes.
+	// Role is recorded as "host" because the gate below rejects anyone
+	// who isn't the active host, so a recorded play action is always the
+	// active host's.
 	actor := actorEmail(r)
 	if actor == "" {
 		actor = "system"
@@ -942,6 +953,12 @@ func (h *Hub) HandleControl(w http.ResponseWriter, r *http.Request) {
 			h.audit.Record(AuditEvent{Type: "play", Email: actor, Role: "host", IP: clientIP(r), Detail: auditDetail})
 		}
 	}()
+
+	if !h.IsActiveHost(actor) {
+		log.Printf("control: 403 not-active-host ip=%s actor=%q action=%s", clientIP(r), actor, req.Action)
+		http.Error(w, "not the active host", http.StatusForbidden)
+		return
+	}
 
 	if req.Action == "load" {
 		t0 := time.Now()

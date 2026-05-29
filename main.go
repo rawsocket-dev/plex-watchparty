@@ -301,17 +301,19 @@ func main() {
 	protected.HandleFunc("/events", func(w http.ResponseWriter, r *http.Request) {
 		hub.HandleEvents(w, r, auth.Role(r) == RoleHost, auth.Email(r))
 	})
-	// /control is host-gated. When HOST_EMAILS is empty, Role() treats
-	// every allowed user as a host, so RequireHost lets everyone through
-	// — preserving the "any-friend-can-drive" default.
-	protected.Handle("/control", auth.RequireHost(auth.WithActor(http.HandlerFunc(hub.HandleControl))))
+	// /control is gated inside HandleControl on being the active host
+	// (eligibility alone is no longer sufficient — admin/hand-off can
+	// promote a non-eligible user). WithActor stashes the email; the
+	// protected Guard still requires an authenticated, allow-listed user.
+	protected.Handle("/control", auth.WithActor(http.HandlerFunc(hub.HandleControl)))
 
 	protected.HandleFunc("/api/whoami", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]any{
-			"email":   auth.Email(r),
-			"role":    auth.Role(r).String(),
-			"isAdmin": auth.IsAdmin(r),
-			"name":    viewerNameFromRequest(r),
+			"email":        auth.Email(r),
+			"role":         auth.Role(r).String(),
+			"isAdmin":      auth.IsAdmin(r),
+			"isActiveHost": hub.IsActiveHost(auth.Email(r)),
+			"name":         viewerNameFromRequest(r),
 		})
 	})
 

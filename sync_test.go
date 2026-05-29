@@ -340,3 +340,32 @@ func TestHostMultiTabRetainsSlot(t *testing.T) {
 		t.Errorf("slot lost on one-tab close: active=%q, want alice@x.com", f.active())
 	}
 }
+
+func TestControlRejectsNonActiveHost(t *testing.T) {
+	f := newHubTestFixture(t) // activeHost = testHostEmail
+	r := httptest.NewRequest("POST", "/control", bytes.NewBufferString(`{"action":"pause"}`))
+	r = r.WithContext(context.WithValue(r.Context(), actorCtxKey{}, "someone-else@x.com"))
+	w := httptest.NewRecorder()
+	f.hub.HandleControl(w, r)
+	if w.Code != http.StatusForbidden {
+		t.Errorf("non-active-host /control = %d, want 403", w.Code)
+	}
+}
+
+func TestControlAllowsActiveHost(t *testing.T) {
+	f := newHubTestFixture(t)
+	w := f.post(t, `{"action":"play"}`) // post() acts as testHostEmail (active host)
+	if w.Code == http.StatusForbidden {
+		t.Errorf("active host /control got 403, want allowed")
+	}
+}
+
+func TestIsActiveHost(t *testing.T) {
+	f := newHubTestFixture(t)
+	if !f.hub.IsActiveHost("tester@x.com") {
+		t.Error("IsActiveHost(active) = false, want true")
+	}
+	if f.hub.IsActiveHost("nope@x.com") {
+		t.Error("IsActiveHost(other) = true, want false")
+	}
+}
