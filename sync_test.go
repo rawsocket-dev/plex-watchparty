@@ -126,6 +126,70 @@ func TestHubSeekClampsToDuration(t *testing.T) {
 	}
 }
 
+func TestViewerListMarksOnlyActiveHost(t *testing.T) {
+	f := newHubTestFixture(t)
+	// Two connected, BOTH host-eligible (host:true), but only one is the
+	// active host. The roster must mark exactly that one as host — mere
+	// eligibility must not show up as a second "host".
+	f.hub.mu.Lock()
+	f.hub.clients = map[*clientEntry]struct{}{}
+	f.hub.clients[&clientEntry{id: "a", email: "alice@x.com", host: true, name: "Alice", send: make(chan []byte, 8), kill: make(chan struct{})}] = struct{}{}
+	f.hub.clients[&clientEntry{id: "b", email: "bob@x.com", host: true, name: "Bob", send: make(chan []byte, 8), kill: make(chan struct{})}] = struct{}{}
+	f.hub.activeHost = "alice@x.com"
+	list := f.hub.viewerList()
+	f.hub.mu.Unlock()
+
+	var hosts []string
+	for _, v := range list {
+		if v.Host {
+			hosts = append(hosts, v.Name)
+		}
+	}
+	if len(hosts) != 1 || hosts[0] != "Alice" {
+		t.Errorf("roster hosts = %v, want exactly [Alice]; both are host-eligible but only the active host drives", hosts)
+	}
+}
+
+func TestActiveHostStaysWhenSecondEligibleJoins(t *testing.T) {
+	f := newHubTestFixture(t)
+	f.hub.mu.Lock()
+	f.hub.activeHost = ""
+	f.hub.mu.Unlock()
+	f.addConn("alice@x.com", true)
+	if f.active() != "alice@x.com" {
+		t.Fatalf("first eligible should become active host, got %q", f.active())
+	}
+	f.addConn("bob@x.com", true)
+	if f.active() != "alice@x.com" {
+		t.Errorf("active host changed to %q when a second eligible joined; must stay alice", f.active())
+	}
+}
+
+func TestActiveHostReclaimsOnReconnect(t *testing.T) {
+	f := newHubTestFixture(t)
+	f.hub.mu.Lock()
+	f.hub.activeHost = ""
+	f.hub.mu.Unlock()
+	alice := f.addConn("alice@x.com", true)
+	f.addConn("bob@x.com", true)
+	// Alice blips out — her slot is held during the grace window.
+	f.removeConn(alice)
+	if f.active() != "alice@x.com" {
+		t.Fatalf("slot not held during grace: active=%q", f.active())
+	}
+	// She reconnects within the window → keeps the remote, timer cancelled.
+	f.addConn("alice@x.com", true)
+	if f.active() != "alice@x.com" {
+		t.Errorf("active host = %q after alice reconnected; should remain alice", f.active())
+	}
+	f.hub.mu.Lock()
+	timerLive := f.hub.hostReassignTimer != nil
+	f.hub.mu.Unlock()
+	if timerLive {
+		t.Error("reassign timer should be cancelled once the active host reconnects")
+	}
+}
+
 func TestHubLoadSetsState(t *testing.T) {
 	f := newHubTestFixture(t)
 	w := f.post(t, `{"action":"load","ratingKey":"rk1"}`)
@@ -335,6 +399,19 @@ func (f *hubTestFixture) active() string {
 	return f.hub.activeHost
 }
 
+// fireHostReassign drives the host-reassign grace path deterministically:
+// it cancels the real pending timer (so it can't double-fire later) and
+// runs the reassignment as if the grace window had just expired.
+func (f *hubTestFixture) fireHostReassign(gone string) {
+	f.hub.mu.Lock()
+	if f.hub.hostReassignTimer != nil {
+		f.hub.hostReassignTimer.Stop()
+		f.hub.hostReassignTimer = nil
+	}
+	f.hub.mu.Unlock()
+	f.hub.reassignHostAfterGrace(gone)
+}
+
 func TestHostFirstEligibleWins(t *testing.T) {
 	f := newHubTestFixture(t)
 	f.hub.mu.Lock(); f.hub.activeHost = ""; f.hub.mu.Unlock()
@@ -360,18 +437,28 @@ func TestHostReassignsOnDisconnect(t *testing.T) {
 	if f.active() != "alice@x.com" {
 		t.Fatalf("setup: active=%q", f.active())
 	}
+	// A disconnect HOLDS the remote for a grace window — a transient blip
+	// must not instantly hand control to bob.
 	f.removeConn(a)
-	if f.active() != "bob@x.com" {
-		t.Errorf("after host disconnect: active=%q, want bob@x.com", f.active())
+	if f.active() != "alice@x.com" {
+		t.Errorf("right after disconnect: active=%q, want alice held during grace", f.active())
 	}
+	// Grace expires with alice still gone → control passes to the remaining
+	// eligible viewer.
+	f.fireHostReassign("alice@x.com")
+	if f.active() != "bob@x.com" {
+		t.Errorf("after grace: active=%q, want bob@x.com", f.active())
+	}
+	// Everyone leaves; after grace there's no one eligible → no active host.
 	f.hub.mu.Lock()
 	for e := range f.hub.clients {
 		delete(f.hub.clients, e)
 	}
 	f.hub.onClientCountChange()
 	f.hub.mu.Unlock()
+	f.fireHostReassign("bob@x.com")
 	if f.active() != "" {
-		t.Errorf("no connections: active=%q, want empty", f.active())
+		t.Errorf("no connections after grace: active=%q, want empty", f.active())
 	}
 }
 

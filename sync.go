@@ -60,7 +60,7 @@ type State struct {
 type ViewerInfo struct {
 	ID   string `json:"id,omitempty"`
 	Name string `json:"name"`
-	Host bool   `json:"host"`
+	Host bool   `json:"host"` // true only for the single ACTIVE host, not host-eligibility
 }
 
 // clientEntry is the per-connection record we keep on Hub.clients.
@@ -159,6 +159,15 @@ type Hub struct {
 	// grace window (page refresh, network blip) cancel the pause.
 	hostExitTimer *time.Timer
 
+	// Host-reassign grace: when the ACTIVE host's connection drops, we
+	// hold their slot for hostExitGrace before passing the remote to
+	// another eligible user. Without this, a brief blip (tab switch,
+	// bfcache pagehide, navigation, network hiccup) silently hands
+	// control to a second eligible viewer who never asked for it — and
+	// the original host never gets it back. Reconnecting within the
+	// window cancels the timer and keeps them driving.
+	hostReassignTimer *time.Timer
+
 	// Shutdown plumbing. done is closed once (guarded by closeOnce) to
 	// signal broadcastLoop + timelineReportLoop to exit; loopsWG lets
 	// Close wait for them to return. See Close.
@@ -244,6 +253,10 @@ func (h *Hub) Close() {
 	if h.hostExitTimer != nil {
 		h.hostExitTimer.Stop()
 		h.hostExitTimer = nil
+	}
+	if h.hostReassignTimer != nil {
+		h.hostReassignTimer.Stop()
+		h.hostReassignTimer = nil
 	}
 	h.mu.Unlock()
 	if h.store != nil {
@@ -462,7 +475,10 @@ func (h *Hub) activeHostNameLocked() string {
 func (h *Hub) viewerList() []ViewerInfo {
 	out := make([]ViewerInfo, 0, len(h.clients))
 	for c := range h.clients {
-		out = append(out, ViewerInfo{ID: c.id, Name: c.name, Host: c.host})
+		// Host marks the single ACTIVE host (who's driving), NOT mere
+		// host-eligibility — otherwise every eligible viewer shows up as
+		// a "host" in the roster, which reads as multiple hosts.
+		out = append(out, ViewerInfo{ID: c.id, Name: c.name, Host: c.email != "" && c.email == h.activeHost})
 	}
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].Host != out[j].Host {
@@ -493,27 +509,88 @@ func (h *Hub) onClientCountChange() string {
 		log.Printf("idle: no viewers, will stop plex session in %s if nobody returns", idleGrace)
 	}
 
-	// --- single active host: recompute who's driving ---
-	hostAudit := h.electHostLocked()
+	// --- single active host: keep while connected, hold the slot through
+	// a brief disconnect, only elect a replacement when truly host-less ---
+	hostAudit := h.reconcileHostLocked()
 
 	// --- pause when nobody is driving ---
+	h.maybeArmHostExitPauseLocked()
+	return hostAudit
+}
+
+// reconcileHostLocked keeps the active host while they're connected, holds
+// their slot for hostExitGrace on a brief disconnect (so a tab switch /
+// bfcache / network blip doesn't hand the remote to another eligible
+// viewer), and elects a fresh host only when there genuinely isn't one.
+// Returns an audit detail when the active host changes. Caller holds h.mu.
+func (h *Hub) reconcileHostLocked() string {
+	// Active host still connected → they keep it; cancel any pending
+	// reassignment (they're here, or just reconnected).
+	if h.activeHost != "" && h.hasConnectionLocked(h.activeHost) {
+		if h.hostReassignTimer != nil {
+			h.hostReassignTimer.Stop()
+			h.hostReassignTimer = nil
+		}
+		return ""
+	}
+	// Active host set but momentarily gone → hold their slot for the grace
+	// window before passing control on. Nobody else drives meanwhile
+	// (IsActiveHost stays false for everyone but the absent host).
+	if h.activeHost != "" {
+		if h.hostReassignTimer == nil {
+			gone := h.activeHost
+			h.hostReassignTimer = time.AfterFunc(hostExitGrace, func() { h.reassignHostAfterGrace(gone) })
+			log.Printf("host: active host %q disconnected; holding the remote for %s", gone, hostExitGrace)
+		}
+		return ""
+	}
+	// Genuinely no active host → elect one now from connected eligible.
+	return h.electHostLocked()
+}
+
+// reassignHostAfterGrace fires when a disconnected active host hasn't
+// returned within the grace window. If they're still gone, the remote
+// passes to a random remaining eligible viewer (or to nobody, which arms
+// the host-exit pause). Acquires h.mu itself.
+func (h *Hub) reassignHostAfterGrace(gone string) {
+	h.mu.Lock()
+	h.hostReassignTimer = nil
+	// Bail if the host returned, or control already moved (handoff/admin).
+	if h.activeHost != gone || h.hasConnectionLocked(h.activeHost) {
+		h.mu.Unlock()
+		return
+	}
+	h.activeHost = "" // clear so electHostLocked picks a fresh eligible
+	detail := h.electHostLocked()
+	h.maybeArmHostExitPauseLocked()
+	h.broadcast()
+	h.mu.Unlock()
+	h.wakeBroadcast()
+	if detail != "" {
+		h.audit.Record(AuditEvent{Type: "host", Email: "system", Detail: detail})
+	}
+}
+
+// maybeArmHostExitPauseLocked pauses the room (after a grace window) when
+// no one is driving mid-playback; a live active host cancels any pending
+// pause. Caller holds h.mu.
+func (h *Hub) maybeArmHostExitPauseLocked() {
 	if h.activeHost != "" {
 		if h.hostExitTimer != nil {
 			h.hostExitTimer.Stop()
 			h.hostExitTimer = nil
 		}
-		return hostAudit
+		return
 	}
 	if !h.state.Playing || h.state.RatingKey == "" {
-		return hostAudit
+		return
 	}
 	if h.hostExitTimer != nil {
-		return hostAudit
+		return
 	}
 	rk := h.state.RatingKey
 	h.hostExitTimer = time.AfterFunc(hostExitGrace, func() { h.hostExitPause(rk) })
 	log.Printf("host-exit: no active host, will pause in %s if none returns", hostExitGrace)
-	return hostAudit
 }
 
 // hostExitPause fires when the host-exit grace timer expires. Pauses
