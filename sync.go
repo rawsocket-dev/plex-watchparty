@@ -190,6 +190,12 @@ const idleGrace = 60 * time.Second
 // just "host clicks play again," not "plex session killed."
 const hostExitGrace = 10 * time.Second
 
+// sseWriteTimeout bounds a single SSE write. Healthy clients drain the
+// socket instantly so this never bites; a dead/wedged connection trips it
+// once its send buffer fills, letting us reap the ghost. Generous so a
+// merely slow client (bad mobile link) isn't dropped mid-stream.
+const sseWriteTimeout = 30 * time.Second
+
 func NewHub(plex *Plex, session *PlexSession, cache *SegmentCache, recent *RecentMovies, store *StateStore, audit *AuditLog) *Hub {
 	h := &Hub{
 		plex:          plex,
@@ -672,6 +678,22 @@ func nowMs() int64 { return time.Now().UnixMilli() }
 // without exposing the auth credential.
 const nameCookie = "wp_name"
 
+// newNameCookie builds the display-name cookie. It's HttpOnly (no client
+// JS reads wp_name — the name is set from the verified Google profile and
+// read back server-side) and Secure over HTTPS. The value is still
+// re-sanitized on every read, so the flags are hardening, not the boundary.
+func newNameCookie(name string, secure bool) *http.Cookie {
+	return &http.Cookie{
+		Name:     nameCookie,
+		Value:    url.QueryEscape(name),
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   secure,
+		SameSite: http.SameSiteLaxMode,
+		Expires:  time.Now().Add(365 * 24 * time.Hour),
+	}
+}
+
 // maxViewerName is the trim length applied to viewer names. Short
 // enough to keep the top-bar tooltip readable, long enough for real
 // nicknames.
@@ -886,8 +908,7 @@ func (h *Hub) broadcast() {
 // connecting user, used for active-host election.
 func (h *Hub) HandleEvents(w http.ResponseWriter, r *http.Request, isHost bool, email string) {
 	name := viewerNameFromRequest(r)
-	flusher, ok := w.(http.Flusher)
-	if !ok {
+	if _, ok := w.(http.Flusher); !ok {
 		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
 		return
 	}
@@ -960,11 +981,28 @@ func (h *Hub) HandleEvents(w http.ResponseWriter, r *http.Request, isHost bool, 
 			ip, role, left, leftHosts, time.Since(connectedAt).Round(time.Second))
 	}()
 
-	writeBytes := func(b []byte) {
-		w.Write([]byte("data: "))
-		w.Write(b)
-		w.Write([]byte("\n\n"))
-		flusher.Flush()
+	// Each write gets a deadline via the ResponseController. A healthy
+	// client drains the socket immediately, so writes finish in
+	// microseconds; a dead/wedged client (gone, but the TCP or proxy
+	// connection lingers) blocks once the send buffer fills and trips the
+	// deadline — we return, the defer reaps the entry, and it stops being
+	// counted as a viewer. A write error (peer closed) does the same.
+	rc := http.NewResponseController(w)
+	write := func(b []byte) error {
+		_ = rc.SetWriteDeadline(time.Now().Add(sseWriteTimeout))
+		if _, err := w.Write(b); err != nil {
+			return err
+		}
+		return rc.Flush()
+	}
+	writeBytes := func(b []byte) error {
+		if err := write([]byte("data: ")); err != nil {
+			return err
+		}
+		if err := write(b); err != nil {
+			return err
+		}
+		return write([]byte("\n\n"))
 	}
 	// Per-connection handshake: the client needs to know its own id
 	// so it can stamp heartbeat POSTs with it. Sent only to this
@@ -972,13 +1010,13 @@ func (h *Hub) HandleEvents(w http.ResponseWriter, r *http.Request, isHost bool, 
 	// in their state stream). The carry-along _clientId on the init
 	// state body avoids a second framing protocol.
 	hello, _ := json.Marshal(map[string]any{"clientId": entry.id})
-	writeBytes(hello)
-	writeBytes(initBytes)
+	if writeBytes(hello) != nil || writeBytes(initBytes) != nil {
+		return
+	}
 
 	// 5 s heartbeat: also doubles as our "is the client still there?"
-	// probe. The write fails on a closed TCP connection, which is how
-	// Go's HTTP server cancels r.Context() and lets the defer GC the
-	// dead client. A long heartbeat = long ghost-viewer window.
+	// probe — a failed/timed-out write returns and reaps the connection,
+	// complementing Go's own r.Context() cancellation on a clean close.
 	heartbeat := time.NewTicker(5 * time.Second)
 	defer heartbeat.Stop()
 	for {
@@ -990,10 +1028,13 @@ func (h *Hub) HandleEvents(w http.ResponseWriter, r *http.Request, isHost bool, 
 				ip, role, time.Since(connectedAt).Round(time.Second))
 			return
 		case b := <-entry.send:
-			writeBytes(b)
+			if writeBytes(b) != nil {
+				return
+			}
 		case <-heartbeat.C:
-			w.Write([]byte(": ping\n\n"))
-			flusher.Flush()
+			if write([]byte(": ping\n\n")) != nil {
+				return
+			}
 		}
 	}
 }

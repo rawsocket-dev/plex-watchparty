@@ -20,7 +20,11 @@ func registerAdminRoutes(
 	bw *bwTracker,
 	audit *AuditLog,
 ) {
-	gated := auth.RequireAdmin
+	// Admin-only AND CSRF-guarded: the panel's POSTs (cache clear/prune,
+	// session restart/stop, kick, set-host) mutate real state.
+	gated := func(next http.Handler) http.Handler {
+		return csrfGuard(auth.RequireAdmin(next))
+	}
 
 	mux.Handle("/admin", gated(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")

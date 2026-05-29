@@ -8,7 +8,6 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"net/url"
 	"strings"
 	"time"
 
@@ -160,11 +159,7 @@ func (o *OAuth) HandleCallback(w http.ResponseWriter, r *http.Request) {
 	})
 	o.auth.SetSession(w, email, requestIsHTTPS(r))
 	if name := sanitizeName(ui.Name); name != "" {
-		http.SetCookie(w, &http.Cookie{
-			Name: nameCookie, Value: url.QueryEscape(name), Path: "/",
-			HttpOnly: false, SameSite: http.SameSiteLaxMode,
-			Expires: time.Now().Add(365 * 24 * time.Hour),
-		})
+		http.SetCookie(w, newNameCookie(name, requestIsHTTPS(r)))
 	}
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }

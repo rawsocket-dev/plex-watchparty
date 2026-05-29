@@ -522,7 +522,7 @@ func main() {
 		})
 	})
 
-	mux.Handle("/", auth.Guard(protected))
+	mux.Handle("/", auth.Guard(csrfGuard(protected)))
 
 	log.Printf("watch party on %s (workdir %s)", listen, workDir)
 	log.Fatal(newServer(listen, mux).ListenAndServe())

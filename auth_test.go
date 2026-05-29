@@ -155,6 +155,78 @@ func TestOAuthHandleLoginNoLoopForRevoked(t *testing.T) {
 	}
 }
 
+func TestCSRFGuard(t *testing.T) {
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(299) })
+	guard := csrfGuard(next)
+	call := func(method, host, origin, referer string) int {
+		r := httptest.NewRequest(method, "https://"+host+"/control", nil)
+		r.Host = host
+		if origin != "" {
+			r.Header.Set("Origin", origin)
+		}
+		if referer != "" {
+			r.Header.Set("Referer", referer)
+		}
+		w := httptest.NewRecorder()
+		guard.ServeHTTP(w, r)
+		return w.Code
+	}
+	cases := []struct {
+		name                    string
+		method, host, orig, ref string
+		want                    int
+	}{
+		{"same-origin POST passes", "POST", "watch.example.com", "https://watch.example.com", "", 299},
+		{"cross-origin POST blocked", "POST", "watch.example.com", "https://evil.example.com", "", http.StatusForbidden},
+		{"no origin/referer POST passes", "POST", "watch.example.com", "", "", 299},
+		{"referer fallback same-host passes", "POST", "watch.example.com", "", "https://watch.example.com/watch", 299},
+		{"referer fallback cross-host blocked", "POST", "watch.example.com", "", "https://evil.example.com/x", http.StatusForbidden},
+		{"GET ignores cross-origin", "GET", "watch.example.com", "https://evil.example.com", "", 299},
+	}
+	for _, c := range cases {
+		if got := call(c.method, c.host, c.orig, c.ref); got != c.want {
+			t.Errorf("%s: status=%d, want %d", c.name, got, c.want)
+		}
+	}
+}
+
+func TestCSRFGuardHonorsForwardedHost(t *testing.T) {
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(299) })
+	guard := csrfGuard(next)
+	// Proxy forwards upstream Host=app:8080 but tags the real public host.
+	r := httptest.NewRequest("POST", "http://app:8080/control", nil)
+	r.Host = "app:8080"
+	r.Header.Set("X-Forwarded-Host", "watch.example.com")
+	r.Header.Set("Origin", "https://watch.example.com")
+	w := httptest.NewRecorder()
+	guard.ServeHTTP(w, r)
+	if w.Code != 299 {
+		t.Errorf("origin matching X-Forwarded-Host was blocked (status=%d); legitimate proxied POST must pass", w.Code)
+	}
+}
+
+func TestNameCookieHardened(t *testing.T) {
+	c := newNameCookie("Raw Socket", true)
+	if c.Name != nameCookie {
+		t.Errorf("cookie name = %q, want %q", c.Name, nameCookie)
+	}
+	if !c.HttpOnly {
+		t.Error("name cookie should be HttpOnly (no client JS reads it)")
+	}
+	if !c.Secure {
+		t.Error("name cookie should be Secure when requested")
+	}
+	if c.SameSite != http.SameSiteLaxMode {
+		t.Errorf("SameSite = %v, want Lax", c.SameSite)
+	}
+	if c.Value != "Raw+Socket" {
+		t.Errorf("value = %q, want url-escaped 'Raw+Socket'", c.Value)
+	}
+	if got := newNameCookie("x", false); got.Secure {
+		t.Error("Secure should be false when not requested (plain HTTP)")
+	}
+}
+
 func TestWithActorStashesEmail(t *testing.T) {
 	a := testAuth()
 	var seen string

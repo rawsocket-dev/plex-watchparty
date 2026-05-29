@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"log"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -229,6 +230,59 @@ func (a *Auth) RequireAdmin(next http.Handler) http.Handler {
 		}
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
 	})
+}
+
+// csrfGuard rejects state-changing (non-safe-method) requests whose Origin
+// — or Referer, as a fallback — names a different host than the request.
+// It's defense-in-depth on top of the SameSite=Lax session cookie (which
+// already withholds the cookie on cross-site browser POSTs). Requests with
+// no Origin/Referer (non-browser clients, which carry no ambient cookies)
+// pass through. Safe methods (GET/HEAD/OPTIONS) are never blocked, so SSE
+// and page loads are unaffected.
+func csrfGuard(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet, http.MethodHead, http.MethodOptions:
+			next.ServeHTTP(w, r)
+			return
+		}
+		origin := r.Header.Get("Origin")
+		if origin == "" {
+			origin = r.Header.Get("Referer")
+		}
+		if origin != "" && !sameHost(origin, expectedHost(r)) {
+			log.Printf("csrf: blocked %s %s origin=%q host=%q ip=%s",
+				r.Method, r.URL.Path, origin, expectedHost(r), clientIP(r))
+			http.Error(w, "cross-origin request blocked", http.StatusForbidden)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// expectedHost is the public host the browser sees: X-Forwarded-Host (set
+// by a reverse proxy) when present, else the request Host. An attacker
+// doing browser-CSRF can't set X-Forwarded-Host (browsers don't send it;
+// the proxy adds it), so trusting it here is safe.
+func expectedHost(r *http.Request) string {
+	if xfh := r.Header.Get("X-Forwarded-Host"); xfh != "" {
+		if i := strings.IndexByte(xfh, ','); i >= 0 {
+			xfh = xfh[:i] // first hop = original client-facing host
+		}
+		return strings.TrimSpace(xfh)
+	}
+	return r.Host
+}
+
+// sameHost reports whether rawURL's host matches host. Only the host is
+// compared — behind a TLS-terminating proxy the scheme can differ while the
+// host (what matters for CSRF) is preserved.
+func sameHost(rawURL, host string) bool {
+	u, err := url.Parse(rawURL)
+	if err != nil || u.Host == "" {
+		return false
+	}
+	return strings.EqualFold(u.Host, host)
 }
 
 // actorCtxKey keys the verified email of the user driving a request,
