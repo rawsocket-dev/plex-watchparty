@@ -12,4 +12,5 @@
 # local / superpowers — kept on disk locally, not tracked.
 # Migrated to ~/.local/projects/plex-watchparty/
 /local.md
+/PLAN.md
 /docs/superpowers/
