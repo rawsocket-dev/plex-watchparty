@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -17,6 +18,7 @@ func registerAdminRoutes(
 	plexSession *PlexSession,
 	hub *Hub,
 	bw *bwTracker,
+	audit *AuditLog,
 ) {
 	gated := auth.RequireAdmin
 
@@ -60,6 +62,10 @@ func registerAdminRoutes(
 		writeJSON(w, st)
 	})))
 
+	mux.Handle("/admin/api/audit", gated(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, audit.List())
+	})))
+
 	mux.Handle("/admin/api/cache/clear", gated(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "POST only", http.StatusMethodNotAllowed)
@@ -72,10 +78,14 @@ func registerAdminRoutes(
 			entries, bytes = segCache.ClearMovie(rk)
 			log.Printf("admin: %s cleared cache for ratingKey=%s (%d entries, %d bytes)",
 				auth.Email(r), rk, entries, bytes)
+			audit.Record(AuditEvent{Type: "admin", Email: auth.Email(r), Role: "admin", IP: clientIP(r),
+				Detail: fmt.Sprintf("cleared cache for ratingKey=%s (%d entries)", rk, entries)})
 		} else {
 			entries, bytes = segCache.Clear()
 			log.Printf("admin: %s cleared entire cache (%d entries, %d bytes)",
 				auth.Email(r), entries, bytes)
+			audit.Record(AuditEvent{Type: "admin", Email: auth.Email(r), Role: "admin", IP: clientIP(r),
+				Detail: fmt.Sprintf("cleared entire cache (%d entries)", entries)})
 		}
 		writeJSON(w, map[string]any{
 			"entriesRemoved": entries,
@@ -96,6 +106,8 @@ func registerAdminRoutes(
 		entries, bytes := segCache.Prune(time.Duration(days) * 24 * time.Hour)
 		log.Printf("admin: %s pruned cache older than %d days (%d entries, %d bytes)",
 			auth.Email(r), days, entries, bytes)
+		audit.Record(AuditEvent{Type: "admin", Email: auth.Email(r), Role: "admin", IP: clientIP(r),
+			Detail: fmt.Sprintf("pruned cache older than %d days (%d entries)", days, entries)})
 		writeJSON(w, map[string]any{
 			"entriesRemoved": entries,
 			"bytesRemoved":   bytes,
@@ -118,6 +130,8 @@ func registerAdminRoutes(
 			return
 		}
 		log.Printf("admin: %s refreshed library (%d titles)", auth.Email(r), len(movies))
+		audit.Record(AuditEvent{Type: "admin", Email: auth.Email(r), Role: "admin", IP: clientIP(r),
+			Detail: fmt.Sprintf("refreshed library (%d titles)", len(movies))})
 		writeJSON(w, map[string]any{"titles": len(movies)})
 	})))
 
@@ -131,6 +145,8 @@ func registerAdminRoutes(
 			return
 		}
 		log.Printf("admin: %s manual session restart at current position", auth.Email(r))
+		audit.Record(AuditEvent{Type: "admin", Email: auth.Email(r), Role: "admin", IP: clientIP(r),
+			Detail: "restarted plex session at current position"})
 		// Suppress any in-flight auto-restart racing in from the seg
 		// proxy — admin intent wins.
 		plexSession.SuppressAutoRestart()
@@ -157,6 +173,8 @@ func registerAdminRoutes(
 			return
 		}
 		log.Printf("admin: %s sent room to lobby", auth.Email(r))
+		audit.Record(AuditEvent{Type: "admin", Email: auth.Email(r), Role: "admin", IP: clientIP(r),
+			Detail: "sent everyone to lobby"})
 		// Final timeline report before the session goes away, then
 		// tear down. The hub's state.RatingKey going blank triggers
 		// every connected /watch page to reload into the waiting room.
@@ -180,6 +198,8 @@ func registerAdminRoutes(
 			return
 		}
 		log.Printf("admin: %s kicked connection id=%s", auth.Email(r), id)
+		audit.Record(AuditEvent{Type: "admin", Email: auth.Email(r), Role: "admin", IP: clientIP(r),
+			Detail: fmt.Sprintf("kicked connection id=%s", id)})
 		w.WriteHeader(http.StatusNoContent)
 	})))
 }

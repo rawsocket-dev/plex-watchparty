@@ -107,7 +107,7 @@ func TestOAuthHandleLoginNoLoopForRevoked(t *testing.T) {
 	// back, looping). HandleLogin should render the sign-in page (200).
 	signer := NewAuth("s", "ghost@x.com", "", "") // ghost was allowed when signed
 	a := NewAuth("s", "alice@x.com", "", "")       // ghost since removed; same secret
-	o := NewOAuth("id", "secret", "https://h/oauth/callback", a)
+	o := NewOAuth("id", "secret", "https://h/oauth/callback", a, nil)
 	r := httptest.NewRequest("GET", "/login", nil)
 	r.AddCookie(&http.Cookie{Name: sessionCookie, Value: signer.token("ghost@x.com")})
 	w := httptest.NewRecorder()

@@ -27,17 +27,19 @@ const stateCookie = "wp_oauth_state"
 const userinfoEndpoint = "https://openidconnect.googleapis.com/v1/userinfo"
 
 type OAuth struct {
-	cfg  *oauth2.Config
-	auth *Auth
+	cfg   *oauth2.Config
+	auth  *Auth
+	audit *AuditLog
 }
 
 // NewOAuth builds the app-wide Google sign-in gate. main.go validates
 // that the client ID / secret / redirect URL are non-empty before
 // calling this (fail-fast), so there's no disabled state to represent.
-func NewOAuth(clientID, clientSecret, redirectURL string, auth *Auth) *OAuth {
+func NewOAuth(clientID, clientSecret, redirectURL string, auth *Auth, audit *AuditLog) *OAuth {
 	log.Printf("oauth: google sign-in enabled · redirect=%s", redirectURL)
 	return &OAuth{
-		auth: auth,
+		auth:  auth,
+		audit: audit,
 		cfg: &oauth2.Config{
 			ClientID:     clientID,
 			ClientSecret: clientSecret,
@@ -139,11 +141,23 @@ func (o *OAuth) HandleCallback(w http.ResponseWriter, r *http.Request) {
 	}
 	if !o.auth.Allowed(email) {
 		log.Printf("oauth: REJECT non-allowlisted email %q ip=%s", email, clientIP(r))
+		o.audit.Record(AuditEvent{Type: "signin-denied", Email: email, IP: clientIP(r)})
 		http.Redirect(w, r, "/login?error=denied", http.StatusSeeOther)
 		return
 	}
 
 	log.Printf("oauth: sign-in email=%q ip=%s", email, clientIP(r))
+	detail := ""
+	if o.auth.isAdminEmail(email) {
+		detail = "admin"
+	}
+	o.audit.Record(AuditEvent{
+		Type:   "signin",
+		Email:  email,
+		Role:   o.auth.roleForEmail(email).String(),
+		IP:     clientIP(r),
+		Detail: detail,
+	})
 	o.auth.SetSession(w, email, requestIsHTTPS(r))
 	if name := sanitizeName(ui.Name); name != "" {
 		http.SetCookie(w, &http.Cookie{

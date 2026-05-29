@@ -204,7 +204,8 @@ func main() {
 
 	hub := NewHub(plex, plexSession, segCache, recent, stateStore)
 	auth := NewAuth(googleSecret, allowedEmails, os.Getenv("HOST_EMAILS"), os.Getenv("ADMIN_EMAILS"))
-	oauth := NewOAuth(googleID, googleSecret, googleRedirect, auth)
+	audit := NewAuditLog(filepath.Join(filepath.Dir(workDir), "audit.jsonl"), auditCap)
+	oauth := NewOAuth(googleID, googleSecret, googleRedirect, auth, audit)
 	bw := newBwTracker()
 	if len(auth.hosts) == 0 {
 		log.Printf("auth: HOST_EMAILS empty — every allowed user can drive playback")
@@ -218,7 +219,7 @@ func main() {
 	mux.HandleFunc("/oauth/callback", oauth.HandleCallback)
 
 	// Admin maintenance panel — same identity, gated on ADMIN_EMAILS.
-	registerAdminRoutes(mux, auth, plex, segCache, plexSession, hub, bw)
+	registerAdminRoutes(mux, auth, plex, segCache, plexSession, hub, bw, audit)
 
 	// Everything else is behind the Google-identity Guard.
 	protected := http.NewServeMux()

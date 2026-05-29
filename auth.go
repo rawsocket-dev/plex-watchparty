@@ -111,7 +111,11 @@ func (a *Auth) Email(r *http.Request) string {
 
 // Role resolves the request's effective role live from the allowlists.
 func (a *Auth) Role(r *http.Request) Role {
-	email := a.Email(r)
+	return a.roleForEmail(a.Email(r))
+}
+
+// roleForEmail resolves the tier for an already-verified email.
+func (a *Auth) roleForEmail(email string) Role {
 	if email == "" || !a.allowed[email] {
 		return RoleAnon
 	}
@@ -119,6 +123,11 @@ func (a *Auth) Role(r *http.Request) Role {
 		return RoleHost
 	}
 	return RoleViewer
+}
+
+// isAdminEmail reports whether an allowlisted email is also an admin.
+func (a *Auth) isAdminEmail(email string) bool {
+	return a.allowed[email] && a.admins[email]
 }
 
 // IsAdmin reports whether the request's verified email is allowlisted
