@@ -710,10 +710,9 @@ func (ps *PlexSession) RecoverSegmentBytes(startMs, endMs int64) ([]byte, error)
 		return nil, fmt.Errorf("recover playlist: %w", err)
 	}
 	ps.mu.Lock()
-	ratingKey := ps.ratingKey
 	sessionOffsetMs := ps.offsetMs
 	ps.mu.Unlock()
-	_, segs, err := rewritePlaylist(body, baseURL, sessionOffsetMs, ratingKey)
+	segs, err := parsePlaylistSegments(body, baseURL, sessionOffsetMs)
 	if err != nil {
 		return nil, fmt.Errorf("recover parse playlist: %w", err)
 	}

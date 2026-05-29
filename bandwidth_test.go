@@ -63,3 +63,24 @@ func TestClientIPFallsBackToRemoteAddr(t *testing.T) {
 		t.Errorf("clientIP no headers = %q, want 192.168.1.5", got)
 	}
 }
+
+func TestClientIPIgnoresForwardedForFromUntrustedPeer(t *testing.T) {
+	// A directly-connected public client must not be able to spoof its
+	// own attribution via X-Forwarded-For / X-Real-IP.
+	r := httptest.NewRequest("GET", "/", nil)
+	r.RemoteAddr = "8.8.8.8:443"
+	r.Header.Set("X-Forwarded-For", "1.2.3.4")
+	r.Header.Set("X-Real-IP", "5.6.7.8")
+	if got := clientIP(r); got != "8.8.8.8" {
+		t.Errorf("clientIP from untrusted peer = %q, want 8.8.8.8 (spoofed headers ignored)", got)
+	}
+}
+
+func TestClientIPHonorsRealIPFromTrustedPeer(t *testing.T) {
+	r := httptest.NewRequest("GET", "/", nil)
+	r.RemoteAddr = "10.0.0.1:5000" // trusted (private range default)
+	r.Header.Set("X-Real-IP", "5.6.7.8")
+	if got := clientIP(r); got != "5.6.7.8" {
+		t.Errorf("clientIP X-Real-IP from trusted peer = %q, want 5.6.7.8", got)
+	}
+}

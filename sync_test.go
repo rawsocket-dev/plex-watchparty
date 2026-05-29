@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -79,6 +80,50 @@ func (f *hubTestFixture) post(t *testing.T, body string) *httptest.ResponseRecor
 	w := httptest.NewRecorder()
 	f.hub.HandleControl(w, r)
 	return w
+}
+
+func TestClampSeekTarget(t *testing.T) {
+	cases := []struct {
+		in, dur, want float64
+		ok            bool
+	}{
+		{100, 600, 100, true},
+		{-5, 600, 0, true},      // negative clamps to 0
+		{99999, 600, 600, true}, // past the end clamps to duration
+		{300, 0, 300, true},     // unknown duration: no upper clamp
+		{math.NaN(), 600, 0, false},
+		{math.Inf(1), 600, 0, false},
+		{math.Inf(-1), 600, 0, false},
+	}
+	for _, c := range cases {
+		got, ok := clampSeekTarget(c.in, c.dur)
+		if ok != c.ok || (ok && got != c.want) {
+			t.Errorf("clampSeekTarget(%v, %v) = (%v, %v), want (%v, %v)",
+				c.in, c.dur, got, ok, c.want, c.ok)
+		}
+	}
+}
+
+func TestHubControlRejectsActionsWithoutActiveMovie(t *testing.T) {
+	f := newHubTestFixture(t)
+	for _, action := range []string{"play", "pause", "seek"} {
+		w := f.post(t, `{"action":"`+action+`"}`)
+		if w.Code != http.StatusConflict {
+			t.Errorf("%s with no active movie = %d, want 409", action, w.Code)
+		}
+	}
+}
+
+func TestHubSeekClampsToDuration(t *testing.T) {
+	f := newHubTestFixture(t)
+	f.post(t, `{"action":"load","ratingKey":"rk1"}`) // duration 600s
+	w := f.post(t, `{"action":"seek","positionSec":99999}`)
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("seek status = %d: %s", w.Code, w.Body.String())
+	}
+	if got := f.hub.Snapshot().PositionSec; got != 600 {
+		t.Errorf("seek to 99999 clamped to %v, want 600 (duration)", got)
+	}
 }
 
 func TestHubLoadSetsState(t *testing.T) {

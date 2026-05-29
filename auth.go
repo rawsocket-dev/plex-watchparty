@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -82,29 +83,50 @@ func parseEmailSet(csv string) map[string]bool {
 // Allowed reports whether the (already lowercased) email may sign in.
 func (a *Auth) Allowed(email string) bool { return a.allowed[email] }
 
-// token mints the cookie value "<email>:<hmac(email)>". Email visible
-// so logs / UI can show it; the HMAC is what authenticates.
-func (a *Auth) token(email string) string {
+// tokenWithExpiry mints the cookie value "<email>:<exp>:<hmac(email:exp)>".
+// exp is unix seconds and is covered by the signature, so a client can't
+// extend its own session by editing the cookie. Email is visible (logs /
+// UI); the HMAC authenticates.
+func (a *Auth) tokenWithExpiry(email string, exp int64) string {
 	email = strings.ToLower(strings.TrimSpace(email))
+	payload := email + ":" + strconv.FormatInt(exp, 10)
 	mac := hmac.New(sha256.New, a.secret)
 	mac.Write([]byte("identity:"))
-	mac.Write([]byte(email))
-	return email + ":" + hex.EncodeToString(mac.Sum(nil))
+	mac.Write([]byte(payload))
+	return payload + ":" + hex.EncodeToString(mac.Sum(nil))
+}
+
+// token mints a session token that expires sessionTTL from now.
+func (a *Auth) token(email string) string {
+	return a.tokenWithExpiry(email, time.Now().Add(sessionTTL).Unix())
 }
 
 // Email returns the request's verified email, or "" if the cookie is
-// missing/invalid. Constant-time compare so timing doesn't leak which
-// characters matched.
+// missing, invalid, or expired. The expiry is enforced server-side here
+// (not just via the cookie's own Expires): a captured cookie stops
+// working once its baked-in exp passes. Constant-time compare so timing
+// doesn't leak which characters matched.
 func (a *Auth) Email(r *http.Request) string {
 	c, err := r.Cookie(sessionCookie)
 	if err != nil || c.Value == "" {
 		return ""
 	}
-	email, _, ok := strings.Cut(c.Value, ":")
-	if !ok || email == "" {
+	// Layout: email:exp:hmac — a valid email contains no colon.
+	parts := strings.SplitN(c.Value, ":", 3)
+	if len(parts) != 3 {
 		return ""
 	}
-	if subtle.ConstantTimeCompare([]byte(c.Value), []byte(a.token(email))) != 1 {
+	email := parts[0]
+	exp, err := strconv.ParseInt(parts[1], 10, 64)
+	if err != nil || email == "" {
+		return ""
+	}
+	// A tampered email or exp changes the expected HMAC, so recomputing
+	// the whole token for (email, exp) and comparing covers both.
+	if subtle.ConstantTimeCompare([]byte(c.Value), []byte(a.tokenWithExpiry(email, exp))) != 1 {
+		return ""
+	}
+	if time.Now().Unix() > exp {
 		return ""
 	}
 	return email

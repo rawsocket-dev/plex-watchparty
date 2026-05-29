@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math"
 	"math/rand"
 	"net/http"
 	"net/url"
@@ -928,6 +929,25 @@ func fmtClock(sec float64) string {
 func isFiniteF(f float64) bool { return f == f && f-f == 0 }
 
 // HandleControl applies an action from any authenticated friend and rebroadcasts.
+// clampSeekTarget rejects non-finite seek targets (ok=false → 400) and
+// clamps valid ones to [0, durationSec]. A duration of 0 means "unknown"
+// (metadata not loaded yet), so only the lower bound is enforced. Without
+// this a host could seek to a negative or absurd position and push the
+// room into a state the player can't represent or that triggers a pointless
+// Plex restart at a nonsense offset.
+func clampSeekTarget(target, durationSec float64) (float64, bool) {
+	if math.IsNaN(target) || math.IsInf(target, 0) {
+		return 0, false
+	}
+	if target < 0 {
+		target = 0
+	}
+	if durationSec > 0 && target > durationSec {
+		target = durationSec
+	}
+	return target, true
+}
+
 func (h *Hub) HandleControl(w http.ResponseWriter, r *http.Request) {
 	// Cap the request body — /control is the host's command channel,
 	// not a file upload. 4 KiB is generous for the JSON we accept.
@@ -1122,6 +1142,12 @@ func (h *Hub) HandleControl(w http.ResponseWriter, r *http.Request) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	cur := h.snapshot()
+	// play / pause / seek only make sense against an active movie. (load
+	// and stop are handled above and return before here.)
+	if cur.RatingKey == "" {
+		http.Error(w, "no active movie", http.StatusConflict)
+		return
+	}
 	switch req.Action {
 	case "play":
 		cur.Playing = true
@@ -1134,11 +1160,18 @@ func (h *Hub) HandleControl(w http.ResponseWriter, r *http.Request) {
 	case "seek":
 		log.Printf("state: seek  ip=%s title=%q from=%.2f to=%.2f",
 			clientIP(r), cur.Title, cur.PositionSec, req.PositionSec)
+		// Reject non-finite targets and clamp to [0, duration] before we
+		// decide on a restart, so a bad position can't drive Plex to a
+		// nonsense offset or leave the room un-seekable.
+		target, ok := clampSeekTarget(req.PositionSec, cur.DurationSec)
+		if !ok {
+			http.Error(w, "invalid seek position", http.StatusBadRequest)
+			return
+		}
 		// Decide whether the seek target is reachable from cache alone
 		// (no Plex restart) or whether we need to restart Plex at the
 		// new offset. Cached ranges + the current session's edge define
 		// what's instantly seekable.
-		target := req.PositionSec
 		needRestart := target > h.session.EdgeSec()+0.5
 		if needRestart {
 			// Also check cache — backward seeks into a previously-watched

@@ -11,9 +11,24 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"golang.org/x/sync/singleflight"
 )
+
+// newServer builds the public HTTP server. ReadHeaderTimeout bounds the
+// request-header read phase so a slow client can't hold a connection open
+// indefinitely (slowloris). Read/Write timeouts are deliberately left
+// unset: /events (SSE) and /hls/* are long-lived streaming responses that
+// a WriteTimeout would sever mid-stream. IdleTimeout caps idle keep-alives.
+func newServer(addr string, h http.Handler) *http.Server {
+	return &http.Server{
+		Addr:              addr,
+		Handler:           h,
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
+}
 
 // segFlight collapses concurrent cold-misses for the same segment
 // (rk, startMs, endMs) into a single upstream fetch. N viewers all
@@ -131,6 +146,13 @@ func main() {
 		log.Fatal("set ALLOWED_EMAILS (comma-separated) — at least one address may sign in")
 	}
 	listen := env("LISTEN_ADDR", ":8080")
+	// Forwarded-header trust: by default only LAN-side peers (loopback +
+	// private ranges) may set X-Forwarded-For / X-Real-IP. Operators whose
+	// proxy sits on a public address can widen this.
+	if v := os.Getenv("TRUSTED_PROXY_CIDRS"); v != "" {
+		trustedProxyNets = mustParseCIDRs(strings.Split(v, ","))
+		log.Printf("net: trusting forwarded headers from %d configured proxy CIDR(s)", len(trustedProxyNets))
+	}
 	workDir := env("WORK_DIR", filepath.Join(os.TempDir(), "plexwatchparty"))
 	if err := os.MkdirAll(workDir, 0o755); err != nil {
 		log.Fatal(err)
@@ -209,6 +231,15 @@ func main() {
 	bw := newBwTracker()
 	if len(auth.hosts) == 0 {
 		log.Printf("auth: HOST_EMAILS empty — every allowed user can drive playback")
+	}
+
+	// Segment-context codec — encrypts the per-segment context (upstream
+	// Plex URL + token) into the opaque /hls/seg/<blob>.ts blob. Keyed off
+	// the Plex token: stable across restarts, already secret, never sent
+	// to clients. See playlist.go.
+	codec, err := newSegCodec(plexTok)
+	if err != nil {
+		log.Fatalf("seg codec init: %v", err)
 	}
 
 	mux := http.NewServeMux()
@@ -360,7 +391,7 @@ func main() {
 			http.Error(w, "playlist fetch: "+err.Error(), http.StatusBadGateway)
 			return
 		}
-		rewritten, segs, err := rewritePlaylist(raw, baseURL, plexSession.OffsetMs(), ratingKey)
+		rewritten, segs, err := rewritePlaylist(codec, raw, baseURL, plexSession.OffsetMs(), ratingKey)
 		if err != nil {
 			log.Printf("playlist: parse failed: %v", err)
 			http.Error(w, "playlist parse: "+err.Error(), http.StatusBadGateway)
@@ -383,7 +414,7 @@ func main() {
 	protected.HandleFunc("/hls/seg/", func(w http.ResponseWriter, r *http.Request) {
 		name := strings.TrimPrefix(r.URL.Path, "/hls/seg/")
 		name = strings.TrimSuffix(name, ".ts")
-		ctx, err := decodeSegCtx(name)
+		ctx, err := codec.decode(name)
 		if err != nil {
 			log.Printf("seg: decode failed name=%q: %v", name, err)
 			http.NotFound(w, r)
@@ -482,5 +513,5 @@ func main() {
 	mux.Handle("/", auth.Guard(protected))
 
 	log.Printf("watch party on %s (workdir %s)", listen, workDir)
-	log.Fatal(http.ListenAndServe(listen, mux))
+	log.Fatal(newServer(listen, mux).ListenAndServe())
 }

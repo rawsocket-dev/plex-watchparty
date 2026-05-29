@@ -196,6 +196,46 @@ func TestSegmentCacheLoadFromDisk(t *testing.T) {
 	}
 }
 
+// Finding-2 (defense in depth): a ratingKey containing path-traversal must be
+// refused so a write can't escape the cache root, even if a trusted caller
+// passes a bad key.
+func TestSegmentCachePutRejectsPathTraversal(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "cache")
+	c := NewSegmentCache(dir, 1<<20)
+	if _, err := c.Put(cacheKey{ratingKey: "../escape", startMs: 0, endMs: 1000}, strings.NewReader("x")); err == nil {
+		t.Fatal("Put accepted a path-traversal ratingKey")
+	}
+	if _, err := os.Stat(filepath.Join(root, "escape")); err == nil {
+		t.Fatal("traversal wrote a directory outside the cache root")
+	}
+}
+
+// Finding-8: a cache directory that already exceeds the configured cap
+// (e.g. cap was lowered between runs) must be pruned down to cap at load,
+// not left over-cap until the next write happens to trigger eviction.
+func TestSegmentCacheLoadFromDiskPrunesOverCap(t *testing.T) {
+	dir := t.TempDir()
+	big := NewSegmentCache(dir, 1<<30)
+	for i := int64(0); i < 5; i++ {
+		if _, err := big.Put(cacheKey{ratingKey: "rk1", startMs: i * 1000, endMs: (i + 1) * 1000}, strings.NewReader("0123456789")); err != nil {
+			t.Fatalf("Put: %v", err)
+		}
+	}
+	// 5 * 10 bytes = 50 on disk; reload under a 25-byte cap.
+	small := NewSegmentCache(dir, 25)
+	if err := small.LoadFromDisk(); err != nil {
+		t.Fatalf("LoadFromDisk: %v", err)
+	}
+	st := small.Stats()
+	if st.TotalBytes > 25 {
+		t.Errorf("after load TotalBytes = %d, want <= 25 (pruned to cap)", st.TotalBytes)
+	}
+	if st.Entries == 0 {
+		t.Error("pruned everything; expected to keep what fits under the cap")
+	}
+}
+
 func TestCacheClearAll(t *testing.T) {
 	dir := t.TempDir()
 	c := NewSegmentCache(dir, 10<<20)

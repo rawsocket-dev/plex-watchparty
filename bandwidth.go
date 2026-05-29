@@ -201,20 +201,66 @@ func (b *bwTracker) KbpsForIP(ip string) int64 {
 	return bytes * 8 / windowSec / 1000
 }
 
-// clientIP returns the most plausible source IP, honoring the common
-// reverse-proxy headers when present.
-func clientIP(r *http.Request) string {
-	if h := r.Header.Get("X-Forwarded-For"); h != "" {
-		if i := strings.Index(h, ","); i >= 0 {
-			return strings.TrimSpace(h[:i])
+// trustedProxyNets are the CIDRs whose peers we trust to set
+// X-Forwarded-For / X-Real-IP. Defaults to loopback + RFC1918 + IPv6 ULA
+// (a reverse proxy is almost always LAN-side); overridable at startup
+// from TRUSTED_PROXY_CIDRS. Forwarded headers from any other peer are
+// ignored, so a directly-reachable client can't spoof its own
+// attribution for bandwidth / audit / admin-roster purposes.
+var trustedProxyNets = mustParseCIDRs([]string{
+	"127.0.0.0/8", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "::1/128", "fc00::/7",
+})
+
+// mustParseCIDRs parses CIDR strings, silently skipping malformed ones.
+func mustParseCIDRs(cidrs []string) []*net.IPNet {
+	out := make([]*net.IPNet, 0, len(cidrs))
+	for _, c := range cidrs {
+		if _, n, err := net.ParseCIDR(strings.TrimSpace(c)); err == nil {
+			out = append(out, n)
 		}
-		return strings.TrimSpace(h)
 	}
-	if h := r.Header.Get("X-Real-IP"); h != "" {
+	return out
+}
+
+func isTrustedProxy(ip net.IP) bool {
+	for _, n := range trustedProxyNets {
+		if n.Contains(ip) {
+			return true
+		}
+	}
+	return false
+}
+
+// clientIP returns the most plausible source IP. Forwarded headers are
+// honored ONLY when the immediate peer is a trusted proxy; otherwise we
+// use the peer address directly so the headers can't be spoofed.
+func clientIP(r *http.Request) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
+	}
+	peer := net.ParseIP(host)
+	if peer == nil || !isTrustedProxy(peer) {
+		return host
+	}
+	if h := r.Header.Get("X-Forwarded-For"); h != "" {
+		// Walk right-to-left to the first hop that isn't itself a trusted
+		// proxy — that's the real client as seen through our proxy chain.
+		// (Proxies append the address they saw, so the rightmost entries
+		// are the most trustworthy.)
+		parts := strings.Split(h, ",")
+		for i := len(parts) - 1; i >= 0; i-- {
+			ip := strings.TrimSpace(parts[i])
+			if pip := net.ParseIP(ip); pip != nil && !isTrustedProxy(pip) {
+				return ip
+			}
+		}
+		return strings.TrimSpace(parts[0]) // all hops trusted; use leftmost
+	}
+	if h := strings.TrimSpace(r.Header.Get("X-Real-IP")); h != "" {
 		return h
 	}
-	ip, _, _ := net.SplitHostPort(r.RemoteAddr)
-	return ip
+	return host
 }
 
 // countingResponseWriter wraps http.ResponseWriter so we can record the

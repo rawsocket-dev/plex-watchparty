@@ -69,11 +69,36 @@ func NewSegmentCache(dir string, maxBytes int64) *SegmentCache {
 	}
 }
 
+// withinDir reports whether cleaned path p is the directory root itself
+// or lives underneath it — used to keep cache writes inside c.dir.
+func withinDir(root, p string) bool {
+	root = filepath.Clean(root)
+	p = filepath.Clean(p)
+	return p == root || strings.HasPrefix(p, root+string(os.PathSeparator))
+}
+
 // invalidateRangesLocked drops the memoized RangesFor result for one
 // movie. Called whenever the set of cached segments for that movie
 // changes (Put, eviction). Must be called with c.mu held.
 func (c *SegmentCache) invalidateRangesLocked(ratingKey string) {
 	delete(c.rangesCache, ratingKey)
+}
+
+// evictToCapLocked drops oldest (LRU back) entries until totalBytes is
+// within maxBytes. Used after LoadFromDisk so a directory that already
+// exceeds the cap (e.g. CACHE_MAX_GB lowered between runs) is trimmed at
+// startup rather than staying over-cap until the next write. Caller must
+// hold c.mu.
+func (c *SegmentCache) evictToCapLocked() {
+	for c.totalBytes > c.maxBytes && c.lru.Len() > 0 {
+		oldest := c.lru.Back()
+		oe := oldest.Value.(*cacheEntry)
+		os.Remove(oe.path)
+		c.lru.Remove(oldest)
+		delete(c.entries, oe.key)
+		c.totalBytes -= oe.bytes
+		c.invalidateRangesLocked(oe.key.ratingKey)
+	}
 }
 
 func (c *SegmentCache) Get(key cacheKey) (string, bool) {
@@ -135,6 +160,13 @@ func (c *SegmentCache) FindOverlapping(ratingKey string, startMs, endMs int64) (
 // rename never appear in the cache.
 func (c *SegmentCache) Put(key cacheKey, src io.Reader) (string, error) {
 	movieDir := filepath.Join(c.dir, key.ratingKey)
+	// Defense in depth: never let a ratingKey (which has historically
+	// originated from a client-supplied segment context) escape the cache
+	// root via "..". filepath.Join cleans the path, so a traversal would
+	// resolve to a sibling/parent dir; refuse anything not under c.dir.
+	if !withinDir(c.dir, movieDir) {
+		return "", fmt.Errorf("cache: unsafe ratingKey %q", key.ratingKey)
+	}
 	if err := os.MkdirAll(movieDir, 0o755); err != nil {
 		return "", err
 	}
@@ -276,6 +308,10 @@ func (c *SegmentCache) LoadFromDisk() error {
 			c.invalidateRangesLocked(ratingKey)
 		}
 	}
+	// A previously-larger cache (or a lowered cap) can leave more on disk
+	// than maxBytes allows; trim to cap now so we don't run over until the
+	// next Put happens to evict.
+	c.evictToCapLocked()
 	return nil
 }
 

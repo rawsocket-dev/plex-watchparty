@@ -144,6 +144,7 @@ ALLOWED_EMAILS=you@example.com go run .
 | `CACHE_MAX_GB`                    | no       | `20`                     | Disk cap for HLS segment cache in GB. Cached segments survive restarts; LRU eviction kicks in when cap is hit. Estimate ~10 GB per typical 2hr movie at 12 Mbps. |
 | `LISTEN_ADDR`                     | no       | `:8080`                  | Listen address (e.g., `:8080` or `0.0.0.0:8080`) |
 | `WORK_DIR`                        | no       | `$TMPDIR/plexwatchparty` | Root data directory for cache and work files |
+| `TRUSTED_PROXY_CIDRS`             | no       | loopback + RFC1918 + ULA | Comma-separated CIDRs whose peers may set `X-Forwarded-For` / `X-Real-IP`. Headers from any other peer are ignored (so a directly-reachable client can't spoof its attribution). Widen this only if your reverse proxy sits on a public address. |
 
 **Roles:**
 

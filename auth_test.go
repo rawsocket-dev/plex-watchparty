@@ -3,8 +3,10 @@ package main
 import (
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestSanitizeName(t *testing.T) {
@@ -87,6 +89,41 @@ func TestAuthRejectsTamperedCookie(t *testing.T) {
 	r.AddCookie(&http.Cookie{Name: sessionCookie, Value: "op@x.com:" + parts[1]})
 	if got := a.Role(r); got != RoleAnon {
 		t.Errorf("tampered cookie accepted as %v, want RoleAnon", got)
+	}
+}
+
+func TestAuthRejectsExpiredCookie(t *testing.T) {
+	a := testAuth()
+	r := httptest.NewRequest("GET", "/", nil)
+	r.AddCookie(&http.Cookie{Name: sessionCookie, Value: a.tokenWithExpiry("op@x.com", time.Now().Add(-time.Hour).Unix())})
+	if got := a.Role(r); got != RoleAnon {
+		t.Errorf("expired cookie accepted as %v, want RoleAnon", got)
+	}
+	if email := a.Email(r); email != "" {
+		t.Errorf("expired cookie yielded email %q, want empty", email)
+	}
+}
+
+func TestAuthAcceptsUnexpiredCookie(t *testing.T) {
+	a := testAuth()
+	r := httptest.NewRequest("GET", "/", nil)
+	r.AddCookie(&http.Cookie{Name: sessionCookie, Value: a.tokenWithExpiry("op@x.com", time.Now().Add(time.Hour).Unix())})
+	if got := a.Role(r); got != RoleHost {
+		t.Errorf("unexpired cookie = %v, want RoleHost", got)
+	}
+}
+
+func TestAuthRejectsTamperedExpiry(t *testing.T) {
+	// Extending exp without re-signing must fail the HMAC check — a client
+	// can't grant itself a longer session.
+	a := testAuth()
+	expired := a.tokenWithExpiry("op@x.com", time.Now().Add(-time.Hour).Unix())
+	parts := strings.SplitN(expired, ":", 3) // email:exp:hmac
+	forged := parts[0] + ":" + strconv.FormatInt(time.Now().Add(time.Hour).Unix(), 10) + ":" + parts[2]
+	r := httptest.NewRequest("GET", "/", nil)
+	r.AddCookie(&http.Cookie{Name: sessionCookie, Value: forged})
+	if got := a.Role(r); got != RoleAnon {
+		t.Errorf("forged-expiry cookie accepted as %v, want RoleAnon", got)
 	}
 }
 
