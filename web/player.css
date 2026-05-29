@@ -261,15 +261,46 @@ body.viewer .role-cell .r-viewer { display: inline; }
 .ibtn.warn { color: #a07a48; }
 .ibtn.warn:hover { color: var(--warn); }
 #admin-link[hidden] { display: none; }
-#host-cell[hidden], #handoff[hidden] { display: none; }
+#host-cell[hidden] { display: none; }
+.host-cell { position: relative; }
 .host-cell .v { color: var(--signal); }
-/* Chevron is wired up by the hand-off picker (later task); inert until then. */
-.host-cell .chev { display: none; }
-#handoff {
-  background: linear-gradient(180deg, #1d2129 0%, #131820 100%);
-  border: 0; border-left: 1px solid var(--rule);
-  color: #8a92a0; font-family: var(--mono);
-  font-size: .6rem; letter-spacing: .15em; cursor: pointer;
+.host-cell .chev { color: var(--paper-mute); font-size: .6rem; margin-left: .1rem; }
+.host-cell .chev[hidden] { display: none; }
+.host-cell.click { cursor: pointer; }
+.host-cell.click:hover { background: rgba(159,230,173,.06); }
+body.viewer .host-cell { cursor: default; }
+
+/* Hand-off popover anchored under the driving chip. */
+.pop {
+  position: absolute; top: calc(100% + 5px); left: .4rem;
+  min-width: 220px; z-index: 60;
+  background: var(--ink-2); border: 1px solid var(--rule-hi); border-radius: 5px;
+  box-shadow: 0 14px 34px rgba(0,0,0,.6);
+  overflow: hidden;
+}
+.pop[hidden] { display: none; }
+.pop-h {
+  font-size: .5rem; letter-spacing: .22em; text-transform: uppercase;
+  color: var(--paper-mute); padding: .55rem .8rem .35rem;
+}
+.pop-u {
+  display: flex; align-items: center; gap: .6rem; width: 100%;
+  padding: .5rem .8rem; cursor: pointer;
+  background: transparent; border: 0; border-top: 1px solid var(--rule);
+  font-family: var(--mono); color: var(--paper);
+  letter-spacing: .04em; text-align: left;
+}
+.pop-u:hover { background: rgba(159,230,173,.08); }
+.pop-u .nm { font-size: .8rem; }
+.pop-u .arr { margin-left: auto; color: var(--paper-mute); }
+.pop-u:hover .arr { color: var(--signal); }
+.pop-empty { padding: .6rem .8rem; color: var(--paper-mute); font-size: .72rem; border-top: 1px solid var(--rule); }
+.av {
+  width: 24px; height: 24px; border-radius: 50%; flex: none;
+  border: 1px solid var(--signal-deep); color: var(--signal);
+  background: rgba(159,230,173,.05);
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: .62rem;
 }
 
 /* Volume control — ibtn footprint with SVG speaker icon and a

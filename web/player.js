@@ -18,19 +18,43 @@ let lastActiveHostName;        // undefined initially
 function applyWhoami(d) {
   if (!d) return;
   isHost = !!d.isActiveHost;
+  myName = d.name || '';
   document.body.classList.toggle('viewer', !isHost);
   const al = document.getElementById('admin-link');
   if (al) al.hidden = !d.isAdmin;
 }
 fetchWhoami().then(applyWhoami);
-const handoffSel = document.getElementById('handoff');
-if (handoffSel) {
-  handoffSel.addEventListener('change', () => {
-    const id = handoffSel.value;
-    handoffSel.value = '';
-    if (id) fetch('/api/host/handoff?id=' + encodeURIComponent(id), { method: 'POST' }).catch(() => {});
+// Hand-off picker: the "Driving" chip (#host-cell) is the trigger. For the
+// active host it opens a popover of connected users; clicking one POSTs to
+// /api/host/handoff. Viewers see the chip read-only (no chevron, no open).
+let myName = '';
+const hostCell    = document.getElementById('host-cell');
+const handoffPop  = document.getElementById('handoff-pop');
+const handoffList = document.getElementById('handoff-list');
+function openHandoff()  { if (handoffPop) handoffPop.hidden = false; if (hostCell) hostCell.classList.add('open'); }
+function closeHandoff() { if (handoffPop) handoffPop.hidden = true;  if (hostCell) hostCell.classList.remove('open'); }
+if (hostCell) {
+  hostCell.addEventListener('click', (e) => {
+    if (!isHost) return;
+    if (e.target.closest('#handoff-pop')) return; // row clicks handled below
+    if (handoffPop && handoffPop.hidden) openHandoff(); else closeHandoff();
   });
 }
+if (handoffList) {
+  handoffList.addEventListener('click', (e) => {
+    const btn = e.target.closest('.pop-u');
+    if (!btn) return;
+    const id = btn.getAttribute('data-id');
+    if (id) fetch('/api/host/handoff?id=' + encodeURIComponent(id), { method: 'POST' }).catch(() => {});
+    closeHandoff();
+  });
+}
+// Outside-click closes the popover.
+document.addEventListener('click', (e) => {
+  if (!handoffPop || handoffPop.hidden) return;
+  if (e.target.closest('#host-cell')) return;
+  closeHandoff();
+});
 // Re-fetch whoami (cache-bypassing) whenever the active host changes, so
 // control visibility tracks election/hand-off without a reload.
 function refreshHostUI(state) {
@@ -41,8 +65,15 @@ function refreshHostUI(state) {
   }
   const hc = document.getElementById('host-cell');
   const hn = document.getElementById('host-name');
-  if (hn) hn.textContent = name || 'nobody';
-  if (hc) hc.hidden = isHost; // the active host doesn't need the indicator
+  const chev = hc && hc.querySelector('.chev');
+  // The driving chip is always shown now. The active host sees their own
+  // name + a chevron and can click to hand off; viewers see who's driving,
+  // read-only.
+  if (hc) hc.hidden = false;
+  if (hn) hn.textContent = isHost ? ((myName ? myName + ' ' : '') + '(you)') : (name || 'nobody');
+  if (hc) hc.classList.toggle('click', isHost);
+  if (chev) chev.hidden = !isHost;
+  if (!isHost) closeHandoff();
 }
 const scrubHit      = document.getElementById('scrub-hit');
 const scrubTrack    = document.getElementById('scrub-track');
@@ -280,7 +311,7 @@ const viewersRosterEl = viewersEl.querySelector('.roster');
 function renderViewers(list) {
   if (!Array.isArray(list) || list.length === 0) {
     viewersEl.hidden = true;
-    if (handoffSel) { handoffSel.hidden = true; }
+    if (handoffList) handoffList.innerHTML = '';
     return;
   }
   viewersEl.hidden = false;
@@ -291,13 +322,20 @@ function renderViewers(list) {
       '<span class="role">' + (v.host ? 'host' : 'viewer') + '</span>' +
     '</div>'
   ).join('');
-  if (handoffSel) {
-    handoffSel.hidden = !isHost;
-    const opts = ['<option value="">Pass control →</option>'];
-    (list || []).forEach(v => {
-      if (v.id) opts.push('<option value="' + escapeHTML(v.id) + '">' + escapeHTML(v.name || v.id) + '</option>');
-    });
-    handoffSel.innerHTML = opts.join('');
+  // Build the hand-off popover from connected users, omitting the host
+  // (self) — only one user holds control at a time, marked host:true.
+  if (handoffList) {
+    const others = (list || []).filter(v => v.id && !v.host);
+    handoffList.innerHTML = others.length
+      ? others.map(v => {
+          const nm = v.name || v.id;
+          const initial = escapeHTML((nm.trim()[0] || '?').toUpperCase());
+          return '<button class="pop-u" data-id="' + escapeHTML(v.id) + '">' +
+            '<span class="av">' + initial + '</span>' +
+            '<span class="nm">' + escapeHTML(nm) + '</span>' +
+            '<span class="arr">→</span></button>';
+        }).join('')
+      : '<div class="pop-empty">No one else here yet.</div>';
   }
 }
 function fmtRate(kbps) {
@@ -882,6 +920,7 @@ zoomBtn.onclick = () => {
 // 'z' = zoom toggle, 'm' = mute toggle, ↑/↓ = volume ±5%. All
 // ignore input fields so typing in the search box doesn't fire.
 window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') { closeHandoff(); return; }
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
   if (e.key === ' ' || e.code === 'Space') {
     e.preventDefault();
