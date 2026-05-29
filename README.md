@@ -34,11 +34,8 @@ authoritative position with sub-second tolerance.
 - `sync.go` — authoritative playback state, SSE broadcast to viewers, host control endpoint
 - `web/` — login, movie list, drift-correcting hls.js player
 
-The long-form design lives in
-[`docs/superpowers/specs/2026-05-24-plex-hls-proxy-design.md`](docs/superpowers/specs/2026-05-24-plex-hls-proxy-design.md).
-Read that first if you're modifying the playlist / segment / cache
-pipeline; high-level project notes for contributors are in
-[`local.md`](local.md).
+Read the playlist / segment / cache files (`plex.go`, `playlist.go`,
+`cache.go`) first if you're modifying that pipeline.
 
 **A note on Plex TLS:** Plex Media Server's certificate is signed for
 `*.<machine-id>.plex.direct` (Plex.tv's auto-issued cert). Any operator

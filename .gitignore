@@ -8,3 +8,8 @@
 .DS_Store
 *.log
 6eb14503-e243-4233-b4b0-e37e1a5b24f6.jpg
+
+# local / superpowers — kept on disk locally, not tracked.
+# Migrated to ~/.local/projects/plex-watchparty/
+/local.md
+/docs/superpowers/
