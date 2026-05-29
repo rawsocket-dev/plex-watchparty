@@ -598,6 +598,8 @@ function applyState(s, reason) {
   // Status lights track live playback: Run glows mint while playing,
   // Pause glows amber while paused (CSS keys off #wrap.playing).
   wrapEl.classList.toggle('playing', !!s.playing);
+  // Drive the toolbar auto-hide off the shared playing state.
+  setChromePlaying(!!s.playing);
 
   const ratingKeyChanged   = s.ratingKey !== loadedKey;
   const sessionTokenChanged = s.sessionToken && s.sessionToken !== lastSessionToken;
@@ -682,6 +684,57 @@ openLiveEvents((msg) => {
   }
   applyState(msg, 'sse');
 });
+
+// --- Auto-hide the toolbar while playing -----------------------------
+// After CHROME_IDLE_MS of no pointer movement during playback, the top
+// toolbar + scrub bar slide away for an unobstructed picture. Any pointer
+// movement, a keypress, or the movie pausing brings them straight back.
+// Never hides while paused or while the hand-off picker is open.
+const CHROME_IDLE_MS = 15000;
+let chromeTimer = null;
+let chromePlaying = false;
+
+function syncChromeHeight() {
+  const bar = document.getElementById('bar');
+  const scrub = document.getElementById('scrub');
+  const h = (bar ? bar.offsetHeight : 0) + (scrub ? scrub.offsetHeight : 0);
+  if (h > 0) wrapEl.style.setProperty('--chrome-h', h + 'px');
+}
+
+function armChromeTimer() {
+  if (chromeTimer) clearTimeout(chromeTimer);
+  chromeTimer = chromePlaying ? setTimeout(hideChrome, CHROME_IDLE_MS) : null;
+}
+
+function showChrome() {
+  wrapEl.classList.remove('chrome-hidden');
+  armChromeTimer(); // re-arms while playing; leaves it cleared while paused
+}
+
+function hideChrome() {
+  chromeTimer = null;
+  if (!chromePlaying) return;                   // never hide while paused
+  if (handoffPop && !handoffPop.hidden) return; // don't yank an open picker
+  syncChromeHeight();                           // measure before collapsing
+  wrapEl.classList.add('chrome-hidden');
+}
+
+// Called from applyState on every state tick so play/pause flips re-arm or
+// cancel the countdown.
+function setChromePlaying(playing) {
+  chromePlaying = playing;
+  if (!playing) {
+    if (chromeTimer) { clearTimeout(chromeTimer); chromeTimer = null; }
+    wrapEl.classList.remove('chrome-hidden'); // paused → controls stay up
+  } else if (!chromeTimer && !wrapEl.classList.contains('chrome-hidden')) {
+    armChromeTimer(); // playing and visible → start the countdown
+  }
+}
+
+// Any sign of life reveals the chrome and restarts the idle countdown.
+['mousemove', 'pointerdown', 'touchstart', 'keydown'].forEach((evt) =>
+  window.addEventListener(evt, showChrome, { passive: true })
+);
 
 // Heartbeat: tell the server what we're actually seeing every 5 s.
 // Admin panel uses this to render "viewer N is at HH:MM:SS, paused/

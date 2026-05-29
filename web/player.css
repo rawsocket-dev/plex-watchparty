@@ -30,6 +30,23 @@ html, body {
 ::-moz-selection { background: transparent; }
 #wrap { height: 100%; display: flex; flex-direction: column; }
 
+/* Auto-hide chrome while playing ------------------------------------
+   After a spell of pointer inactivity during playback the top toolbar and
+   scrub bar slide up out of view for an unobstructed picture; pointer
+   movement (or a pause) brings them right back. Driven by JS toggling
+   #wrap.chrome-hidden and stamping --chrome-h with the measured bar+scrub
+   height. The space is reclaimed with a negative margin-top on #bar (which
+   drags #scrub up with it) plus opacity — NOT max-height/overflow — so the
+   hand-off / volume / roster popovers are never clipped while shown. */
+#bar   { transition: margin-top .35s ease, opacity .25s ease; }
+#scrub { transition: opacity .25s ease; }
+#wrap.chrome-hidden #bar {
+  margin-top: calc(-1 * var(--chrome-h, 11rem));
+  opacity: 0; pointer-events: none;
+}
+#wrap.chrome-hidden #scrub { opacity: 0; pointer-events: none; }
+#wrap.chrome-hidden { cursor: none; }
+
 /* Top bar — studio control panel.
    Two repeating-linear-gradient layers fake the brushed-aluminum grain;
    inset shadows give cells the "recessed-into-the-rack" feel. */
