@@ -27,15 +27,6 @@ func registerAdminRoutes(
 		w.Header().Set("Cache-Control", "no-store")
 		w.Write(adminHTML)
 	})))
-	// Throwaway design artifact — header-redesign mockups. The exact
-	// "/admin/mockups" pattern outranks the "/admin/" subtree NotFound
-	// in ServeMux, so it's served rather than 404'd. Remove once a
-	// header direction is chosen.
-	mux.Handle("/admin/mockups", gated(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.Header().Set("Cache-Control", "no-store")
-		w.Write(mockupsHTML)
-	})))
 	mux.Handle("/admin/", gated(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 	})))
