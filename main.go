@@ -139,6 +139,7 @@ func main() {
 	// Persist the library cache next to (not inside) the sessions dir so
 	// the prune sweep never touches it.
 	libraryCache := filepath.Join(filepath.Dir(workDir), "library-cache.json")
+	audit := NewAuditLog(filepath.Join(filepath.Dir(workDir), "audit.jsonl"), auditCap)
 	// Plex Universal Transcoder target bitrate, in kbps. There's no
 	// "direct stream" mode any more — every play goes through Plex's
 	// transcoder (we proxy + cache its HLS output). 12000 is a
@@ -202,9 +203,8 @@ func main() {
 	statePath := filepath.Join(filepath.Dir(workDir), "state.json")
 	stateStore := NewStateStore(statePath)
 
-	hub := NewHub(plex, plexSession, segCache, recent, stateStore)
+	hub := NewHub(plex, plexSession, segCache, recent, stateStore, audit)
 	auth := NewAuth(googleSecret, allowedEmails, os.Getenv("HOST_EMAILS"), os.Getenv("ADMIN_EMAILS"))
-	audit := NewAuditLog(filepath.Join(filepath.Dir(workDir), "audit.jsonl"), auditCap)
 	oauth := NewOAuth(googleID, googleSecret, googleRedirect, auth, audit)
 	bw := newBwTracker()
 	if len(auth.hosts) == 0 {

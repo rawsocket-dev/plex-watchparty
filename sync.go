@@ -110,6 +110,7 @@ type Hub struct {
 	cache   *SegmentCache
 	recent  *RecentMovies
 	store   *StateStore
+	audit   *AuditLog
 
 	mu    sync.Mutex
 	state State
@@ -158,13 +159,14 @@ const idleGrace = 60 * time.Second
 // just "host clicks play again," not "plex session killed."
 const hostExitGrace = 10 * time.Second
 
-func NewHub(plex *Plex, session *PlexSession, cache *SegmentCache, recent *RecentMovies, store *StateStore) *Hub {
+func NewHub(plex *Plex, session *PlexSession, cache *SegmentCache, recent *RecentMovies, store *StateStore, audit *AuditLog) *Hub {
 	h := &Hub{
 		plex:          plex,
 		session:       session,
 		cache:         cache,
 		recent:        recent,
 		store:         store,
+		audit:         audit,
 		clients:       make(map[*clientEntry]struct{}),
 		broadcastWake: make(chan struct{}, 1),
 		done:          make(chan struct{}),
@@ -796,6 +798,22 @@ type controlReq struct {
 	Autoplay bool `json:"autoplay"`
 }
 
+// fmtClock renders a position in seconds as H:MM:SS (or M:SS under an
+// hour) for human-readable audit detail strings.
+func fmtClock(sec float64) string {
+	if sec < 0 || !isFiniteF(sec) {
+		sec = 0
+	}
+	s := int(sec)
+	h, m, ss := s/3600, (s%3600)/60, s%60
+	if h > 0 {
+		return fmt.Sprintf("%d:%02d:%02d", h, m, ss)
+	}
+	return fmt.Sprintf("%d:%02d", m, ss)
+}
+
+func isFiniteF(f float64) bool { return f == f && f-f == 0 }
+
 // HandleControl applies an action from any authenticated friend and rebroadcasts.
 func (h *Hub) HandleControl(w http.ResponseWriter, r *http.Request) {
 	// Cap the request body — /control is the host's command channel,
@@ -809,6 +827,24 @@ func (h *Hub) HandleControl(w http.ResponseWriter, r *http.Request) {
 	}
 	log.Printf("control: %s ip=%s action=%s ratingKey=%s pos=%.2f",
 		"received", clientIP(r), req.Action, req.RatingKey, req.PositionSec)
+
+	// Attribute this action to the signed-in host (WithActor stashed the
+	// email); fall back to "system" if absent. The deferred Record runs
+	// AFTER the handler returns — i.e. after Hub.mu has been released —
+	// so the audit file write never happens under the room lock. Each
+	// action branch sets auditDetail; empty detail records nothing.
+	// Role is recorded as "host" because /control is RequireHost-gated;
+	// keep that in sync if the route's gating ever changes.
+	actor := actorEmail(r)
+	if actor == "" {
+		actor = "system"
+	}
+	var auditDetail string
+	defer func() {
+		if auditDetail != "" {
+			h.audit.Record(AuditEvent{Type: "play", Email: actor, Role: "host", IP: clientIP(r), Detail: auditDetail})
+		}
+	}()
 
 	if req.Action == "load" {
 		t0 := time.Now()
@@ -904,6 +940,7 @@ func (h *Hub) HandleControl(w http.ResponseWriter, r *http.Request) {
 		}
 		h.broadcast()
 		h.mu.Unlock()
+		auditDetail = fmt.Sprintf("started %q at %s", title, fmtClock(offsetSec))
 		// Tell Plex about the new session immediately so it knows our
 		// starting position. The 5s ticker would catch it eventually
 		// but the first segments hls.js requests would race ahead of
@@ -936,10 +973,12 @@ func (h *Hub) HandleControl(w http.ResponseWriter, r *http.Request) {
 		// ReportTimeline becomes a no-op.
 		h.mu.Lock()
 		rk := h.state.RatingKey
+		stoppedTitle := h.state.Title
 		posMs := int64(h.snapshot().PositionSec * 1000)
 		durMs := int64(h.state.DurationSec * 1000)
 		h.mu.Unlock()
 		if rk != "" {
+			auditDetail = fmt.Sprintf("stopped %q", stoppedTitle)
 			if err := h.session.ReportTimeline("stopped", rk, posMs, durMs); err != nil {
 				log.Printf("timeline: stop report failed: %v", err)
 			}
@@ -965,9 +1004,11 @@ func (h *Hub) HandleControl(w http.ResponseWriter, r *http.Request) {
 	case "play":
 		cur.Playing = true
 		log.Printf("state: play  ip=%s title=%q at=%.2f", clientIP(r), cur.Title, cur.PositionSec)
+		auditDetail = fmt.Sprintf("resumed %q at %s", cur.Title, fmtClock(cur.PositionSec))
 	case "pause":
 		cur.Playing = false
 		log.Printf("state: pause ip=%s title=%q at=%.2f", clientIP(r), cur.Title, cur.PositionSec)
+		auditDetail = fmt.Sprintf("paused %q at %s", cur.Title, fmtClock(cur.PositionSec))
 	case "seek":
 		log.Printf("state: seek  ip=%s title=%q from=%.2f to=%.2f",
 			clientIP(r), cur.Title, cur.PositionSec, req.PositionSec)
@@ -1013,6 +1054,7 @@ func (h *Hub) HandleControl(w http.ResponseWriter, r *http.Request) {
 			cur.SessionToken = h.session.SessionToken()
 		}
 		cur.PositionSec = target
+		auditDetail = fmt.Sprintf("seeked %q to %s", cur.Title, fmtClock(target))
 	}
 	cur.UpdatedAtMs = nowMs()
 	h.state = cur
