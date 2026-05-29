@@ -11,11 +11,12 @@ import (
 )
 
 // AuditEvent is one entry in the admin audit trail: a sign-in, a denied
-// sign-in attempt, or an admin maintenance action.
+// sign-in attempt, an admin maintenance action, a playback action, or
+// a server-side Plex lifecycle event.
 type AuditEvent struct {
 	Unix   int64  `json:"unix"`   // event time (set by Record if 0)
-	Type   string `json:"type"`   // "signin" | "signin-denied" | "admin"
-	Email  string `json:"email"`  // verified email ("" if unknown)
+	Type   string `json:"type"`   // "signin" | "signin-denied" | "admin" | "play" | "plex"
+	Email  string `json:"email"`  // verified email, or "system" for server-initiated events ("" if unknown)
 	Role   string `json:"role"`   // "host" | "viewer" | "admin" | ""
 	IP     string `json:"ip"`     // client IP at the time
 	Detail string `json:"detail"` // action text, or "admin" marker on a signin

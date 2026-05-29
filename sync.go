@@ -873,6 +873,8 @@ func (h *Hub) HandleControl(w http.ResponseWriter, r *http.Request) {
 				"reused":      true,
 				"durationSec": cur.DurationSec,
 			})
+			// Reuse (refresh / re-click of the current movie) is intentionally
+			// not audited — it's not a new session start. auditDetail stays "".
 			return
 		}
 
