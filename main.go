@@ -117,10 +117,18 @@ func main() {
 	log.Printf("plex-watchparty starting — build %s", version)
 	plexURL := os.Getenv("PLEX_BASE_URL")
 	plexTok := os.Getenv("PLEX_TOKEN")
-	password := os.Getenv("WATCH_PASSWORD")
-	hostPassword := os.Getenv("HOST_PASSWORD")
-	if plexURL == "" || plexTok == "" || password == "" {
-		log.Fatal("set PLEX_BASE_URL, PLEX_TOKEN and WATCH_PASSWORD")
+	if plexURL == "" || plexTok == "" {
+		log.Fatal("set PLEX_BASE_URL and PLEX_TOKEN")
+	}
+	googleID := os.Getenv("GOOGLE_CLIENT_ID")
+	googleSecret := os.Getenv("GOOGLE_CLIENT_SECRET")
+	googleRedirect := os.Getenv("GOOGLE_REDIRECT_URL")
+	if googleID == "" || googleSecret == "" || googleRedirect == "" {
+		log.Fatal("set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET and GOOGLE_REDIRECT_URL")
+	}
+	allowedEmails := os.Getenv("ALLOWED_EMAILS")
+	if strings.TrimSpace(allowedEmails) == "" {
+		log.Fatal("set ALLOWED_EMAILS (comma-separated) — at least one address may sign in")
 	}
 	listen := env("LISTEN_ADDR", ":8080")
 	workDir := env("WORK_DIR", filepath.Join(os.TempDir(), "plexwatchparty"))
@@ -195,38 +203,22 @@ func main() {
 	stateStore := NewStateStore(statePath)
 
 	hub := NewHub(plex, plexSession, segCache, recent, stateStore)
-	auth := NewAuth(password, hostPassword)
+	auth := NewAuth(googleSecret, allowedEmails, os.Getenv("HOST_EMAILS"), os.Getenv("ADMIN_EMAILS"))
+	oauth := NewOAuth(googleID, googleSecret, googleRedirect, auth)
 	bw := newBwTracker()
-
-	// Optional Google OAuth gate for /admin. All four env vars must
-	// be set for the admin surface to wire up; with any missing the
-	// /admin routes are simply not registered and the panel is 404.
-	oauth := NewOAuth(
-		os.Getenv("ADMIN_GOOGLE_CLIENT_ID"),
-		os.Getenv("ADMIN_GOOGLE_CLIENT_SECRET"),
-		os.Getenv("ADMIN_GOOGLE_REDIRECT_URL"),
-		os.Getenv("ADMIN_GOOGLE_ALLOWED_EMAILS"),
-		auth,
-	)
-	if auth.HostEnabled() {
-		log.Printf("auth: host role enabled — viewers cannot pick / drive playback")
-	} else {
-		log.Printf("auth: no HOST_PASSWORD configured — any authenticated viewer can drive playback")
+	if len(auth.hosts) == 0 {
+		log.Printf("auth: HOST_EMAILS empty — every allowed user can drive playback")
 	}
 
 	mux := http.NewServeMux()
 
-	// Public: only the login + logout pages. Logout is public so
-	// clicking it from a stale page (cookie already invalid) still
-	// lands cleanly on /login instead of bouncing through the Guard.
-	mux.HandleFunc("/login", auth.HandleLogin)
+	mux.HandleFunc("/login", oauth.HandleLogin)
 	mux.HandleFunc("/logout", auth.HandleLogout)
+	mux.HandleFunc("/oauth/start", oauth.HandleStart)
+	mux.HandleFunc("/oauth/callback", oauth.HandleCallback)
 
-	// Admin surface — Google OAuth gate, separate cookie. Opt-in via
-	// env vars; if not configured, /admin routes simply don't exist.
-	if oauth.Configured() {
-		registerAdminRoutes(mux, oauth, auth, plex, segCache, plexSession, hub, bw)
-	}
+	// Admin maintenance panel — same identity, gated on ADMIN_EMAILS.
+	registerAdminRoutes(mux, auth, plex, segCache, plexSession, hub, bw)
 
 	// Everything else is behind the shared password.
 	protected := http.NewServeMux()
@@ -241,7 +233,7 @@ func main() {
 		// anyway — and route them straight to /watch where they get
 		// the player (or the "take your seat" waiting room if the
 		// session has since cleared).
-		if auth.EffectiveRole(r) != RoleHost && plexSession.RatingKey() != "" {
+		if auth.Role(r) != RoleHost && plexSession.RatingKey() != "" {
 			http.Redirect(w, r, "/watch", http.StatusSeeOther)
 			return
 		}
@@ -306,7 +298,7 @@ func main() {
 	})
 
 	protected.HandleFunc("/events", func(w http.ResponseWriter, r *http.Request) {
-		hub.HandleEvents(w, r, auth.EffectiveRole(r) == RoleHost)
+		hub.HandleEvents(w, r, auth.Role(r) == RoleHost)
 	})
 	// /control is host-gated. RequireHost is a no-op when HOST_PASSWORD
 	// isn't configured (preserves "any-friend-can-drive" default).
@@ -314,12 +306,10 @@ func main() {
 
 	protected.HandleFunc("/api/whoami", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]any{
-			"role":        auth.EffectiveRole(r).String(),
-			"hostEnabled": auth.HostEnabled(),
-			// Server-side name resolution (cookie → sanitize → "guest"
-			// fallback) so the client never has to duplicate the
-			// guest-fallback logic across player/library/waiting pages.
-			"name": viewerNameFromRequest(r),
+			"email":   auth.Email(r),
+			"role":    auth.Role(r).String(),
+			"isAdmin": auth.IsAdmin(r),
+			"name":    viewerNameFromRequest(r),
 		})
 	})
 
