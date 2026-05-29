@@ -2,6 +2,7 @@ package main
 
 import (
 	"path/filepath"
+	"sync"
 	"testing"
 )
 
@@ -88,5 +89,26 @@ func TestAuditLogNilSafe(t *testing.T) {
 	a.Record(AuditEvent{Type: "signin"}) // must not panic
 	if a.List() != nil {
 		t.Error("nil AuditLog.List() should be nil")
+	}
+}
+
+func TestAuditLogConcurrentRecordsAllLand(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "audit.jsonl")
+	a := NewAuditLog(path, 500)
+	var wg sync.WaitGroup
+	for i := 0; i < 50; i++ {
+		wg.Add(1)
+		go func(n int) {
+			defer wg.Done()
+			a.Record(AuditEvent{Type: "play", Detail: "e" + string(rune('A'+n%26))})
+		}(i)
+	}
+	wg.Wait()
+	if got := len(a.List()); got != 50 {
+		t.Fatalf("in-memory len = %d, want 50", got)
+	}
+	reloaded := NewAuditLog(path, 500)
+	if got := len(reloaded.List()); got != 50 {
+		t.Fatalf("reloaded len = %d, want 50 (concurrent persist corrupted the file)", got)
 	}
 }

@@ -35,6 +35,8 @@ type AuditLog struct {
 
 	mu     sync.Mutex
 	events []AuditEvent // oldest-first
+
+	writeMu sync.Mutex // serializes file rewrites so concurrent Records can't clobber the .tmp
 }
 
 // NewAuditLog builds the store and loads up to the last cap events from
@@ -107,6 +109,8 @@ func (a *AuditLog) persist(events []AuditEvent) {
 	if a.path == "" {
 		return
 	}
+	a.writeMu.Lock()
+	defer a.writeMu.Unlock()
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf) // Encode appends a newline → JSONL
 	for _, ev := range events {
