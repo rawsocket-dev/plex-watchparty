@@ -633,8 +633,12 @@ body.guest ul.films button:hover::before { transform: scaleY(0); }
   border-color: var(--rule);
   color: var(--paper);
 }
-body.viewer #resume-banner .rb-buttons { display: none; }
-body.viewer #resume-banner .rb-eyebrow::after {
-  content: " · host can resume";
+/* Only the active host can act on the resume hint. The library marks a
+   non-active-host with body.guest (the player uses body.viewer), so key
+   off that — otherwise the Resume / Start over buttons wrongly show to
+   viewers. They still see the banner as informational text. */
+body.guest #resume-banner .rb-buttons { display: none; }
+body.guest #resume-banner .rb-eyebrow::after {
+  content: " · the host can resume";
   color: var(--paper-mute);
 }
