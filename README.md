@@ -32,8 +32,9 @@ container restart or idle shutdown the library and waiting room offer to
 same person keeps the remote (their browser reconnects and reclaims it).
 There's no database — live state is in memory; only the segment cache, the
 library cache, the recently-played list (`recent.json`), the resume hint +
-active host (`state.json` / `host.json`), and the admin audit log
-(`audit.jsonl`) survive on disk.
+active host (`state.json` / `host.json`), the admin audit log
+(`audit.jsonl`), and admin-assigned display aliases (`aliases.json`)
+survive on disk.
 
 **Code structure:**
 
