@@ -488,7 +488,13 @@ function attach() {
   // supported. Only fall back to native HLS if hls.js isn't supported
   // (very old browsers, or iOS Safari where MSE is restricted).
   if (window.Hls && Hls.isSupported()) {
-    const hls = new Hls();
+    // Aim ~60s of forward buffer (hls.js default is 30). That's how far
+    // ahead the browser requests segments — i.e. how far ahead we fetch +
+    // cache from Plex. More cushion against network blips; kept modest so
+    // hls.js doesn't race past what Plex has transcoded (which would 404
+    // and trip a restart). The Plex /:/timeline reports keep Plex
+    // transcoding ahead of this.
+    const hls = new Hls({ maxBufferLength: 60 });
     const seekableStr = () => {
       const r = [];
       for (let i = 0; i < v.seekable.length; i++) {
