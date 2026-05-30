@@ -219,9 +219,37 @@ function renderViewers(viewers) {
       '<td>' + (v.isActiveHost
         ? '<span class="host-badge">▶ host</span>'
         : '<button class="row-action" data-action="make-host" data-id="' + escapeHTML(v.id) + '">Make host</button>') + '</td>' +
-      '<td><button class="row-action" data-action="kick" data-id="' + escapeHTML(v.id) + '">Kick</button></td>' +
+      '<td>' +
+        '<button class="row-action" data-action="kick" data-id="' + escapeHTML(v.id) + '">Kick</button>' +
+        (v.email ? ' <button class="row-action" data-action="set-alias" data-email="' + escapeHTML(v.email) + '">Alias</button>' : '') +
+      '</td>' +
     '</tr>';
   }).join('');
+}
+
+function renderAliases(list) {
+  const tbody = $('alias-rows');
+  if (!tbody) return;
+  if (!list || list.length === 0) {
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="3">No aliases set.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = list.map((a) =>
+    '<tr>' +
+    '<td class="mono">' + escapeHTML(a.email) + '</td>' +
+    '<td>' + escapeHTML(a.alias) + '</td>' +
+    '<td><button class="row-action" data-action="remove-alias" data-email="' + escapeHTML(a.email) + '">Remove</button></td>' +
+    '</tr>'
+  ).join('');
+}
+
+async function loadAliases() {
+  try {
+    const d = await api('/admin/api/aliases');
+    renderAliases(d.aliases || []);
+  } catch (err) {
+    console.error('loadAliases:', err);
+  }
 }
 
 function fmtWhen(unix) {
@@ -286,8 +314,20 @@ $('btn-cache-prune').addEventListener('click', () => {
 $('btn-library-refresh').addEventListener('click', () => {
   doAction('library refresh', () => api('/admin/api/library/refresh', {method: 'POST'}));
 });
+$('alias-add').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const email = $('alias-email').value.trim();
+  const alias = $('alias-name').value.trim();
+  if (!email || !alias) { alert('enter both an email and an alias'); return; }
+  doAction('set alias ' + email, async () => {
+    await api('/admin/api/aliases/set?email=' + encodeURIComponent(email) + '&alias=' + encodeURIComponent(alias), {method: 'POST'});
+    $('alias-email').value = '';
+    $('alias-name').value = '';
+    await loadAliases();
+  });
+});
 
-// Event delegation for row buttons (clear-movie / kick).
+// Event delegation for row buttons (clear-movie / kick / make-host / remove-alias / set-alias).
 document.body.addEventListener('click', (e) => {
   const btn = e.target.closest('button.row-action');
   if (!btn) return;
@@ -305,8 +345,23 @@ document.body.addEventListener('click', (e) => {
       .then(() => refresh())
       .catch(err => setStatus('make-host: ' + err.message, 'err'));
     return;
+  } else if (action === 'remove-alias') {
+    const email = btn.dataset.email;
+    if (!confirm('Remove the alias for ' + email + '?')) return;
+    doAction('remove alias ' + email, async () => {
+      await api('/admin/api/aliases/remove?email=' + encodeURIComponent(email), {method: 'POST'});
+      await loadAliases();
+    });
+  } else if (action === 'set-alias') {
+    // Prefill the Aliases form with this viewer's email, then focus the
+    // alias input — the admin just types a name and submits.
+    $('alias-email').value = btn.dataset.email;
+    $('alias-name').focus();
+    $('alias-name').scrollIntoView({behavior: 'smooth', block: 'center'});
+    return;
   }
 });
 
 refresh();
+loadAliases();
 setInterval(refresh, POLL_MS);

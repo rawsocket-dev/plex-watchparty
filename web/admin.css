@@ -185,6 +185,15 @@ main {
   text-transform: uppercase; color: var(--paper-mute);
   margin-right: .25rem;
 }
+.alias-form input {
+  background: var(--ink); border: 1px solid var(--rule-hi);
+  color: var(--paper); font-family: var(--mono); font-size: .85rem;
+  padding: .5rem .6rem; border-radius: 2px; outline: 0;
+  caret-color: var(--signal);
+}
+.alias-form input#alias-email { min-width: 16rem; }
+.alias-form input#alias-name { width: 10rem; }
+.alias-form input:focus { border-color: var(--signal); }
 
 .hint {
   font-family: var(--mono); font-size: .68rem;

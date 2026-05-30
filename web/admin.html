@@ -121,6 +121,22 @@
     <div class="hint">Last 500 sign-ins, denied attempts, and admin actions — newest first. Scroll for older entries.</div>
   </section>
 
+  <section class="panel full">
+    <h2><span class="prefix">07</span>Aliases</h2>
+    <form id="alias-add" class="actions alias-form" autocomplete="off">
+      <input type="email" id="alias-email" placeholder="email@example.com" required>
+      <input type="text" id="alias-name" maxlength="16" placeholder="alias (max 16)" required>
+      <button type="submit" class="primary">Add / update</button>
+    </form>
+    <table class="viewers">
+      <thead>
+        <tr><th>Email</th><th>Alias</th><th></th></tr>
+      </thead>
+      <tbody id="alias-rows"></tbody>
+    </table>
+    <div class="hint">Aliases replace a viewer's display name everywhere — in the room roster and here. Standard ASCII only, max 16 characters.</div>
+  </section>
+
 </main>
 
 <footer>
