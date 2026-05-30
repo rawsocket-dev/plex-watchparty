@@ -371,12 +371,21 @@ func main() {
 	})
 
 	protected.HandleFunc("/api/whoami", func(w http.ResponseWriter, r *http.Request) {
+		email := auth.Email(r)
+		// An admin-set alias wins over the Google-profile name carried in
+		// the wp_name cookie, matching how the roster resolves names via
+		// Hub.displayName. Keeps "who is driving" and the lobby "you are"
+		// label showing the alias, not the full Google name.
+		name := viewerNameFromRequest(r)
+		if a := aliasStore.Get(email); a != "" {
+			name = a
+		}
 		writeJSON(w, map[string]any{
-			"email":        auth.Email(r),
+			"email":        email,
 			"role":         auth.Role(r).String(),
 			"isAdmin":      auth.IsAdmin(r),
-			"isActiveHost": hub.IsActiveHost(auth.Email(r)),
-			"name":         viewerNameFromRequest(r),
+			"isActiveHost": hub.IsActiveHost(email),
+			"name":         name,
 		})
 	})
 
