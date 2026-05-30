@@ -128,10 +128,16 @@ type Hub struct {
 	store   *StateStore
 	audit   *AuditLog
 
+	// hostStore persists the active host email across restarts; broadcast
+	// writes it on change, NewHub loads it on boot. lastSavedHost is the
+	// last value written, so broadcast only persists on an actual change.
+	hostStore     *HostStore
+	lastSavedHost string
+
 	// activeHost is the email of the single user currently allowed to
 	// drive playback. "" means no one. Recomputed by electHostLocked on
 	// every client-count change; set directly (to any connected user) by
-	// admin override / hand-off (later tasks).
+	// admin override / hand-off. Persisted via hostStore.
 	activeHost string
 
 	mu    sync.Mutex
@@ -196,17 +202,30 @@ const hostExitGrace = 10 * time.Second
 // merely slow client (bad mobile link) isn't dropped mid-stream.
 const sseWriteTimeout = 30 * time.Second
 
-func NewHub(plex *Plex, session *PlexSession, cache *SegmentCache, recent *RecentMovies, store *StateStore, audit *AuditLog) *Hub {
+func NewHub(plex *Plex, session *PlexSession, cache *SegmentCache, recent *RecentMovies, store *StateStore, hostStore *HostStore, audit *AuditLog) *Hub {
 	h := &Hub{
 		plex:          plex,
 		session:       session,
 		cache:         cache,
 		recent:        recent,
 		store:         store,
+		hostStore:     hostStore,
 		audit:         audit,
 		clients:       make(map[*clientEntry]struct{}),
 		broadcastWake: make(chan struct{}, 1),
 		done:          make(chan struct{}),
+	}
+	if hostStore != nil {
+		// Restore the active host from the prior process. They reclaim it
+		// the moment their browser reconnects (reconcileHostLocked keeps a
+		// connected active host); if they never return, the reassign grace
+		// hands it on. lastSavedHost is primed so we don't immediately
+		// re-persist the value we just read.
+		if host := hostStore.Load(); host != "" {
+			h.activeHost = host
+			h.lastSavedHost = host
+			log.Printf("host: restored active host %q from disk", host)
+		}
 	}
 	if store != nil {
 		// Resume hint from prior process. Snapshot includes it in
@@ -271,6 +290,9 @@ func (h *Hub) Close() {
 	h.mu.Unlock()
 	if h.store != nil {
 		h.store.Wait()
+	}
+	if h.hostStore != nil {
+		h.hostStore.Wait()
 	}
 }
 
@@ -888,6 +910,12 @@ func (h *Hub) broadcast() {
 	}
 	s.Viewers = h.viewerList()
 	s.ActiveHostName = h.activeHostNameLocked()
+	// Persist the active host across restarts, but only when it actually
+	// changes (election / hand-off / admin), off the room lock.
+	if h.hostStore != nil && h.activeHost != h.lastSavedHost {
+		h.lastSavedHost = h.activeHost
+		h.hostStore.SaveAsync(h.activeHost)
+	}
 	b, err := json.Marshal(s)
 	if err != nil {
 		log.Printf("broadcast: marshal: %v", err)

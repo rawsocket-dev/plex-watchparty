@@ -28,8 +28,12 @@ authoritative position with sub-second tolerance.
 
 Playback state (last movie + position) is persisted to disk, so after a
 container restart or idle shutdown the library and waiting room offer to
-**resume where you left off**. There's no database — live state is in memory;
-only the segment cache, the library cache, the recently-played list, and the admin audit log (`audit.jsonl`) survive on disk.
+**resume where you left off**, and the **active host** is restored so the
+same person keeps the remote (their browser reconnects and reclaims it).
+There's no database — live state is in memory; only the segment cache, the
+library cache, the recently-played list (`recent.json`), the resume hint +
+active host (`state.json` / `host.json`), and the admin audit log
+(`audit.jsonl`) survive on disk.
 
 **Code structure:**
 
@@ -40,6 +44,7 @@ only the segment cache, the library cache, the recently-played list, and the adm
 - `cache.go` — LRU disk cache for HLS segments (survives restarts)
 - `sync.go` — authoritative playback state, SSE broadcast, host control endpoint
 - `state.go` — persisted resume hint (last movie + position)
+- `host.go` — persisted active host (restored across restarts)
 - `recent.go` — persisted recently-played list
 - `bandwidth.go` — per-IP rolling-window bandwidth tracker
 - `auth.go` — Google OAuth gate, HMAC session cookies, role gating

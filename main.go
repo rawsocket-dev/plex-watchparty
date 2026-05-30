@@ -235,7 +235,12 @@ func main() {
 	statePath := filepath.Join(filepath.Dir(workDir), "state.json")
 	stateStore := NewStateStore(statePath)
 
-	hub := NewHub(plex, plexSession, segCache, recent, stateStore, audit)
+	// Active-host store: who holds the remote, so the same person keeps it
+	// across a container restart (their browser reconnects and reclaims).
+	// Sits next to state.json / recent.json.
+	hostStore := NewHostStore(filepath.Join(filepath.Dir(workDir), "host.json"))
+
+	hub := NewHub(plex, plexSession, segCache, recent, stateStore, hostStore, audit)
 	auth := NewAuth(googleSecret, allowedEmails, os.Getenv("HOST_EMAILS"), os.Getenv("ADMIN_EMAILS"))
 	oauth := NewOAuth(googleID, googleSecret, googleRedirect, auth, audit)
 	bw := newBwTracker()

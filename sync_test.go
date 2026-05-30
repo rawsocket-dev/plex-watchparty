@@ -20,10 +20,11 @@ const testHostEmail = "tester@x.com"
 // /decision + /start.m3u8 + /library/* with the minimum we need to
 // drive a load → play → seek → stop cycle.
 type hubTestFixture struct {
-	hub   *Hub
-	mock  *httptest.Server
-	cache *SegmentCache
-	dir   string
+	hub       *Hub
+	mock      *httptest.Server
+	cache     *SegmentCache
+	dir       string
+	hostStore *HostStore
 }
 
 func newHubTestFixture(t *testing.T) *hubTestFixture {
@@ -58,11 +59,13 @@ func newHubTestFixture(t *testing.T) *hubTestFixture {
 	cache := NewSegmentCache(filepath.Join(dir, "cache"), 1<<30)
 	recent := NewRecentMovies(filepath.Join(dir, "recent.json"))
 	store := NewStateStore(filepath.Join(dir, "state.json"))
+	hostStore := NewHostStore(filepath.Join(dir, "host.json"))
 	session := NewPlexSession(plex, 12000)
-	hub := NewHub(plex, session, cache, recent, store, audit)
+	hub := NewHub(plex, session, cache, recent, store, hostStore, audit)
 	hub.mu.Lock()
 	hub.clients[&clientEntry{id: "t", email: testHostEmail, host: false, name: "Tester", send: make(chan []byte, 8), kill: make(chan struct{})}] = struct{}{}
 	hub.activeHost = testHostEmail
+	hub.lastSavedHost = testHostEmail // treat as already-persisted; keeps host-persist tests deterministic
 	hub.mu.Unlock()
 	// Stop the Hub's background loops/timers and drain pending state
 	// writes before t.TempDir's RemoveAll runs — cleanups are LIFO, so
@@ -70,7 +73,7 @@ func newHubTestFixture(t *testing.T) *hubTestFixture {
 	// a late Save recreates a file (its MkdirAll even recreates the dir)
 	// mid-removal → "directory not empty". Close subsumes store.Wait().
 	t.Cleanup(hub.Close)
-	return &hubTestFixture{hub: hub, mock: mock, cache: cache, dir: dir}
+	return &hubTestFixture{hub: hub, mock: mock, cache: cache, dir: dir, hostStore: hostStore}
 }
 
 func (f *hubTestFixture) post(t *testing.T, body string) *httptest.ResponseRecorder {
@@ -147,6 +150,37 @@ func TestViewerListMarksOnlyActiveHost(t *testing.T) {
 	}
 	if len(hosts) != 1 || hosts[0] != "Alice" {
 		t.Errorf("roster hosts = %v, want exactly [Alice]; both are host-eligible but only the active host drives", hosts)
+	}
+}
+
+func TestHubRestoresActiveHostFromDisk(t *testing.T) {
+	dir := t.TempDir()
+	hostStore := NewHostStore(filepath.Join(dir, "host.json"))
+	hostStore.Save("alice@x.com")
+
+	audit := NewAuditLog(filepath.Join(dir, "audit.jsonl"), auditCap)
+	plex := NewPlex("http://127.0.0.1:1", "tok", filepath.Join(dir, "lib.json"), audit)
+	cache := NewSegmentCache(filepath.Join(dir, "cache"), 1<<20)
+	recent := NewRecentMovies(filepath.Join(dir, "recent.json"))
+	store := NewStateStore(filepath.Join(dir, "state.json"))
+	session := NewPlexSession(plex, 12000)
+	hub := NewHub(plex, session, cache, recent, store, hostStore, audit)
+	t.Cleanup(hub.Close)
+
+	if !hub.IsActiveHost("alice@x.com") {
+		t.Error("hub did not restore the persisted active host on boot")
+	}
+}
+
+func TestHubPersistsActiveHostOnChange(t *testing.T) {
+	f := newHubTestFixture(t)
+	f.hub.mu.Lock()
+	f.hub.activeHost = "driver@x.com"
+	f.hub.broadcast() // persists on change (async)
+	f.hub.mu.Unlock()
+	f.hostStore.Wait()
+	if got := f.hostStore.Load(); got != "driver@x.com" {
+		t.Errorf("persisted active host = %q, want driver@x.com", got)
 	}
 }
 
