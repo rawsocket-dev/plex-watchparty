@@ -449,24 +449,6 @@ v.addEventListener('playing', () => {
   }
 });
 
-// armUnmuteOnGesture restores sound the instant the user does anything,
-// after a muted autoplay fallback. Unmuting WITHOUT a gesture re-trips the
-// browser's autoplay policy (Chrome pauses the video), so we wait for the
-// first real interaction — which, for someone who just hit Resume, is
-// effectively immediate. One-shot: the first event wins and clears them all.
-let unmuteArmed = false;
-function armUnmuteOnGesture() {
-  if (unmuteArmed) return;
-  unmuteArmed = true;
-  const evs = ['pointerdown', 'pointermove', 'keydown', 'touchstart'];
-  const unmute = () => {
-    v.muted = false;
-    unmuteArmed = false;
-    evs.forEach((e) => window.removeEventListener(e, unmute));
-  };
-  evs.forEach((e) => window.addEventListener(e, unmute, { passive: true }));
-}
-
 // maybeAutoplay is the single gate for auto-dismissing the join
 // overlay. Three independent conditions all have to be true:
 //   1. authoritative state has arrived (so we know whether the server
@@ -477,11 +459,8 @@ function armUnmuteOnGesture() {
 //
 // Both 'canplay' (signal #3 just became true) and applyState (signals
 // #1 / #2 just became true) call this; whichever happens last triggers
-// the actual v.play(). On success the overlay auto-dismisses. If autoplay
-// WITH SOUND is denied (e.g. resume after navigation, no fresh gesture),
-// fall back to MUTED autoplay — always permitted — so the picture rolls
-// immediately, and unmute on the first interaction. Only if even muted
-// autoplay is refused does the overlay stay for a manual click.
+// the actual v.play(). On success the overlay auto-dismisses; on
+// autoplay-denied the overlay stays for the user's manual click.
 function maybeAutoplay() {
   if (userJoined) return;
   if (!lastState || !lastState.playing) return;
@@ -489,14 +468,7 @@ function maybeAutoplay() {
   if (v.readyState < 2 /* HAVE_CURRENT_DATA */) return;
   v.play().then(() => {
     if (!userJoined) dismissJoin();
-  }).catch(() => {
-    if (userJoined || !v.paused) return; // a later attempt already won
-    v.muted = true;
-    v.play().then(() => {
-      if (!userJoined) dismissJoin();
-      armUnmuteOnGesture();
-    }).catch(() => {/* even muted autoplay denied — overlay stays */});
-  });
+  }).catch(() => {/* autoplay denied — overlay stays for manual click */});
 }
 v.addEventListener('canplay', maybeAutoplay);
 
