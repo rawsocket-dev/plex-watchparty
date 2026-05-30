@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -19,6 +20,7 @@ func registerAdminRoutes(
 	hub *Hub,
 	bw *bwTracker,
 	audit *AuditLog,
+	aliases *AliasStore,
 ) {
 	// Admin-only AND CSRF-guarded: the panel's POSTs (cache clear/prune,
 	// session restart/stop, kick, set-host) mutate real state.
@@ -68,6 +70,53 @@ func registerAdminRoutes(
 
 	mux.Handle("/admin/api/audit", gated(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, audit.List())
+	})))
+
+	// --- Aliases: email → display-name overrides ---
+	mux.Handle("/admin/api/aliases", gated(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "GET only", http.StatusMethodNotAllowed)
+			return
+		}
+		writeJSON(w, map[string]any{"aliases": aliases.List()})
+	})))
+
+	mux.Handle("/admin/api/aliases/set", gated(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "POST only", http.StatusMethodNotAllowed)
+			return
+		}
+		email, alias, ok := parseAliasArgs(r.URL.Query().Get("email"), r.URL.Query().Get("alias"))
+		if !ok {
+			http.Error(w, "email must contain '@' and alias must be non-empty printable ASCII", http.StatusBadRequest)
+			return
+		}
+		aliases.Set(email, alias)
+		log.Printf("admin: %s set alias %s = %q", auth.Email(r), email, alias)
+		audit.Record(AuditEvent{Type: "admin", Email: auth.Email(r), Role: "admin", IP: clientIP(r),
+			Detail: fmt.Sprintf("set alias for %s = %q", email, alias)})
+		// Names resolve at roster-build time, so a re-broadcast makes every
+		// connected viewer see the new alias without reconnecting.
+		hub.wakeBroadcast()
+		writeJSON(w, map[string]any{"email": email, "alias": alias})
+	})))
+
+	mux.Handle("/admin/api/aliases/remove", gated(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "POST only", http.StatusMethodNotAllowed)
+			return
+		}
+		email := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("email")))
+		if email == "" {
+			http.Error(w, "email required", http.StatusBadRequest)
+			return
+		}
+		aliases.Remove(email)
+		log.Printf("admin: %s removed alias for %s", auth.Email(r), email)
+		audit.Record(AuditEvent{Type: "admin", Email: auth.Email(r), Role: "admin", IP: clientIP(r),
+			Detail: fmt.Sprintf("removed alias for %s", email)})
+		hub.wakeBroadcast()
+		w.WriteHeader(http.StatusNoContent)
 	})))
 
 	mux.Handle("/admin/api/cache/clear", gated(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

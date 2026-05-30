@@ -267,7 +267,7 @@ func main() {
 	mux.HandleFunc("/oauth/callback", oauth.HandleCallback)
 
 	// Admin maintenance panel — same identity, gated on ADMIN_EMAILS.
-	registerAdminRoutes(mux, auth, plex, segCache, plexSession, hub, bw, audit)
+	registerAdminRoutes(mux, auth, plex, segCache, plexSession, hub, bw, audit, aliasStore)
 
 	// Everything else is behind the Google-identity Guard.
 	protected := http.NewServeMux()
