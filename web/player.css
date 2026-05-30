@@ -205,42 +205,6 @@ body.viewer .role-cell .r-viewer { display: inline; }
   letter-spacing: .02em;
 }
 
-/* Viewers cell with hover roster popup. */
-.viewers-cell { position: relative; cursor: default; }
-.viewers-cell .roster {
-  position: absolute;
-  top: calc(100% + 6px);
-  left: 0;
-  min-width: 10rem;
-  background: var(--ink-2);
-  border: 1px solid var(--rule);
-  border-radius: 2px;
-  padding: .6rem .8rem;
-  box-shadow: 0 10px 30px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,255,255,.04);
-  display: none;
-  z-index: 60;
-  text-align: left;
-  letter-spacing: .08em;
-}
-.viewers-cell:hover .roster,
-.viewers-cell:focus-within .roster { display: block; }
-.viewers-cell .roster .row {
-  display: flex; align-items: baseline; gap: .5rem;
-  padding: .15rem 0;
-}
-.viewers-cell .roster .row .nm {
-  color: var(--paper); text-transform: none;
-  letter-spacing: .03em;
-  font-family: var(--mono);
-  font-size: .82rem;
-  white-space: nowrap;
-}
-.viewers-cell .roster .row .role {
-  font-size: .55rem; letter-spacing: .25em; color: var(--paper-mute);
-  text-transform: uppercase;
-}
-.viewers-cell .roster .row.host .role { color: var(--signal); }
-
 /* Tier-2 buttons. Transport = icon + label (.tbtn); view tools = 46px
    icon squares (.ibtn). The button that reflects current state glows
    mint (mint text/icon + a mint top edge + faint green fill), driven by
@@ -281,17 +245,14 @@ body.viewer .role-cell .r-viewer { display: inline; }
 .ibtn.warn { color: #a07a48; }
 .ibtn.warn:hover { color: var(--warn); }
 #admin-link[hidden] { display: none; }
-#host-cell[hidden] { display: none; }
-.host-cell { position: relative; }
-.host-cell .v { color: var(--signal); }
-.host-cell .chev { color: var(--paper-mute); font-size: .6rem; margin-left: .1rem; }
-.host-cell .chev[hidden] { display: none; }
-.host-cell.open .chev { color: var(--signal); }
-.host-cell.click { cursor: pointer; }
-.host-cell.click:hover { background: rgba(159,230,173,.06); }
-body.viewer .host-cell { cursor: default; }
+#room-cell[hidden] { display: none; }
+.room-cell { position: relative; cursor: pointer; } /* anyone can open it to see the room */
+.room-cell .v { color: var(--signal); white-space: nowrap; }
+.room-cell .chev { color: var(--paper-mute); font-size: .6rem; margin-left: .1rem; }
+.room-cell.open .chev { color: var(--signal); }
+.room-cell:hover { background: rgba(159,230,173,.06); }
 
-/* Hand-off popover anchored under the driving chip. */
+/* Room dropdown (audience roster + hand-off) anchored under the chip. */
 .pop {
   position: absolute; top: calc(100% + 5px); left: .4rem;
   min-width: 220px; z-index: 60;
@@ -323,6 +284,13 @@ body.viewer .host-cell { cursor: default; }
   display: inline-flex; align-items: center; justify-content: center;
   font-size: .62rem;
 }
+/* Active host's avatar glows; the trailing label says who's driving. */
+.av.host { border-color: var(--signal); color: var(--signal); box-shadow: 0 0 8px rgba(159,230,173,.4); }
+.pop-u .role { margin-left: auto; font-size: .55rem; letter-spacing: .22em; text-transform: uppercase; color: var(--paper-mute); }
+.pop-u.driver .role { color: var(--signal); }
+/* Non-tappable rows (the driver, and every row for a viewer) read as info. */
+.pop-u[disabled] { cursor: default; opacity: 1; color: var(--paper); }
+.pop-u[disabled]:hover { background: transparent; }
 
 /* Volume control — ibtn footprint with SVG speaker icon and a
    hover/focus-revealed slider popover. */

@@ -25,55 +25,46 @@ function applyWhoami(d) {
   if (al) al.hidden = !d.isAdmin;
 }
 fetchWhoami().then(applyWhoami);
-// Hand-off picker: the "Driving" chip (#host-cell) is the trigger. For the
-// active host it opens a popover of connected users; clicking one POSTs to
-// /api/host/handoff. Viewers see the chip read-only (no chevron, no open).
-const hostCell    = document.getElementById('host-cell');
-const handoffPop  = document.getElementById('handoff-pop');
-const handoffList = document.getElementById('handoff-list');
-function openHandoff()  { if (handoffPop) handoffPop.hidden = false; if (hostCell) hostCell.classList.add('open'); }
-function closeHandoff() { if (handoffPop) handoffPop.hidden = true;  if (hostCell) hostCell.classList.remove('open'); }
-if (hostCell) {
-  hostCell.addEventListener('click', (e) => {
-    if (!isHost) return;
-    if (e.target.closest('#handoff-pop')) return; // row clicks handled below
-    if (handoffPop && handoffPop.hidden) openHandoff(); else closeHandoff();
+// Room chip (#room-cell): shows who's driving + the headcount, and its
+// dropdown is the audience roster — which doubles as the hand-off picker.
+// Anyone can open it to see who's here; only the active host gets tappable
+// rows (a viewer row → POST /api/host/handoff to give them the remote).
+// renderViewers() fills the value + list from the SSE state's .viewers.
+const roomCell = document.getElementById('room-cell');
+const roomPop  = document.getElementById('room-pop');
+const roomList = document.getElementById('room-list');
+const roomName = document.getElementById('room-name');
+function openRoom()  { if (roomPop) roomPop.hidden = false; if (roomCell) roomCell.classList.add('open'); }
+function closeRoom() { if (roomPop) roomPop.hidden = true;  if (roomCell) roomCell.classList.remove('open'); }
+if (roomCell) {
+  roomCell.addEventListener('click', (e) => {
+    if (e.target.closest('#room-pop')) return; // row clicks handled below
+    if (roomPop && roomPop.hidden) openRoom(); else closeRoom();
   });
 }
-if (handoffList) {
-  handoffList.addEventListener('click', (e) => {
-    const btn = e.target.closest('.pop-u');
+if (roomList) {
+  roomList.addEventListener('click', (e) => {
+    const btn = e.target.closest('.pop-u[data-id]'); // only hand-off rows carry an id
     if (!btn) return;
     const id = btn.getAttribute('data-id');
     if (id) fetch('/api/host/handoff?id=' + encodeURIComponent(id), { method: 'POST' }).catch(() => {});
-    closeHandoff();
+    closeRoom();
   });
 }
-// Outside-click closes the popover.
+// Outside-click closes the dropdown.
 document.addEventListener('click', (e) => {
-  if (!handoffPop || handoffPop.hidden) return;
-  if (e.target.closest('#host-cell')) return;
-  closeHandoff();
+  if (!roomPop || roomPop.hidden) return;
+  if (e.target.closest('#room-cell')) return;
+  closeRoom();
 });
 // Re-fetch whoami (cache-bypassing) whenever the active host changes, so
-// control visibility tracks election/hand-off without a reload.
+// control visibility tracks election / hand-off without a reload.
 function refreshHostUI(state) {
   const name = state.activeHostName || '';
   if (name !== lastActiveHostName) {
     lastActiveHostName = name;
     fetch('/api/whoami', { cache: 'no-store' }).then(r => r.ok ? r.json() : null).then(applyWhoami).catch(() => {});
   }
-  const hc = document.getElementById('host-cell');
-  const hn = document.getElementById('host-name');
-  const chev = hc && hc.querySelector('.chev');
-  // The driving chip is always shown now. The active host sees their own
-  // name + a chevron and can click to hand off; viewers see who's driving,
-  // read-only.
-  if (hc) hc.hidden = false;
-  if (hn) hn.textContent = isHost ? ((myName ? myName + ' ' : '') + '(you)') : (name || 'nobody');
-  if (hc) hc.classList.toggle('click', isHost);
-  if (chev) chev.hidden = !isHost;
-  if (!isHost) closeHandoff();
 }
 const scrubHit      = document.getElementById('scrub-hit');
 const scrubTrack    = document.getElementById('scrub-track');
@@ -300,42 +291,40 @@ async function pollBandwidth() {
   } catch (_) { /* network blip — try again next tick */ }
 }
 
-// Render the viewer count + roster tooltip from the SSE state's
-// .viewers field. Source of truth is the SSE connection list, not
-// bandwidth tracking — names come from the wp_name cookie set at
-// login, with "guest" as the fallback for anyone who skipped it.
-const viewersEl = document.getElementById('viewers');
-const viewersCountEl = viewersEl.querySelector('.count');
-const viewersRosterEl = viewersEl.querySelector('.roster');
-// escapeHTML provided by /static/common.js
+// Render the Room chip (driver · count) + its dropdown roster from the SSE
+// state's .viewers field. Source of truth is the SSE connection list, not
+// bandwidth tracking — names come from the wp_name cookie set at login,
+// with "guest" as the fallback. The active host (v.host) is marked
+// "driving"; for the active host every other row is a tappable hand-off
+// button. escapeHTML provided by /static/common.js
 function renderViewers(list) {
   if (!Array.isArray(list) || list.length === 0) {
-    viewersEl.hidden = true;
-    if (handoffList) { handoffList.innerHTML = ''; closeHandoff(); }
+    if (roomCell) roomCell.hidden = true;
+    closeRoom();
     return;
   }
-  viewersEl.hidden = false;
-  viewersCountEl.textContent = list.length + ' viewer' + (list.length === 1 ? '' : 's');
-  viewersRosterEl.innerHTML = list.map(v =>
-    '<div class="row' + (v.host ? ' host' : '') + '">' +
-      '<span class="nm">' + escapeHTML(v.name || 'guest') + '</span>' +
-      '<span class="role">' + (v.host ? 'host' : 'viewer') + '</span>' +
-    '</div>'
-  ).join('');
-  // Build the hand-off popover from connected users, omitting the host
-  // (self) — only one user holds control at a time, marked host:true.
-  if (handoffList) {
-    const others = (list || []).filter(v => v.id && !v.host);
-    handoffList.innerHTML = others.length
-      ? others.map(v => {
-          const nm = v.name || v.id;
-          const initial = escapeHTML((nm.trim()[0] || '?').toUpperCase());
-          return '<button class="pop-u" data-id="' + escapeHTML(v.id) + '">' +
-            '<span class="av">' + initial + '</span>' +
-            '<span class="nm">' + escapeHTML(nm) + '</span>' +
-            '<span class="arr">→</span></button>';
-        }).join('')
-      : '<div class="pop-empty">No one else here yet.</div>';
+  if (roomCell) roomCell.hidden = false;
+  const driver = list.find(v => v.host);
+  const driverLabel = driver
+    ? (isHost ? ((myName ? myName + ' ' : '') + '(you)') : driver.name)
+    : 'nobody';
+  if (roomName) roomName.textContent = driverLabel + ' · ' + list.length;
+  if (roomList) {
+    roomList.innerHTML = list.map(v => {
+      const drv = !!v.host;
+      const nm = v.name || 'guest';
+      const initial = escapeHTML((nm.trim()[0] || '?').toUpperCase());
+      const youSuffix = (drv && isHost) ? ' (you)' : '';
+      const handoff = isHost && !drv && v.id; // only the active host hands off
+      const trailing = drv
+        ? '<span class="role">driving</span>'
+        : (handoff ? '<span class="arr">→</span>' : '<span class="role">viewer</span>');
+      return '<button class="pop-u' + (drv ? ' driver' : '') + '"' +
+        (handoff ? ' data-id="' + escapeHTML(v.id) + '"' : ' disabled') + '>' +
+        '<span class="av' + (drv ? ' host' : '') + '">' + initial + '</span>' +
+        '<span class="nm">' + escapeHTML(nm + youSuffix) + '</span>' +
+        trailing + '</button>';
+    }).join('');
   }
 }
 function fmtRate(kbps) {
@@ -712,7 +701,7 @@ function syncChromeHeight() {
 function hideChrome() {
   chromeTimer = null;
   if (!chromePlaying) return;                   // never hide while paused
-  if (handoffPop && !handoffPop.hidden) return; // don't yank an open picker
+  if (roomPop && !roomPop.hidden) return; // don't yank an open room dropdown
   syncChromeHeight();                           // measure before collapsing
   wrapEl.classList.add('chrome-hidden');
 }
@@ -998,7 +987,7 @@ zoomBtn.onclick = () => {
 // 'z' = zoom toggle, 'm' = mute toggle, ↑/↓ = volume ±5%. All
 // ignore input fields so typing in the search box doesn't fire.
 window.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') { closeHandoff(); return; }
+  if (e.key === 'Escape') { closeRoom(); return; }
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
   if (e.key === ' ' || e.code === 'Space') {
     e.preventDefault();

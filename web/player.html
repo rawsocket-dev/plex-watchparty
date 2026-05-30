@@ -26,23 +26,17 @@
         <div class="lbl">Role</div>
         <div class="v"><span class="r-host">Host</span><span class="r-viewer">Viewer</span></div>
       </div>
-      <div class="cell host-cell" id="host-cell" hidden>
-        <div class="lbl">Driving</div>
-        <div class="v" id="host-name">—</div>
+      <div class="cell room-cell" id="room-cell" hidden>
+        <div class="lbl">Room</div>
+        <div class="v" id="room-name">—</div>
         <span class="chev" aria-hidden="true">▾</span>
-        <div class="pop" id="handoff-pop" role="menu" hidden>
-          <div class="pop-h">Give remote to</div>
-          <div class="pop-list" id="handoff-list"></div>
+        <div class="pop" id="room-pop" role="menu" hidden>
+          <div class="pop-list" id="room-list"></div>
         </div>
       </div>
       <div class="cell sync-cell">
         <div class="lbl">Sync</div>
         <div class="v" id="sync">listening</div>
-      </div>
-      <div class="cell viewers-cell" id="viewers" hidden>
-        <div class="lbl">Audience</div>
-        <div class="v"><span class="count"></span></div>
-        <div class="roster" role="tooltip"></div>
       </div>
       <div class="cell bw-cell" id="bw" hidden>
         <div class="lbl">User BW / Total</div>
