@@ -60,8 +60,9 @@ func newHubTestFixture(t *testing.T) *hubTestFixture {
 	recent := NewRecentMovies(filepath.Join(dir, "recent.json"))
 	store := NewStateStore(filepath.Join(dir, "state.json"))
 	hostStore := NewHostStore(filepath.Join(dir, "host.json"))
+	aliasStore := NewAliasStore(filepath.Join(dir, "aliases.json"))
 	session := NewPlexSession(plex, 12000)
-	hub := NewHub(plex, session, cache, recent, store, hostStore, audit)
+	hub := NewHub(plex, session, cache, recent, store, hostStore, audit, aliasStore)
 	hub.mu.Lock()
 	hub.clients[&clientEntry{id: "t", email: testHostEmail, host: false, name: "Tester", send: make(chan []byte, 8), kill: make(chan struct{})}] = struct{}{}
 	hub.activeHost = testHostEmail
@@ -153,6 +154,34 @@ func TestViewerListMarksOnlyActiveHost(t *testing.T) {
 	}
 }
 
+func TestViewerListAppliesAlias(t *testing.T) {
+	f := newHubTestFixture(t)
+	f.hub.mu.Lock()
+	f.hub.clients = map[*clientEntry]struct{}{}
+	f.hub.clients[&clientEntry{id: "a", email: "alice@x.com", host: true, name: "Alice", send: make(chan []byte, 8), kill: make(chan struct{})}] = struct{}{}
+	f.hub.clients[&clientEntry{id: "b", email: "bob@x.com", host: true, name: "Bob", send: make(chan []byte, 8), kill: make(chan struct{})}] = struct{}{}
+	f.hub.activeHost = "alice@x.com"
+	f.hub.mu.Unlock()
+
+	// Admin assigns alice an alias; bob has none.
+	f.hub.aliases.Set("alice@x.com", "Ally")
+
+	f.hub.mu.Lock()
+	list := f.hub.viewerList()
+	f.hub.mu.Unlock()
+
+	names := map[string]string{} // connection id -> rendered name
+	for _, v := range list {
+		names[v.ID] = v.Name
+	}
+	if names["a"] != "Ally" {
+		t.Errorf("aliased viewer name = %q, want Ally", names["a"])
+	}
+	if names["b"] != "Bob" {
+		t.Errorf("un-aliased viewer name = %q, want Bob (falls back to c.name)", names["b"])
+	}
+}
+
 func TestHubRestoresActiveHostFromDisk(t *testing.T) {
 	dir := t.TempDir()
 	hostStore := NewHostStore(filepath.Join(dir, "host.json"))
@@ -163,8 +192,9 @@ func TestHubRestoresActiveHostFromDisk(t *testing.T) {
 	cache := NewSegmentCache(filepath.Join(dir, "cache"), 1<<20)
 	recent := NewRecentMovies(filepath.Join(dir, "recent.json"))
 	store := NewStateStore(filepath.Join(dir, "state.json"))
+	aliasStore := NewAliasStore(filepath.Join(dir, "aliases.json"))
 	session := NewPlexSession(plex, 12000)
-	hub := NewHub(plex, session, cache, recent, store, hostStore, audit)
+	hub := NewHub(plex, session, cache, recent, store, hostStore, audit, aliasStore)
 	t.Cleanup(hub.Close)
 
 	if !hub.IsActiveHost("alice@x.com") {

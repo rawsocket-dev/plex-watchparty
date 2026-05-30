@@ -226,6 +226,8 @@ func main() {
 	// cache prune doesn't wipe it.
 	recentPath := filepath.Join(filepath.Dir(workDir), "recent.json")
 	recent := NewRecentMovies(recentPath)
+	// Admin-assigned email→alias display names. Same data dir, flat file.
+	aliasStore := NewAliasStore(filepath.Join(filepath.Dir(workDir), "aliases.json"))
 	recent.Load()
 
 	// Resume hint store: small JSON file capturing the last known
@@ -240,7 +242,7 @@ func main() {
 	// Sits next to state.json / recent.json.
 	hostStore := NewHostStore(filepath.Join(filepath.Dir(workDir), "host.json"))
 
-	hub := NewHub(plex, plexSession, segCache, recent, stateStore, hostStore, audit)
+	hub := NewHub(plex, plexSession, segCache, recent, stateStore, hostStore, audit, aliasStore)
 	auth := NewAuth(googleSecret, allowedEmails, os.Getenv("HOST_EMAILS"), os.Getenv("ADMIN_EMAILS"))
 	oauth := NewOAuth(googleID, googleSecret, googleRedirect, auth, audit)
 	bw := newBwTracker()

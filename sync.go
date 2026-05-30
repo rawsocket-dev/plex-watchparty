@@ -103,6 +103,10 @@ type AdminViewer struct {
 	Name         string  `json:"name"`
 	Host         bool    `json:"host"`
 	IP           string  `json:"ip"`
+	// Email is the verified identity for this person — admin-only data
+	// (admins already see emails in the audit log), used by the Viewers-
+	// row "set alias" shortcut. "" for connections with no verified email.
+	Email        string  `json:"email"`
 	// Conns is how many live SSE connections this person holds (tabs,
 	// reloads, or proxy-held ghosts). The roster shows one row per
 	// identity, not per socket.
@@ -127,6 +131,12 @@ type Hub struct {
 	recent  *RecentMovies
 	store   *StateStore
 	audit   *AuditLog
+
+	// aliases maps a verified email to an admin-assigned display name
+	// that overrides the viewer's Google-profile name in every roster.
+	// Resolved at roster-build time via displayName. Own lock; never
+	// calls back into Hub (preserves Hub.mu → AliasStore.mu ordering).
+	aliases *AliasStore
 
 	// hostStore persists the active host email across restarts; broadcast
 	// writes it on change, NewHub loads it on boot. lastSavedHost is the
@@ -202,7 +212,7 @@ const hostExitGrace = 10 * time.Second
 // merely slow client (bad mobile link) isn't dropped mid-stream.
 const sseWriteTimeout = 30 * time.Second
 
-func NewHub(plex *Plex, session *PlexSession, cache *SegmentCache, recent *RecentMovies, store *StateStore, hostStore *HostStore, audit *AuditLog) *Hub {
+func NewHub(plex *Plex, session *PlexSession, cache *SegmentCache, recent *RecentMovies, store *StateStore, hostStore *HostStore, audit *AuditLog, aliases *AliasStore) *Hub {
 	h := &Hub{
 		plex:          plex,
 		session:       session,
@@ -211,6 +221,7 @@ func NewHub(plex *Plex, session *PlexSession, cache *SegmentCache, recent *Recen
 		store:         store,
 		hostStore:     hostStore,
 		audit:         audit,
+		aliases:       aliases,
 		clients:       make(map[*clientEntry]struct{}),
 		broadcastWake: make(chan struct{}, 1),
 		done:          make(chan struct{}),
@@ -481,10 +492,26 @@ func (h *Hub) electHostLocked() string {
 	return fmt.Sprintf("active host is now %q", h.nameForEmailLocked(h.activeHost))
 }
 
+// displayName resolves the name shown for a connection: an admin-set
+// alias for the connection's email wins over the Google-profile name in
+// c.name. Empty-email connections (no identity) have no alias and keep
+// c.name. Callers hold h.mu; AliasStore takes its own lock, preserving
+// the Hub.mu → AliasStore.mu order (AliasStore never calls into Hub).
+func (h *Hub) displayName(c *clientEntry) string {
+	if h.aliases != nil && c.email != "" {
+		if a := h.aliases.Get(c.email); a != "" {
+			return a
+		}
+	}
+	return c.name
+}
+
 func (h *Hub) nameForEmailLocked(email string) string {
 	for c := range h.clients {
-		if c.email == email && c.name != "" {
-			return c.name
+		if c.email == email {
+			if n := h.displayName(c); n != "" {
+				return n
+			}
 		}
 	}
 	return email
@@ -495,8 +522,10 @@ func (h *Hub) activeHostNameLocked() string {
 		return ""
 	}
 	for c := range h.clients {
-		if c.email == h.activeHost && c.name != "" {
-			return c.name
+		if c.email == h.activeHost {
+			if n := h.displayName(c); n != "" {
+				return n
+			}
 		}
 	}
 	return "" // no named connection for the active host — don't leak an email
@@ -525,7 +554,7 @@ func (h *Hub) viewerList() []ViewerInfo {
 			}
 			continue
 		}
-		byKey[key] = &ViewerInfo{ID: c.id, Name: c.name, Host: isActive}
+		byKey[key] = &ViewerInfo{ID: c.id, Name: h.displayName(c), Host: isActive}
 		order = append(order, key)
 	}
 	out := make([]ViewerInfo, 0, len(order))
@@ -1478,7 +1507,8 @@ func (h *Hub) AdminRoster(bw *bwTracker) []AdminViewer {
 		}
 		if take {
 			bestFresh[key] = fresh
-			av.ID, av.Name, av.Host, av.IP = c.id, c.name, c.host, c.ip
+			av.ID, av.Name, av.Host, av.IP = c.id, h.displayName(c), c.host, c.ip
+			av.Email = c.email
 			av.PosSec, av.Paused, av.HeartbeatAgeSec = c.lastPosSec, c.lastPaused, hbAge
 			if bw != nil {
 				av.Kbps = bw.KbpsForIP(c.ip)
