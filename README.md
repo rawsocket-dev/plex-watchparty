@@ -169,10 +169,13 @@ driving. If `HOST_EMAILS` is empty, every signed-in user is eligible. Anyone in
 ## Admin panel (`/admin`)
 
 A small maintenance console available to anyone in `ADMIN_EMAILS` after
-signing in. The panel covers: current Plex session info + manual restart,
-segment cache stats with clear-all / clear-one-movie / prune-older-than-N-days,
-library cache age + manual refresh, and a live SSE viewer roster with kick.
-The panel also shows an **Audit** log — the last 500 sign-ins, denied sign-in
+signing in. The panel covers: current Plex session info + manual restart or
+send-everyone-to-lobby, a live room-bandwidth sparkline, segment cache stats
+with clear-all / clear-one-movie / prune-older-than-N-days, library cache age
++ manual refresh, and a live SSE viewer roster (kick a stuck connection or
+reassign the active host). An **Aliases** section maps a viewer's email to a
+display name that overrides their Google name in every roster — in the room
+and here. The panel also shows an **Audit** log — the last 500 sign-ins, denied sign-in
 attempts, admin actions, playback events (load / play / pause / seek / stop,
 attributed to the host), and Plex lifecycle events (server reachability + idle
 shutdown, recorded as `system`). Persisted to `audit.jsonl`.
