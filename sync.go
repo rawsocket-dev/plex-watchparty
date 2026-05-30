@@ -99,20 +99,20 @@ type clientEntry struct {
 // Kbps is each viewer's current rolling-window throughput, joined in
 // by IP from bwTracker so the panel can show "who's buffering."
 type AdminViewer struct {
-	ID           string  `json:"id"`
-	Name         string  `json:"name"`
-	Host         bool    `json:"host"`
-	IP           string  `json:"ip"`
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Host bool   `json:"host"`
+	IP   string `json:"ip"`
 	// Email is the verified identity for this person — admin-only data
 	// (admins already see emails in the audit log), used by the Viewers-
 	// row "set alias" shortcut. "" for connections with no verified email.
-	Email        string  `json:"email"`
+	Email string `json:"email"`
 	// Conns is how many live SSE connections this person holds (tabs,
 	// reloads, or proxy-held ghosts). The roster shows one row per
 	// identity, not per socket.
-	Conns        int     `json:"conns"`
-	ConnectedSec int64   `json:"connectedSec"`
-	Kbps         int64   `json:"kbps"`
+	Conns        int   `json:"conns"`
+	ConnectedSec int64 `json:"connectedSec"`
+	Kbps         int64 `json:"kbps"`
 	// Heartbeat fields — what the viewer's player reported on its
 	// last /api/heartbeat. HeartbeatAgeSec is -1 if no heartbeat has
 	// arrived yet (fresh tab, no js running, etc).
