@@ -449,28 +449,9 @@ v.addEventListener('playing', () => {
   }
 });
 
-// maybeAutoplay is the single gate for auto-dismissing the join
-// overlay. Three independent conditions all have to be true:
-//   1. authoritative state has arrived (so we know whether the server
-//      wants playback to be running),
-//   2. the server says playing=true and v is currently paused,
-//   3. the browser has enough buffered data that v.play() has a real
-//      chance of succeeding (readyState ≥ HAVE_CURRENT_DATA).
-//
-// Both 'canplay' (signal #3 just became true) and applyState (signals
-// #1 / #2 just became true) call this; whichever happens last triggers
-// the actual v.play(). On success the overlay auto-dismisses; on
-// autoplay-denied the overlay stays for the user's manual click.
-function maybeAutoplay() {
-  if (userJoined) return;
-  if (!lastState || !lastState.playing) return;
-  if (!v.paused) return;
-  if (v.readyState < 2 /* HAVE_CURRENT_DATA */) return;
-  v.play().then(() => {
-    if (!userJoined) dismissJoin();
-  }).catch(() => {/* autoplay denied — overlay stays for manual click */});
-}
-v.addEventListener('canplay', maybeAutoplay);
+// No autoplay: the join overlay always waits for the user's click (which
+// is the gesture that lets v.play() start with sound). The click handler
+// above does the rest.
 
 let hlsInstance = null;
 
@@ -631,17 +612,9 @@ function applyState(s, reason) {
     v.currentTime = target;
   }
   firstStateApplied = true;
-  // Two paths, deliberately exclusive:
-  //   Pre-join (overlay still up): maybeAutoplay() is the only path
-  //     that calls v.play() — it bundles dismissJoin() on success so
-  //     the overlay actually goes away when autoplay is allowed.
-  //     Calling v.play() outside of that path would race with the
-  //     canplay-triggered maybeAutoplay and leave the overlay up
-  //     over playing video.
-  //   Post-join: keep v ↔ server state aligned.
-  if (!userJoined) {
-    maybeAutoplay();
-  } else {
+  // Pre-join (overlay still up): do nothing — the user's click is what
+  // starts playback. Post-join: keep v ↔ server state aligned.
+  if (userJoined) {
     if (s.playing && v.paused) v.play().catch(() => {});
     if (!s.playing && !v.paused) v.pause();
   }
