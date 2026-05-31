@@ -19,6 +19,9 @@ import (
 type State struct {
 	RatingKey   string  `json:"ratingKey"`
 	Title       string  `json:"title"`
+	// Year is the movie's release year (Plex metadata). The player shows
+	// it in parens after the title; omitted from the wire when unknown.
+	Year        int     `json:"year,omitempty"`
 	Playing     bool    `json:"playing"`
 	PositionSec float64 `json:"positionSec"`
 	// DurationSec is the source-of-truth length of the movie, sourced
@@ -1304,6 +1307,7 @@ func (h *Hub) HandleControl(w http.ResponseWriter, r *http.Request) {
 		h.state = State{
 			RatingKey:    req.RatingKey,
 			Title:        title,
+			Year:         year,
 			Playing:      req.Autoplay,
 			PositionSec:  offsetSec,
 			DurationSec:  float64(si.Duration) / 1000.0,

@@ -601,7 +601,9 @@ function applyState(s, reason) {
     window.location.reload();
     return;
   }
-  titleEl.textContent = s.title;
+  // Append the release year in parens when we have it (matches how the
+  // library + waiting room label movies). Omitted when the year is unknown.
+  titleEl.textContent = s.year ? s.title + ' (' + s.year + ')' : s.title;
   titleEl.classList.remove('idle');
   if (typeof s.durationSec === 'number' && s.durationSec > 0) {
     serverDuration = s.durationSec;
