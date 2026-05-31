@@ -9,6 +9,33 @@ and caching them to disk so backward seek is instant. Friends stay in sync via
 Server-Sent Events — the host's play/pause/seek actions are broadcast to all
 viewers.
 
+## Screenshots
+
+> Rendered against placeholder data — no real Plex library or accounts.
+
+**Sign in** — Google sign-in, gated by an email allowlist.
+
+![Sign-in page](docs/screenshots/login.png)
+
+**The library** — the active host browses and picks tonight's title.
+
+![Library](docs/screenshots/library.png)
+
+**The player** — synced hls.js playback with a scrub bar, cached-range
+markers, a live room roster, and per-viewer bandwidth.
+
+![Player](docs/screenshots/player.png)
+
+**The waiting room** — shown between movies, with a "resume where you left
+off" prompt and a recently-screened reel.
+
+![Waiting room](docs/screenshots/waiting.png)
+
+**The admin console** — live session, room bandwidth, viewer roster, segment
+cache, library health, audit log, and display aliases.
+
+![Admin console](docs/screenshots/admin.png)
+
 ## How it works
 
 The watchparty server acts as a thin proxy + cache over Plex's Universal
@@ -66,64 +93,30 @@ surface — the cert check would add no security in practice.
 
 ## Run with Docker (recommended)
 
-Two flavors, depending on whether you want to pull the CI-built image
-or build locally:
-
-**Pull the pre-built image (multi-arch, from this project's registry):**
-
 ```sh
-# One-time: log in to the registry. See "Registry login" below for token.
-docker login registry.example.com:5050 -u <access-token-user> -p <access-token>
+# 1. Copy the env template and fill in your Plex token, Google OAuth
+#    credentials, and email allowlists.
+cp .env.example .env
+$EDITOR .env
 
-# Copy .env.example to .env and fill in your Plex token, Google OAuth
-# credentials, and email allowlists, then:
+# 2a. Pull the pre-built multi-arch image and start in the background:
 docker compose pull
 docker compose up -d
-```
 
-**Build locally instead:**
-
-```sh
-# Copy .env.example to .env and fill in your values, then:
+# 2b. ...or build from source instead (same compose file):
 docker compose up --build
 ```
 
-Then open `http://<your-ip>:8080`, sign in with Google, pick a movie.
+Then open `http://<your-host>:8080`, sign in with Google, and pick a movie.
+
+The pre-built image is published to this repo's GitHub Container Registry on
+every push to `master` (multi-arch amd64 + arm64) at
+`ghcr.io/rawsocket-dev/plex-watchparty:latest`. It's public, so `docker
+compose pull` needs no `docker login`. If you'd rather not pull, `docker
+compose up --build` builds the same image from the local `Dockerfile`.
 
 > Edit `PLEX_BASE_URL` in `docker-compose.yml` if Plex isn't reachable at
 > `host.docker.internal:32400`.
-
-### Registry login
-
-Each push to `master` publishes a multi-arch image (amd64 + arm64) at
-`registry.example.com:5050/example/plex-watchparty:latest`. To pull it you
-need a token with `read_registry` scope.
-
-Easiest: create a **deploy token** (project-scoped, no human user
-attached, ideal for a deploy host):
-
-1. Go to
-   <https://registry.example.com/example/plex-watchparty/-/settings/repository>
-   → **Deploy tokens** → fill in a name (e.g. `prod-pull`), scope
-   `read_registry`, and create.
-2. the registry shows a generated **username** like `the registry+access-token-3`
-   and a one-time **token value** — copy both now (the token is not
-   shown again).
-3. On the deploy host:
-
-   ```sh
-   docker login registry.example.com:5050 \
-     -u the registry+access-token-3 -p <token-value>
-   ```
-
-   The `:5050` port is required — that's where the registry lives.
-   Credentials get cached in `~/.docker/config.json`, so this is a
-   one-time step per host.
-
-For a personal laptop, a **personal access token**
-(<https://registry.example.com/-/user_settings/personal_access_tokens>)
-with `read_registry` scope works the same way — use your the registry
-username instead of the access-token username.
 
 ## Run locally
 
@@ -240,7 +233,7 @@ server {
     # ssl_certificate / ssl_certificate_key ...
 
     location / {
-        proxy_pass http://buildhost.example.com:8080;
+        proxy_pass http://127.0.0.1:8080;   # the watchparty container
         proxy_http_version 1.1;
         proxy_set_header Host              $host;
         proxy_set_header X-Real-IP         $remote_addr;
@@ -260,7 +253,7 @@ server {
 
 ```caddy
 watchparty.example.com {
-    reverse_proxy buildhost.example.com:8080 {
+    reverse_proxy 127.0.0.1:8080 {
         transport http {
             read_timeout 5m
         }
@@ -302,3 +295,7 @@ serversTransport:
   ~5 seconds while Plex spins up a new transcoder at the target offset.
 - Firefox has weak HEVC support; H.265 titles play best in Safari/Chrome.
 - No HTTPS — put it behind a reverse proxy if exposing beyond the LAN.
+
+## License
+
+[MIT](LICENSE).

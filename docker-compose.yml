@@ -1,10 +1,10 @@
 services:
   watchparty:
-    # Pulls the CI-built multi-arch image by default. Run
-    # `docker compose pull` after `docker login` (see README) on the
-    # first deploy. For local dev, `docker compose up --build` will
-    # build from the local Dockerfile instead.
-    image: registry.example.com:5050/example/plex-watchparty:latest
+    # Pulls the published multi-arch image from GitHub Container Registry
+    # by default (`docker compose pull && docker compose up -d`). To build
+    # from source instead, run `docker compose up --build`, which uses the
+    # local Dockerfile.
+    image: ghcr.io/rawsocket-dev/plex-watchparty:latest
     build: .
     ports:
       - "8080:8080"
@@ -24,14 +24,12 @@ services:
       ALLOWED_EMAILS:       "${ALLOWED_EMAILS:?set ALLOWED_EMAILS}"
       HOST_EMAILS:          "${HOST_EMAILS:-}"
       ADMIN_EMAILS:         "${ADMIN_EMAILS:-}"
-      # Optional Plex Universal Transcoder pass-through. When set to a
-      # positive integer, every loaded movie is routed through Plex's
-      # on-the-fly transcoder targeting 1080p h264 at this bitrate (in
-      # kbps). Plex handles HEVC→h264 + HDR→SDR (with hardware
-      # acceleration if configured on the Plex side). Leave blank / unset
-      # to direct-stream the original — fine for low-bitrate / h264
-      # sources, painful for 4K HDR HEVC remuxes.
-      # 12000 = 12 Mbps, a sensible default for high-quality streaming.
+      # Plex Universal Transcoder target bitrate, in kbps. Every movie is
+      # transcoded by Plex to 1080p H.264 + AAC (there is no direct-stream
+      # mode — Plex handles HEVC→H.264 + HDR→SDR, with hardware acceleration
+      # if configured on the Plex side). Leave unset to use the built-in
+      # default of 12000 (12 Mbps), a sensible target for high-quality
+      # streaming; lower it for constrained uplinks.
       PLEX_TRANSCODE_BITRATE_KBPS: "${PLEX_TRANSCODE_BITRATE_KBPS:-}"
       # Disk cap for the HLS segment cache (Gigabytes). Cached segments
       # survive container restarts so previously-watched parts of a movie

@@ -134,7 +134,7 @@ func writeJSON(w http.ResponseWriter, v any) {
 }
 
 // version is the build's commit, injected at build time via
-// -ldflags "-X main.version=<sha>" (see Dockerfile + .the registry-ci.yml).
+// -ldflags "-X main.version=<sha>" (see Dockerfile + .github/workflows/ci.yml).
 // Defaults to "dev" for local `go build`.
 var version = "dev"
 

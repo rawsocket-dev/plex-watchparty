@@ -3,3 +3,5 @@
 *.md
 plexwatchparty
 docker-compose.yml
+docs/
+.github/
