@@ -14,7 +14,7 @@ RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath \
     -ldflags="-s -w -X main.version=${VERSION}" \
-    -o /out/plexwatchparty .
+    -o /out/plexwatchparty ./cmd/plexwatchparty
 
 # --- minimal runtime --------------------------------------------------------
 # No ffmpeg here — playback goes through Plex's Universal Transcoder and we

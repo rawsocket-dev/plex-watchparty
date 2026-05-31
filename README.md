@@ -66,7 +66,7 @@ active host (`state.json` / `host.json`), the admin audit log
 (`audit.jsonl`), and admin-assigned display aliases (`aliases.json`)
 survive on disk.
 
-**Code structure:**
+**Code structure** — the Go sources are one `package main` under `cmd/plexwatchparty/`:
 
 - `main.go` — HTTP routing, env parsing, wiring
 - `plex.go` — Plex API: list movies, start transcodes, health-state machine
@@ -131,7 +131,7 @@ compose up --build` builds the same image from the local `Dockerfile`.
 PLEX_BASE_URL=http://192.168.1.10:32400 PLEX_TOKEN=xxx \
 GOOGLE_CLIENT_ID=xxx GOOGLE_CLIENT_SECRET=xxx \
 GOOGLE_REDIRECT_URL=http://localhost:8080/oauth/callback \
-ALLOWED_EMAILS=you@example.com go run .
+ALLOWED_EMAILS=you@example.com go run ./cmd/plexwatchparty
 ```
 
 ## Configuration
