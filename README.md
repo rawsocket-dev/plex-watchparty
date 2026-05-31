@@ -1,5 +1,8 @@
 # plex-watchparty
 
+[![CI](https://github.com/rawsocket-dev/plex-watchparty/actions/workflows/ci.yml/badge.svg)](https://github.com/rawsocket-dev/plex-watchparty/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 Restream a single movie from Plex and watch it **in sync** with friends who
 **sign in with Google** (an email allowlist controls who gets in) — no Plex account needed.
 
@@ -94,6 +97,10 @@ surface — the cert check would add no security in practice.
 ## Run with Docker (recommended)
 
 ```sh
+# Clone and enter the repo.
+git clone https://github.com/rawsocket-dev/plex-watchparty.git
+cd plex-watchparty
+
 # 1. Copy the env template and fill in your Plex token, Google OAuth
 #    credentials, and email allowlists.
 cp .env.example .env
