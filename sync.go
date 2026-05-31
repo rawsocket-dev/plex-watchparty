@@ -1147,6 +1147,29 @@ func clampSeekTarget(target, durationSec float64) (float64, bool) {
 	return target, true
 }
 
+// validRatingKey reports whether s is a well-formed Plex rating key: a
+// non-empty, length-bounded run of ASCII alphanumerics. The load path
+// concatenates this value straight into the Plex API URL path
+// (plex.Resolve → "/library/metadata/<ratingKey>"), so restricting it to
+// [A-Za-z0-9] keeps a host-supplied value from steering that request to a
+// different path or smuggling in query params — none of '/', '?', '#',
+// '.', '%', or whitespace can survive the filter.
+func validRatingKey(s string) bool {
+	if s == "" || len(s) > 64 {
+		return false
+	}
+	for _, r := range s {
+		switch {
+		case r >= '0' && r <= '9':
+		case r >= 'a' && r <= 'z':
+		case r >= 'A' && r <= 'Z':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
 func (h *Hub) HandleControl(w http.ResponseWriter, r *http.Request) {
 	// Cap the request body — /control is the host's command channel,
 	// not a file upload. 4 KiB is generous for the JSON we accept.
@@ -1186,6 +1209,14 @@ func (h *Hub) HandleControl(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if req.Action == "load" {
+		// req.RatingKey is host-supplied and is concatenated into the Plex
+		// API URL path by plex.Resolve; reject anything that isn't a plain
+		// numeric rating key before it gets there.
+		if !validRatingKey(req.RatingKey) {
+			log.Printf("control: rejected bad ratingKey ip=%s ratingKey=%q", clientIP(r), req.RatingKey)
+			http.Error(w, "invalid ratingKey", http.StatusBadRequest)
+			return
+		}
 		t0 := time.Now()
 		// If the same movie is already loaded and Plex still has a live
 		// session for it, skip the Stop+Start dance entirely. Plex's
