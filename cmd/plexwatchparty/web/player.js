@@ -100,6 +100,12 @@ function knownDuration() {
 }
 let scrubDragging = false;
 let scrubPendingPct = null;
+// Keyboard ±seek (Left/Right). Presses coalesce into one commit. While a
+// seek is pending, seekKbTarget holds the destination so updateScrub shows
+// it as a preview instead of snapping the thumb back to the live playhead —
+// the same idea as the scrubDragging guard below.
+let seekKbTarget = null;   // pending keyboard-seek destination (sec), or null
+let seekKbTimer  = null;   // debounce timer; fires commitKbSeek once a burst settles
 function pctFromEvent(e) {
   const rect = scrubHit.getBoundingClientRect();
   const cx = (e.touches ? e.touches[0].clientX : e.clientX);
@@ -126,7 +132,9 @@ function updateScrub() {
   const cur = v.currentTime || 0;
   if (dur > 0) {
     scrubHit.classList.add('ready');
-    if (!scrubDragging) paintAt(cur / dur);
+    // Hold the preview while dragging OR while a keyboard seek is pending,
+    // so the thumb stays on the user's target instead of the live playhead.
+    if (!scrubDragging && seekKbTarget == null) paintAt(cur / dur);
     if (v.buffered.length > 0) {
       const buf = v.buffered.end(v.buffered.length - 1);
       scrubBuffered.style.width = Math.min(100, (buf / dur) * 100) + '%';
@@ -259,6 +267,37 @@ function commitScrubSeek() {
   // v.currentTime to a value outside v.seekable lets the browser
   // silently clamp locally; the reattach moves us to the real target
   // once the new playlist arrives.
+  lastLocalActionMs = Date.now();
+  v.currentTime = target;
+  post('seek', { positionSec: target });
+}
+
+// --- keyboard ± seek (host only) --------------------------------------------
+// Left/Right nudge the playhead by SEEK_STEP. Rapid presses — or a stuck /
+// chattering key — accumulate into a single seek committed once the burst
+// settles: one /control post, at most one Plex restart, instead of a
+// per-press storm. The commit path mirrors commitScrubSeek exactly.
+const SEEK_STEP = 10;       // seconds per arrow press
+function nudgeSeek(deltaSec) {
+  const dur = knownDuration();
+  if (dur <= 0) return;
+  // Anchor on the live playhead for the first press of a burst, then on the
+  // running target so successive taps add up (3× Right → +30s, one seek).
+  const base = (seekKbTarget == null) ? (v.currentTime || 0) : seekKbTarget;
+  seekKbTarget = Math.max(0, Math.min(dur, base + deltaSec));
+  paintAt(seekKbTarget / dur);            // live preview; held by updateScrub's guard
+  if (seekKbTimer) clearTimeout(seekKbTimer);
+  seekKbTimer = setTimeout(commitKbSeek, 350);
+}
+function commitKbSeek() {
+  seekKbTimer = null;
+  if (seekKbTarget == null) return;
+  const target = seekKbTarget;
+  seekKbTarget = null;
+  // Same contract as commitScrubSeek: stamp the local action so an in-flight
+  // SSE can't yank us back, seek locally (the browser clamps to seekable; a
+  // forward seek past the transcoded edge is corrected by the reattach), and
+  // let the server be the authority on whether a restart is needed.
   lastLocalActionMs = Date.now();
   v.currentTime = target;
   post('seek', { positionSec: target });
@@ -981,13 +1020,14 @@ window.addEventListener('keydown', (e) => {
   }
   if (e.key === 'ArrowUp')   { e.preventDefault(); applyVol(Math.min(1, v.volume + 0.05), false); return; }
   if (e.key === 'ArrowDown') { e.preventDefault(); applyVol(Math.max(0, v.volume - 0.05), v.volume - 0.05 <= 0); return; }
-  // Left/Right are swallowed (no-op). Unhandled, they fall through to the
-  // browser's default — which scrolls the page sideways the instant any
-  // horizontal overflow exists, walking the whole player off-axis. That's
-  // the "the picture slid left" glitch, and a stuck/chattering arrow key
-  // makes it worse. We deliberately do NOT bind them to seek: a chattering
-  // key would then seek-storm the whole room. (Volume is on Up/Down above.)
-  if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { e.preventDefault(); return; }
+  // Left/Right: host seeks ∓SEEK_STEP (coalesced — see nudgeSeek). For
+  // everyone we preventDefault first: unhandled, these fall through to the
+  // browser's default of scrolling the page sideways the instant any
+  // horizontal overflow exists, walking the whole player off-axis (the
+  // "picture slid left" glitch). Viewers can't drive playback, so for them
+  // it's just the no-op scroll-guard. (Volume is on Up/Down above.)
+  if (e.key === 'ArrowLeft')  { e.preventDefault(); if (isHost) nudgeSeek(-SEEK_STEP); return; }
+  if (e.key === 'ArrowRight') { e.preventDefault(); if (isHost) nudgeSeek(+SEEK_STEP); return; }
 });
 
 // --- layout overflow watchdog -----------------------------------------
