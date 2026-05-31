@@ -413,19 +413,27 @@ func TestHubLoadSameMovieWithRestartForcesStart(t *testing.T) {
 	}
 }
 
-func TestHubLoadAutoplayControlsInitialPlaying(t *testing.T) {
-	// The resume banners (library + waiting room) send autoplay:true so
-	// the room starts playing instead of paused. A plain load (movie
-	// pick) omits it and stays paused. Lock both halves of the contract.
+// Each half of the autoplay contract gets its own test (hence its own
+// fixture + t.TempDir). Two fixtures under one t shared a single
+// TempDir base-dir cleanup, whose RemoveAll could race a second hub's
+// teardown on a loaded CI runner ("directory not empty"). One hub per
+// test keeps each hub.Close ordered cleanly before its own cleanup.
+
+// The resume banners (library + waiting room) send autoplay:true so the
+// room starts playing instead of paused.
+func TestHubLoadAutoplayStartsPlaying(t *testing.T) {
 	f := newHubTestFixture(t)
 	f.post(t, `{"action":"load","ratingKey":"rk1","autoplay":true}`)
 	if !f.hub.Snapshot().Playing {
 		t.Error("load with autoplay:true → Playing=false, want true")
 	}
+}
 
-	g := newHubTestFixture(t)
-	g.post(t, `{"action":"load","ratingKey":"rk1"}`)
-	if g.hub.Snapshot().Playing {
+// A plain movie pick omits autoplay and stays paused.
+func TestHubLoadWithoutAutoplayStaysPaused(t *testing.T) {
+	f := newHubTestFixture(t)
+	f.post(t, `{"action":"load","ratingKey":"rk1"}`)
+	if f.hub.Snapshot().Playing {
 		t.Error("load without autoplay → Playing=true, want false")
 	}
 }
