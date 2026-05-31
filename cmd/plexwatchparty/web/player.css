@@ -19,6 +19,14 @@ html, body {
   margin: 0; height: 100%;
   background: var(--ink-3); color: var(--paper);
   font-family: var(--mono);
+  /* A movie player must never grow a horizontal scrollbar. If some
+     transient ever pushes a child past the viewport edge, clip it on the
+     x-axis instead of letting the page scroll sideways (which also stops
+     an unhandled / stuck arrow key from walking the picture off-screen).
+     `clip` rather than `hidden` so the y-axis stays `visible` and the
+     toolbar / roster / volume popovers are never clipped. The JS overflow
+     watchdog still reports the offender via getBoundingClientRect. */
+  overflow-x: clip;
 }
 /* Movie player — text selection is never the goal. */
 *, *::before, *::after {

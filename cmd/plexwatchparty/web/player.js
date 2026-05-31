@@ -981,4 +981,42 @@ window.addEventListener('keydown', (e) => {
   }
   if (e.key === 'ArrowUp')   { e.preventDefault(); applyVol(Math.min(1, v.volume + 0.05), false); return; }
   if (e.key === 'ArrowDown') { e.preventDefault(); applyVol(Math.max(0, v.volume - 0.05), v.volume - 0.05 <= 0); return; }
+  // Left/Right are swallowed (no-op). Unhandled, they fall through to the
+  // browser's default — which scrolls the page sideways the instant any
+  // horizontal overflow exists, walking the whole player off-axis. That's
+  // the "the picture slid left" glitch, and a stuck/chattering arrow key
+  // makes it worse. We deliberately do NOT bind them to seek: a chattering
+  // key would then seek-storm the whole room. (Volume is on Up/Down above.)
+  if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { e.preventDefault(); return; }
 });
+
+// --- layout overflow watchdog -----------------------------------------
+// The CSS guard (html,body{overflow-x:clip}) makes sure a stray reflow can
+// never grow a horizontal scrollbar — but clipping HIDES the cause. This
+// watchdog finds it: if any element ever extends past the viewport edge it
+// logs the offender ONCE (selector + geometry) so the real trigger is
+// captured instead of just manifesting as a slid / half-width picture.
+// getBoundingClientRect reports true pre-clip geometry, so this still works
+// behind overflow-x:clip. Prime suspect for the end-of-movie case is a
+// video intrinsic-size change, so we also probe on the <video> 'resize'.
+function checkOverflow(why) {
+  const vw = window.innerWidth;
+  let worst = null;
+  document.querySelectorAll('body *').forEach((el) => {
+    const r = el.getBoundingClientRect();
+    if (r.width === 0 || r.height === 0) return;
+    const over = Math.max(r.right - vw, -r.left);   // px past right edge, or off the left
+    if (over > 2 && (!worst || over > worst.over)) worst = { el, over: Math.round(over), r };
+  });
+  if (!worst || worst.el.dataset.ovLogged) return;  // log each offender once
+  worst.el.dataset.ovLogged = '1';
+  const e = worst.el;
+  const sel = e.tagName.toLowerCase() + (e.id ? '#' + e.id : '') +
+    (typeof e.className === 'string' && e.className ? '.' + e.className.trim().split(/\s+/).join('.') : '');
+  console.warn('[overflow]', why, '→', sel, 'extends', worst.over, 'px past the viewport',
+    { left: Math.round(worst.r.left), right: Math.round(worst.r.right),
+      width: Math.round(worst.r.width), viewport: vw });
+}
+window.addEventListener('resize', () => checkOverflow('window-resize'));
+v.addEventListener('resize', () => checkOverflow('video-resize')); // fires when videoWidth/Height change
+setInterval(() => { if (document.visibilityState !== 'hidden') checkOverflow('tick'); }, 3000);
