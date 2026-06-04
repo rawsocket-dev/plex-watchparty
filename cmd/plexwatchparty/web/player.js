@@ -391,20 +391,35 @@ joinEl.addEventListener('click', () => {
       setTimeout(() => { applying = false; }, 250);
     }
   }
-  // The 'play' event only fires once v.play() actually resolves —
-  // which can be a second or two after the click, while hls.js
-  // buffers its first segment. In that gap a 3 s broadcast tick
-  // carrying the still-Playing=false server state can sneak in,
-  // run applyState's post-join sync, and v.pause() us right as
-  // playback was about to begin. Stamping lastLocalActionMs makes
-  // applyState reject those stale broadcasts; the optimistic
-  // post('play') tells the server NOW so the very next broadcast
-  // already carries Playing=true. Host-only; viewers can't drive.
-  lastLocalActionMs = Date.now();
-  if (isHost && lastState && lastState.ratingKey && !lastState.playing) {
-    post('play');
+  // Joining is a user gesture — that's what unlocks autoplay for every
+  // LATER v.play() (e.g. applyState starting a viewer when the room plays).
+  // Beyond banking that gesture, only the HOST takes an authoritative local
+  // action here:
+  //   - stamp lastLocalActionMs so applyState ignores a briefly-stale
+  //     Playing=false broadcast that would otherwise re-pause the host
+  //     mid-start (the 'play' event lags v.play() by a buffer-fill); and
+  //   - optimistically post('play') on a paused movie so the very next
+  //     broadcast already carries Playing=true.
+  // A VIEWER must keep following server state. Stamping lastLocalActionMs
+  // for them would make applyState drop the (stale-timestamped, but still
+  // authoritative) paused broadcast that should keep their screen paused
+  // with the room — the bug where a viewer "starts" a paused movie locally
+  // just by taking their seat.
+  const roomPlaying = !!(lastState && lastState.playing);
+  if (isHost) {
+    lastLocalActionMs = Date.now();
+    if (lastState && lastState.ratingKey && !roomPlaying) {
+      post('play');
+    }
   }
-  v.play().catch(() => {});
+  // Begin playback locally only when the show is actually rolling: the host
+  // always, a viewer only if the room is already playing. For a viewer
+  // joining a PAUSED room we deliberately do NOT call v.play() — the click
+  // already granted autoplay activation, so applyState will start them when
+  // the room plays, instead of their screen running ahead of a paused room.
+  if (isHost || roomPlaying) {
+    v.play().catch(() => {});
+  }
   dismissJoin();
 });
 joinEl.addEventListener('keydown', (e) => {
