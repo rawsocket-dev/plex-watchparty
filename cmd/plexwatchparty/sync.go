@@ -851,8 +851,16 @@ func (h *Hub) RestartAtCurrentPosition(reason RestartReason) error {
 		return fmt.Errorf("plex Restart: %w", err)
 	}
 	h.mu.Lock()
-	h.state.SessionToken = h.session.SessionToken()
-	h.state.UpdatedAtMs = nowMs()
+	// Re-anchor the playhead BEFORE stamping a fresh UpdatedAtMs. While
+	// Playing, PositionSec is only authoritative at UpdatedAtMs (the rest
+	// is extrapolated). Bumping UpdatedAtMs without rolling PositionSec
+	// forward discards all elapsed playback and snaps the room back to the
+	// last play/seek anchor — a mid-playback restart would yank everyone
+	// to where the movie started. snapshot() extrapolates PositionSec to now.
+	cur = h.snapshot()
+	cur.SessionToken = h.session.SessionToken()
+	cur.UpdatedAtMs = nowMs()
+	h.state = cur
 	h.broadcast()
 	h.mu.Unlock()
 	go h.reportTimelineNow()
@@ -873,8 +881,15 @@ func (h *Hub) RecoverSegmentForRange(startMs, endMs int64) ([]byte, error) {
 		return nil, err
 	}
 	h.mu.Lock()
-	h.state.SessionToken = h.session.SessionToken()
-	h.state.UpdatedAtMs = nowMs()
+	// Re-anchor the playhead before stamping a fresh UpdatedAtMs — see
+	// RestartAtCurrentPosition. A recover fires mid-playback, so leaving the
+	// stale PositionSec while bumping UpdatedAtMs would snap the whole room
+	// back to the last play/seek anchor (the bug that reset a 12-min-in movie
+	// to 0:00 after a transient Plex blip). snapshot() rolls PositionSec to now.
+	cur := h.snapshot()
+	cur.SessionToken = h.session.SessionToken()
+	cur.UpdatedAtMs = nowMs()
+	h.state = cur
 	h.broadcast()
 	h.mu.Unlock()
 	go h.reportTimelineNow()

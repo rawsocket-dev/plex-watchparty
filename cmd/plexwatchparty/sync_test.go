@@ -118,6 +118,29 @@ func TestHubControlRejectsActionsWithoutActiveMovie(t *testing.T) {
 	}
 }
 
+// TestRestartKeepsPlayheadWhilePlaying guards the regression where a
+// mid-playback Plex restart (auto-recover / admin "restart session")
+// bumped State.UpdatedAtMs without rolling PositionSec forward, snapping
+// the whole room back to the last play/seek anchor. Here the room has
+// been playing from 100s for ~30s; a restart must keep the playhead near
+// 130s, not reset it to 100 (or 0).
+func TestRestartKeepsPlayheadWhilePlaying(t *testing.T) {
+	f := newHubTestFixture(t)
+	f.post(t, `{"action":"load","ratingKey":"rk1"}`) // duration 600s
+	f.hub.mu.Lock()
+	f.hub.state.Playing = true
+	f.hub.state.PositionSec = 100
+	f.hub.state.UpdatedAtMs = nowMs() - 30_000 // anchored 30s ago
+	f.hub.mu.Unlock()
+
+	if err := f.hub.RestartAtCurrentPosition(RestartByAuto); err != nil {
+		t.Fatalf("RestartAtCurrentPosition: %v", err)
+	}
+	if got := f.hub.Snapshot().PositionSec; got < 129 || got > 132 {
+		t.Errorf("playhead after restart = %.2fs, want ~130 (extrapolated); the restart snapped it back", got)
+	}
+}
+
 func TestHubSeekClampsToDuration(t *testing.T) {
 	f := newHubTestFixture(t)
 	f.post(t, `{"action":"load","ratingKey":"rk1"}`) // duration 600s
