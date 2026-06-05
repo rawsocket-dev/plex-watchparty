@@ -1,9 +1,16 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"io"
+	"log"
+	"net/http"
 	"net/url"
 	"strings"
+	"sync"
+	"time"
 )
 
 // resBucket maps a source width/height to a friendly resolution label.
@@ -161,4 +168,96 @@ func buildPayload(ev notifyEvent, baseURL string) discordPayload {
 		}
 	}
 	return discordPayload{Embeds: []discordEmbed{e}}
+}
+
+// Notifier delivers playback events to a Discord incoming webhook. A nil
+// *Notifier is a no-op (feature disabled), mirroring *AuditLog. Enqueue is
+// non-blocking, so it is safe to call while Hub.mu is held; a single worker
+// goroutine drains the buffer and POSTs serially, keeping us well under
+// Discord's webhook rate limit and never re-entering the Hub.
+type Notifier struct {
+	webhookURL string
+	baseURL    string
+	http       *http.Client
+	events     chan notifyEvent
+	done       chan struct{}
+	closeOnce  sync.Once
+}
+
+// NewNotifier returns nil when webhookURL is empty (feature off). baseURL is
+// the already-resolved public origin (see publicBaseURL); "" omits posters.
+func NewNotifier(webhookURL, baseURL string) *Notifier {
+	if webhookURL == "" {
+		return nil
+	}
+	n := &Notifier{
+		webhookURL: webhookURL,
+		baseURL:    strings.TrimRight(baseURL, "/"),
+		http:       &http.Client{Timeout: 10 * time.Second},
+		events:     make(chan notifyEvent, 32),
+		done:       make(chan struct{}),
+	}
+	go n.run()
+	return n
+}
+
+// Enqueue submits an event for delivery. Non-blocking: a full buffer drops
+// the event with a log line rather than ever stalling the caller (which may
+// hold Hub.mu). Safe on a nil receiver.
+func (n *Notifier) Enqueue(ev notifyEvent) {
+	if n == nil {
+		return
+	}
+	select {
+	case n.events <- ev:
+	default:
+		log.Printf("discord: event buffer full, dropping kind=%d title=%q", ev.Kind, ev.Title)
+	}
+}
+
+// Close stops the worker. Safe on a nil receiver and idempotent. We never
+// close the events channel (senders use a non-blocking select), so a late
+// Enqueue after Close is simply dropped rather than panicking.
+func (n *Notifier) Close() {
+	if n == nil {
+		return
+	}
+	n.closeOnce.Do(func() { close(n.done) })
+}
+
+func (n *Notifier) run() {
+	// We do not drain n.events on Close — in-flight events at shutdown are
+	// intentionally dropped (best-effort delivery). See Close for rationale.
+	for {
+		select {
+		case <-n.done:
+			return
+		case ev := <-n.events:
+			n.post(ev)
+		}
+	}
+}
+
+func (n *Notifier) post(ev notifyEvent) {
+	body, err := json.Marshal(buildPayload(ev, n.baseURL))
+	if err != nil {
+		log.Printf("discord: marshal: %v", err)
+		return
+	}
+	req, err := http.NewRequest(http.MethodPost, n.webhookURL, bytes.NewReader(body))
+	if err != nil {
+		log.Printf("discord: build request: %v", err)
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := n.http.Do(req)
+	if err != nil {
+		log.Printf("discord: post: %v", err)
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		log.Printf("discord: webhook returned status %d", resp.StatusCode)
+	}
+	_, _ = io.Copy(io.Discard, resp.Body)
 }

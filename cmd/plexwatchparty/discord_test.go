@@ -1,6 +1,12 @@
 package main
 
-import "testing"
+import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+	"time"
+)
 
 func TestQualityLine(t *testing.T) {
 	cases := []struct {
@@ -143,5 +149,42 @@ func TestBuildPayloadNoPosterWhenNoBaseURL(t *testing.T) {
 	e := buildPayload(notifyEvent{Kind: notifyStart, Title: "X", RatingKey: "1"}, "").Embeds[0]
 	if e.Thumbnail != nil {
 		t.Errorf("thumbnail set with empty base URL: %+v", e.Thumbnail)
+	}
+}
+
+func TestNewNotifierNilWhenNoURL(t *testing.T) {
+	n := NewNotifier("", "https://p")
+	if n != nil {
+		t.Fatal("expected nil notifier when webhook URL empty")
+	}
+	// All methods must be safe no-ops on nil.
+	n.Enqueue(notifyEvent{Kind: notifyStart, Title: "x"})
+	n.Close()
+}
+
+func TestNotifierDelivers(t *testing.T) {
+	got := make(chan discordPayload, 1)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if ct := r.Header.Get("Content-Type"); ct != "application/json" {
+			t.Errorf("content-type = %q", ct)
+		}
+		var p discordPayload
+		_ = json.NewDecoder(r.Body).Decode(&p)
+		got <- p
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+
+	n := NewNotifier(srv.URL, "https://party.example")
+	defer n.Close()
+	n.Enqueue(notifyEvent{Kind: notifyStart, Title: "Heat", Year: 1995, RatingKey: "7"})
+
+	select {
+	case p := <-got:
+		if len(p.Embeds) != 1 || p.Embeds[0].Description != "Heat (1995)" {
+			t.Errorf("payload = %+v", p)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("no webhook delivery within 2s")
 	}
 }
