@@ -151,6 +151,8 @@ ALLOWED_EMAILS=you@example.com go run ./cmd/plexwatchparty
 | `LISTEN_ADDR`                     | no       | `:8080`                  | Listen address (e.g., `:8080` or `0.0.0.0:8080`) |
 | `WORK_DIR`                        | no       | `$TMPDIR/plexwatchparty` | Root data directory for cache and work files |
 | `TRUSTED_PROXY_CIDRS`             | no       | loopback + RFC1918 + ULA | Comma-separated CIDRs whose peers may set `X-Forwarded-For` / `X-Real-IP`. Headers from any other peer are ignored (so a directly-reachable client can't spoof its attribution). Widen this only if your reverse proxy sits on a public address. |
+| `DISCORD_WEBHOOK_URL`             | no       | —                        | Discord incoming-webhook URL. When set, the server posts a rich embed when a movie starts, stops, pauses, or resumes. Unset → feature off. |
+| `PUBLIC_BASE_URL`                 | no       | origin of `GOOGLE_REDIRECT_URL` | Public origin used to build poster-image links in Discord embeds, e.g. `https://watch.example.com`. Enabling the webhook serves an **unauthenticated, read-only** `/poster/<ratingKey>.jpg` route that streams Plex poster art (token never exposed) so Discord can render the thumbnail. If no absolute origin can be resolved, embeds post without a poster. |
 
 **Roles:**
 
