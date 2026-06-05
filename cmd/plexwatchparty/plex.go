@@ -3,7 +3,9 @@ package main
 import (
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
@@ -387,6 +389,7 @@ type metadataResp struct {
 	MediaContainer struct {
 		Metadata []struct {
 			Title    string `json:"title"`
+			Thumb    string `json:"thumb"`
 			Duration int64  `json:"duration"`
 			Media    []struct {
 				Container      string `json:"container"`
@@ -498,4 +501,48 @@ func (p *Plex) Resolve(ratingKey string) (*StreamInfo, error) {
 		}
 	}
 	return si, nil
+}
+
+// errNoPoster signals the movie has no thumb art (handler maps it to 404).
+var errNoPoster = errors.New("no poster art for movie")
+
+// PosterStream fetches a movie's Plex poster art for ratingKey. The caller
+// owns the returned ReadCloser and must Close it. The Plex token is sent
+// only as a query param to Plex and never appears in anything we hand back.
+func (p *Plex) PosterStream(ratingKey string) (io.ReadCloser, string, error) {
+	var mr metadataResp
+	if err := p.get("/library/metadata/"+ratingKey, &mr); err != nil {
+		return nil, "", err
+	}
+	if len(mr.MediaContainer.Metadata) == 0 {
+		return nil, "", fmt.Errorf("no metadata for ratingKey %s", ratingKey)
+	}
+	thumb := mr.MediaContainer.Metadata[0].Thumb
+	if thumb == "" {
+		return nil, "", errNoPoster
+	}
+	u := p.BaseURL + thumb
+	if strings.Contains(thumb, "?") {
+		u += "&"
+	} else {
+		u += "?"
+	}
+	u += "X-Plex-Token=" + url.QueryEscape(p.Token)
+	req, err := http.NewRequest(http.MethodGet, u, nil)
+	if err != nil {
+		return nil, "", err
+	}
+	resp, err := p.Do(req)
+	if err != nil {
+		return nil, "", err
+	}
+	if resp.StatusCode != http.StatusOK {
+		resp.Body.Close()
+		return nil, "", fmt.Errorf("plex thumb: status %d", resp.StatusCode)
+	}
+	ct := resp.Header.Get("Content-Type")
+	if ct == "" {
+		ct = "image/jpeg"
+	}
+	return resp.Body, ct, nil
 }
