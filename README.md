@@ -116,13 +116,17 @@ docker compose up --build
 
 Then open `http://<your-host>:8080`, sign in with Google, and pick a movie.
 
+All configuration lives in `.env` — the compose file consumes it via
+`env_file`, so adding or changing a setting is just a line in `.env` (no
+compose edits). Every variable, with docs, is in `.env.example`.
+
 The pre-built image is published to this repo's GitHub Container Registry on
 every push to `master` (multi-arch amd64 + arm64) at
 `ghcr.io/rawsocket-dev/plex-watchparty:latest`. It's public, so `docker
 compose pull` needs no `docker login`. If you'd rather not pull, `docker
 compose up --build` builds the same image from the local `Dockerfile`.
 
-> Edit `PLEX_BASE_URL` in `docker-compose.yml` if Plex isn't reachable at
+> Set `PLEX_BASE_URL` in `.env` if Plex isn't reachable at
 > `host.docker.internal:32400`.
 
 ## Run locally

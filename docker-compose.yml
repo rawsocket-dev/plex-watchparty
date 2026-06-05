@@ -8,36 +8,15 @@ services:
     build: .
     ports:
       - "8080:8080"
+    # All configuration lives in .env — copy .env.example to .env and edit it.
+    # env_file injects every KEY=VALUE from .env into the container, so adding
+    # a new setting only needs a line in .env, not an edit here. See
+    # .env.example for the full list with docs.
+    env_file:
+      - .env
     environment:
-      # Your Plex server (token stays server-side, never sent to clients).
-      PLEX_BASE_URL: "http://host.docker.internal:32400"
-      PLEX_TOKEN: "${PLEX_TOKEN:?set PLEX_TOKEN}"
-      # Google OAuth — one client for the whole app (sign-in + roles).
-      # See README "Google Cloud setup" for steps to create the client ID.
-      GOOGLE_CLIENT_ID:     "${GOOGLE_CLIENT_ID:?set GOOGLE_CLIENT_ID}"
-      GOOGLE_CLIENT_SECRET: "${GOOGLE_CLIENT_SECRET:?set GOOGLE_CLIENT_SECRET}"
-      GOOGLE_REDIRECT_URL:  "${GOOGLE_REDIRECT_URL:?set GOOGLE_REDIRECT_URL}"
-      # Comma-separated email allowlists (lowercased server-side).
-      # ALLOWED_EMAILS — who may sign in & watch (required).
-      # HOST_EMAILS    — subset who can pick / play / pause / seek (empty = everyone allowed can drive).
-      # ADMIN_EMAILS   — subset who can open /admin (empty = no one).
-      ALLOWED_EMAILS:       "${ALLOWED_EMAILS:?set ALLOWED_EMAILS}"
-      HOST_EMAILS:          "${HOST_EMAILS:-}"
-      ADMIN_EMAILS:         "${ADMIN_EMAILS:-}"
-      # Plex Universal Transcoder target bitrate, in kbps. Every movie is
-      # transcoded by Plex to 1080p H.264 + AAC (there is no direct-stream
-      # mode — Plex handles HEVC→H.264 + HDR→SDR, with hardware acceleration
-      # if configured on the Plex side). Leave unset to use the built-in
-      # default of 12000 (12 Mbps), a sensible target for high-quality
-      # streaming; lower it for constrained uplinks.
-      PLEX_TRANSCODE_BITRATE_KBPS: "${PLEX_TRANSCODE_BITRATE_KBPS:-}"
-      # Disk cap for the HLS segment cache (Gigabytes). Cached segments
-      # survive container restarts so previously-watched parts of a movie
-      # are instant-seekable on next watch. LRU eviction kicks in when
-      # the cap is hit. 20 GB fits ~3 typical 2hr movies at 12 Mbps.
-      CACHE_MAX_GB: "${CACHE_MAX_GB:-20}"
-      # Root data directory for cache and work files. Persisted outside
-      # the container layer so cached segments survive restarts.
+      # Container-internal data dir (cache + work files), persisted via the
+      # ./data volume below. A fixed path, not a user-facing setting.
       WORK_DIR: /data/sessions
     volumes:
       - ./data:/data

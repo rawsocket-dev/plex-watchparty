@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -75,23 +76,37 @@ func TestBuildPayloadStart(t *testing.T) {
 	ev := notifyEvent{
 		Kind: notifyStart, Title: "Blade Runner 2049", Year: 2017, RatingKey: "42",
 		Actor: "Brian", RuntimeSec: 9840, ResumeSec: 0, Quality: "4K HEVC → 1080p",
+		Tagline: "There's a storm coming.", Summary: "A young blade runner unearths a secret.",
+		ContentRating: "R", CriticRating: 8.0, AudienceRating: 8.1,
+		Genres: []string{"Sci-Fi", "Drama"}, IMDbID: "tt1856101", TMDBID: "335984",
 	}
 	p := buildPayload(ev, "https://party.example")
 	if len(p.Embeds) != 1 {
 		t.Fatalf("embeds = %d, want 1", len(p.Embeds))
 	}
 	e := p.Embeds[0]
-	if e.Title != "▶ Now Playing" {
+	if e.Author == nil || e.Author.Name != "▶ Now Playing" {
+		t.Errorf("author = %+v", e.Author)
+	}
+	if e.Title != "Blade Runner 2049 (2017)" {
 		t.Errorf("title = %q", e.Title)
+	}
+	if e.URL != "https://www.imdb.com/title/tt1856101/" {
+		t.Errorf("title url = %q", e.URL)
 	}
 	if e.Color != colorGreen {
 		t.Errorf("color = %d, want green", e.Color)
 	}
-	if e.Description != "Blade Runner 2049 (2017)" {
-		t.Errorf("description = %q", e.Description)
+	// Big poster goes in Image, not the small Thumbnail.
+	if e.Image == nil || e.Image.URL != "https://party.example/poster/42.jpg" {
+		t.Errorf("image = %+v", e.Image)
 	}
-	if e.Thumbnail == nil || e.Thumbnail.URL != "https://party.example/poster/42.jpg" {
-		t.Errorf("thumbnail = %+v", e.Thumbnail)
+	if e.Thumbnail != nil {
+		t.Errorf("start should use Image, not Thumbnail: %+v", e.Thumbnail)
+	}
+	if !strings.Contains(e.Description, "There's a storm coming.") ||
+		!strings.Contains(e.Description, "A young blade runner") {
+		t.Errorf("description = %q", e.Description)
 	}
 	if v, ok := findField(e.Fields, "Started by"); !ok || v != "Brian" {
 		t.Errorf("started-by field = %q,%v", v, ok)
@@ -101,6 +116,19 @@ func TestBuildPayloadStart(t *testing.T) {
 	}
 	if v, ok := findField(e.Fields, "Quality"); !ok || v != "4K HEVC → 1080p" {
 		t.Errorf("quality field = %q,%v", v, ok)
+	}
+	if v, ok := findField(e.Fields, "Rating"); !ok ||
+		!strings.Contains(v, "R") || !strings.Contains(v, "8.0") || !strings.Contains(v, "8.1") {
+		t.Errorf("rating field = %q,%v", v, ok)
+	}
+	if v, ok := findField(e.Fields, "Genres"); !ok || v != "Sci-Fi · Drama" {
+		t.Errorf("genres field = %q,%v", v, ok)
+	}
+	v, ok := findField(e.Fields, "Links")
+	if !ok || !strings.Contains(v, "[IMDb](https://www.imdb.com/title/tt1856101/)") ||
+		!strings.Contains(v, "Rotten Tomatoes") ||
+		!strings.Contains(v, "[TMDB](https://www.themoviedb.org/movie/335984)") {
+		t.Errorf("links field = %q,%v", v, ok)
 	}
 	if _, ok := findField(e.Fields, "Resuming at"); ok {
 		t.Error("resume field present for zero offset")
@@ -115,20 +143,17 @@ func TestBuildPayloadStartResumeOffset(t *testing.T) {
 	}
 }
 
-func TestBuildPayloadPauseAndStop(t *testing.T) {
-	pause := buildPayload(notifyEvent{Kind: notifyPause, Title: "X", RatingKey: "1", Actor: "Dana", PositionSec: 4320}, "https://p").Embeds[0]
-	if pause.Title != "⏸ Paused" || pause.Color != colorAmber {
-		t.Errorf("pause embed = %q/%d", pause.Title, pause.Color)
-	}
-	if v, _ := findField(pause.Fields, "Position"); v != "1:12:00 in" {
-		t.Errorf("pause position = %q", v)
-	}
-	if v, ok := findField(pause.Fields, "Paused by"); !ok || v != "Dana" {
-		t.Errorf("paused-by field = %q,%v", v, ok)
-	}
-	stop := buildPayload(notifyEvent{Kind: notifyStop, Title: "X", RatingKey: "1", Actor: "idle — everyone left", PositionSec: 9840}, "https://p").Embeds[0]
+func TestBuildPayloadStop(t *testing.T) {
+	stop := buildPayload(notifyEvent{Kind: notifyStop, Title: "X", Year: 1999, RatingKey: "1", Actor: "idle — everyone left", PositionSec: 9840}, "https://p").Embeds[0]
 	if stop.Title != "⏹ Movie Ended" || stop.Color != colorGrey {
 		t.Errorf("stop embed = %q/%d", stop.Title, stop.Color)
+	}
+	if stop.Description != "X (1999)" {
+		t.Errorf("stop description = %q", stop.Description)
+	}
+	// Ended embed uses the small thumbnail, not a big image.
+	if stop.Thumbnail == nil || stop.Image != nil {
+		t.Errorf("stop thumb=%+v image=%+v", stop.Thumbnail, stop.Image)
 	}
 	if v, _ := findField(stop.Fields, "Ended by"); v != "idle — everyone left" {
 		t.Errorf("stop actor = %q", v)
@@ -140,15 +165,15 @@ func TestBuildPayloadPauseAndStop(t *testing.T) {
 
 func TestBuildPayloadNoYearTitle(t *testing.T) {
 	e := buildPayload(notifyEvent{Kind: notifyStart, Title: "Heat", RatingKey: "1"}, "").Embeds[0]
-	if e.Description != "Heat" {
-		t.Errorf("no-year description = %q", e.Description)
+	if e.Title != "Heat" {
+		t.Errorf("no-year title = %q", e.Title)
 	}
 }
 
 func TestBuildPayloadNoPosterWhenNoBaseURL(t *testing.T) {
 	e := buildPayload(notifyEvent{Kind: notifyStart, Title: "X", RatingKey: "1"}, "").Embeds[0]
-	if e.Thumbnail != nil {
-		t.Errorf("thumbnail set with empty base URL: %+v", e.Thumbnail)
+	if e.Image != nil || e.Thumbnail != nil {
+		t.Errorf("poster set with empty base URL: image=%+v thumb=%+v", e.Image, e.Thumbnail)
 	}
 }
 
@@ -181,7 +206,7 @@ func TestNotifierDelivers(t *testing.T) {
 
 	select {
 	case p := <-got:
-		if len(p.Embeds) != 1 || p.Embeds[0].Description != "Heat (1995)" {
+		if len(p.Embeds) != 1 || p.Embeds[0].Title != "Heat (1995)" {
 			t.Errorf("payload = %+v", p)
 		}
 	case <-time.After(2 * time.Second):

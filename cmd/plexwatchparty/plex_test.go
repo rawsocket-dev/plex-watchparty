@@ -70,3 +70,36 @@ func TestPosterStreamThumbStatusError(t *testing.T) {
 		t.Fatal("expected error on non-200 thumb fetch, got nil")
 	}
 }
+
+func TestResolveMovieMeta(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"MediaContainer":{"Metadata":[{
+			"title":"Real Genius","tagline":"He gets creative.","summary":"Plot.",
+			"contentRating":"PG","rating":7.7,"audienceRating":8.2,
+			"Genre":[{"tag":"Comedy"},{"tag":"Sci-Fi"}],
+			"Guid":[{"id":"imdb://tt0089886"},{"id":"tmdb://14370"},{"id":"tvdb://4068"}],
+			"Media":[{"videoCodec":"hevc","width":3840,"height":2160,"Part":[{"key":"/p"}]}]
+		}]}}`))
+	}))
+	defer srv.Close()
+	p := NewPlex(srv.URL, "tok", filepath.Join(t.TempDir(), "lib.json"), nil)
+
+	_, meta, err := p.Resolve("123")
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if meta.Tagline != "He gets creative." || meta.Summary != "Plot." {
+		t.Errorf("tagline/summary = %q / %q", meta.Tagline, meta.Summary)
+	}
+	if meta.ContentRating != "PG" || meta.CriticRating != 7.7 || meta.AudienceRating != 8.2 {
+		t.Errorf("ratings = %q %v %v", meta.ContentRating, meta.CriticRating, meta.AudienceRating)
+	}
+	if len(meta.Genres) != 2 || meta.Genres[0] != "Comedy" || meta.Genres[1] != "Sci-Fi" {
+		t.Errorf("genres = %v", meta.Genres)
+	}
+	// imdb:// id keeps the "tt" prefix; tvdb is ignored.
+	if meta.IMDbID != "tt0089886" || meta.TMDBID != "14370" {
+		t.Errorf("ids = %q / %q", meta.IMDbID, meta.TMDBID)
+	}
+}

@@ -163,6 +163,20 @@ type StreamInfo struct {
 	Duration     int64  // ms
 }
 
+// MovieMeta carries the human-facing movie metadata used to build a rich
+// Discord "Now Playing" embed: tagline/plot, content + audience ratings,
+// genres, and the external IDs we turn into IMDb / TMDB links.
+type MovieMeta struct {
+	Tagline        string
+	Summary        string
+	ContentRating  string  // "PG", "R", ...
+	CriticRating   float64 // Plex "rating" (0–10)
+	AudienceRating float64 // Plex "audienceRating" (0–10)
+	Genres         []string
+	IMDbID         string // e.g. "tt0089886" ("" if Plex has none)
+	TMDBID         string // e.g. "14370" ("" if Plex has none)
+}
+
 // ServerIdentity is the subset of Plex's root response we care about
 // for a startup health check.
 type ServerIdentity struct {
@@ -388,9 +402,20 @@ func buildMoviesIndex(movies []Movie) map[string]Movie {
 type metadataResp struct {
 	MediaContainer struct {
 		Metadata []struct {
-			Title    string `json:"title"`
-			Thumb    string `json:"thumb"`
-			Duration int64  `json:"duration"`
+			Title          string  `json:"title"`
+			Thumb          string  `json:"thumb"`
+			Tagline        string  `json:"tagline"`
+			Summary        string  `json:"summary"`
+			ContentRating  string  `json:"contentRating"`
+			Rating         float64 `json:"rating"`
+			AudienceRating float64 `json:"audienceRating"`
+			Genre          []struct {
+				Tag string `json:"tag"`
+			} `json:"Genre"`
+			Guid []struct {
+				ID string `json:"id"`
+			} `json:"Guid"`
+			Duration int64 `json:"duration"`
 			Media    []struct {
 				Container      string `json:"container"`
 				VideoCodec     string `json:"videoCodec"`
@@ -425,15 +450,15 @@ type metadataResp struct {
 
 // Resolve turns a ratingKey into a direct, range-capable progressive URL plus
 // the codec/profile/size/etc. info we want to log and act on.
-func (p *Plex) Resolve(ratingKey string) (*StreamInfo, error) {
+func (p *Plex) Resolve(ratingKey string) (*StreamInfo, *MovieMeta, error) {
 	var mr metadataResp
 	if err := p.get("/library/metadata/"+ratingKey, &mr); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if len(mr.MediaContainer.Metadata) == 0 ||
 		len(mr.MediaContainer.Metadata[0].Media) == 0 ||
 		len(mr.MediaContainer.Metadata[0].Media[0].Part) == 0 {
-		return nil, fmt.Errorf("no playable part for ratingKey %s", ratingKey)
+		return nil, nil, fmt.Errorf("no playable part for ratingKey %s", ratingKey)
 	}
 	metadata := mr.MediaContainer.Metadata[0]
 
@@ -458,7 +483,7 @@ func (p *Plex) Resolve(ratingKey string) (*StreamInfo, error) {
 	}
 	media := metadata.Media[mediaIdx]
 	if len(media.Part) == 0 {
-		return nil, fmt.Errorf("chosen media variant has no Part for ratingKey %s", ratingKey)
+		return nil, nil, fmt.Errorf("chosen media variant has no Part for ratingKey %s", ratingKey)
 	}
 	part := media.Part[0]
 	if len(metadata.Media) > 1 {
@@ -500,7 +525,31 @@ func (p *Plex) Resolve(ratingKey string) (*StreamInfo, error) {
 			si.VideoCodec = strings.ToLower(s.Codec)
 		}
 	}
-	return si, nil
+
+	meta := &MovieMeta{
+		Tagline:        metadata.Tagline,
+		Summary:        metadata.Summary,
+		ContentRating:  metadata.ContentRating,
+		CriticRating:   metadata.Rating,
+		AudienceRating: metadata.AudienceRating,
+	}
+	for _, g := range metadata.Genre {
+		if g.Tag != "" {
+			meta.Genres = append(meta.Genres, g.Tag)
+		}
+	}
+	// Plex's Guid array carries external IDs like "imdb://tt0089886" and
+	// "tmdb://14370". (The Rating array's "imdb://image.rating" lives
+	// elsewhere and is not parsed here.)
+	for _, gu := range metadata.Guid {
+		switch {
+		case strings.HasPrefix(gu.ID, "imdb://tt"):
+			meta.IMDbID = strings.TrimPrefix(gu.ID, "imdb://")
+		case strings.HasPrefix(gu.ID, "tmdb://"):
+			meta.TMDBID = strings.TrimPrefix(gu.ID, "tmdb://")
+		}
+	}
+	return si, meta, nil
 }
 
 // errNoPoster signals the movie has no thumb art (handler maps it to 404).

@@ -702,11 +702,6 @@ func (h *Hub) hostExitPause(forRatingKey string) {
 	log.Printf("host-exit: pausing %q at %.2fs (no host returned in %s)",
 		h.state.Title, h.state.PositionSec, hostExitGrace)
 	h.broadcast()
-	h.notify.Enqueue(notifyEvent{
-		Kind: notifyPause, Title: h.state.Title, Year: h.state.Year,
-		RatingKey: h.state.RatingKey, Actor: "host stepped away",
-		PositionSec: h.state.PositionSec,
-	})
 }
 
 // idleShutdown fires when the grace timer expires. Guards against the
@@ -1277,7 +1272,7 @@ func (h *Hub) HandleControl(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		si, err := h.plex.Resolve(req.RatingKey)
+		si, meta, err := h.plex.Resolve(req.RatingKey)
 		if err != nil {
 			log.Printf("control: resolve failed ip=%s ratingKey=%s err=%v",
 				clientIP(r), req.RatingKey, err)
@@ -1349,11 +1344,22 @@ func (h *Hub) HandleControl(w http.ResponseWriter, r *http.Request) {
 		h.broadcast()
 		h.mu.Unlock()
 		auditDetail = fmt.Sprintf("started %q at %s", title, fmtClock(offsetSec))
-		h.notify.Enqueue(notifyEvent{
+		startEv := notifyEvent{
 			Kind: notifyStart, Title: title, Year: year, RatingKey: req.RatingKey,
 			Actor: hostName, RuntimeSec: float64(si.Duration) / 1000.0,
 			ResumeSec: offsetSec, Quality: qualityLine(*si),
-		})
+		}
+		if meta != nil {
+			startEv.Tagline = meta.Tagline
+			startEv.Summary = meta.Summary
+			startEv.ContentRating = meta.ContentRating
+			startEv.CriticRating = meta.CriticRating
+			startEv.AudienceRating = meta.AudienceRating
+			startEv.Genres = meta.Genres
+			startEv.IMDbID = meta.IMDbID
+			startEv.TMDBID = meta.TMDBID
+		}
+		h.notify.Enqueue(startEv)
 		// Tell Plex about the new session immediately so it knows our
 		// starting position. The 5s ticker would catch it eventually
 		// but the first segments hls.js requests would race ahead of
@@ -1431,18 +1437,10 @@ func (h *Hub) HandleControl(w http.ResponseWriter, r *http.Request) {
 		cur.Playing = true
 		log.Printf("state: play  ip=%s title=%q at=%.2f", clientIP(r), cur.Title, cur.PositionSec)
 		auditDetail = fmt.Sprintf("resumed %q at %s", cur.Title, fmtClock(cur.PositionSec))
-		h.notify.Enqueue(notifyEvent{
-			Kind: notifyResume, Title: cur.Title, Year: cur.Year, RatingKey: cur.RatingKey,
-			Actor: h.nameForEmailLocked(actor), PositionSec: cur.PositionSec,
-		})
 	case "pause":
 		cur.Playing = false
 		log.Printf("state: pause ip=%s title=%q at=%.2f", clientIP(r), cur.Title, cur.PositionSec)
 		auditDetail = fmt.Sprintf("paused %q at %s", cur.Title, fmtClock(cur.PositionSec))
-		h.notify.Enqueue(notifyEvent{
-			Kind: notifyPause, Title: cur.Title, Year: cur.Year, RatingKey: cur.RatingKey,
-			Actor: h.nameForEmailLocked(actor), PositionSec: cur.PositionSec,
-		})
 	case "seek":
 		log.Printf("state: seek  ip=%s title=%q from=%.2f to=%.2f",
 			clientIP(r), cur.Title, cur.PositionSec, req.PositionSec)

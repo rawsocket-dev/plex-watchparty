@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -41,7 +42,7 @@ func newHubTestFixture(t *testing.T) *hubTestFixture {
 			w.WriteHeader(http.StatusOK)
 		case r.URL.Path == "/library/metadata/rk1":
 			w.Header().Set("Content-Type", "application/json")
-			w.Write([]byte(`{"MediaContainer":{"Metadata":[{"title":"Test Movie","duration":600000,"Media":[{"videoCodec":"h264","width":1920,"height":1080,"bitrate":12000,"Part":[{"key":"/p"}]}]}]}}`))
+			w.Write([]byte(`{"MediaContainer":{"Metadata":[{"title":"Test Movie","tagline":"A test tagline.","summary":"A test plot summary.","contentRating":"PG-13","rating":7.5,"audienceRating":8.1,"duration":600000,"Genre":[{"tag":"Drama"},{"tag":"Sci-Fi"}],"Guid":[{"id":"imdb://tt1234567"},{"id":"tmdb://99999"}],"Media":[{"videoCodec":"h264","width":1920,"height":1080,"bitrate":12000,"Part":[{"key":"/p"}]}]}]}}`))
 		case r.URL.Path == "/library/sections":
 			w.Header().Set("Content-Type", "application/json")
 			w.Write([]byte(`{"MediaContainer":{"Directory":[{"key":"1","type":"movie"}]}}`))
@@ -619,7 +620,9 @@ func (f *hubTestFixture) fireHostReassign(gone string) {
 
 func TestHostFirstEligibleWins(t *testing.T) {
 	f := newHubTestFixture(t)
-	f.hub.mu.Lock(); f.hub.activeHost = ""; f.hub.mu.Unlock()
+	f.hub.mu.Lock()
+	f.hub.activeHost = ""
+	f.hub.mu.Unlock()
 	f.addConn("ineligible@x.com", false)
 	if f.active() != "" {
 		t.Fatalf("ineligible-only connect elected %q, want none", f.active())
@@ -636,7 +639,9 @@ func TestHostFirstEligibleWins(t *testing.T) {
 
 func TestHostReassignsOnDisconnect(t *testing.T) {
 	f := newHubTestFixture(t)
-	f.hub.mu.Lock(); f.hub.activeHost = ""; f.hub.mu.Unlock()
+	f.hub.mu.Lock()
+	f.hub.activeHost = ""
+	f.hub.mu.Unlock()
 	a := f.addConn("alice@x.com", true)
 	f.addConn("bob@x.com", true)
 	if f.active() != "alice@x.com" {
@@ -669,7 +674,9 @@ func TestHostReassignsOnDisconnect(t *testing.T) {
 
 func TestHostMultiTabRetainsSlot(t *testing.T) {
 	f := newHubTestFixture(t)
-	f.hub.mu.Lock(); f.hub.activeHost = ""; f.hub.mu.Unlock()
+	f.hub.mu.Lock()
+	f.hub.activeHost = ""
+	f.hub.mu.Unlock()
 	tab1 := f.addConn("alice@x.com", true)
 	_ = f.addConn("alice@x.com", true)
 	f.removeConn(tab1)
@@ -774,34 +781,35 @@ func TestControlLoadPostsStart(t *testing.T) {
 		t.Fatalf("load status = %d", w.Code)
 	}
 	e := waitEmbed(t, got)
-	if e.Title != "▶ Now Playing" {
+	if e.Author == nil || e.Author.Name != "▶ Now Playing" {
+		t.Errorf("author = %+v", e.Author)
+	}
+	if e.Title != "Test Movie (2024)" {
 		t.Errorf("title = %q", e.Title)
 	}
-	if e.Description != "Test Movie (2024)" {
-		t.Errorf("description = %q", e.Description)
+	if e.URL != "https://www.imdb.com/title/tt1234567/" {
+		t.Errorf("title url = %q", e.URL)
 	}
-	if e.Thumbnail == nil || e.Thumbnail.URL != "https://party.example/poster/rk1.jpg" {
-		t.Errorf("thumbnail = %+v", e.Thumbnail)
+	// Big poster goes in Image, not the small Thumbnail.
+	if e.Image == nil || e.Image.URL != "https://party.example/poster/rk1.jpg" {
+		t.Errorf("image = %+v", e.Image)
+	}
+	if !strings.Contains(e.Description, "A test tagline.") ||
+		!strings.Contains(e.Description, "A test plot summary.") {
+		t.Errorf("description = %q", e.Description)
 	}
 	if v, ok := findField(e.Fields, "Started by"); !ok || v != "Tester" {
 		t.Errorf("started-by = %q,%v", v, ok)
 	}
-}
-
-func TestControlPausePostsPause(t *testing.T) {
-	f := newHubTestFixture(t)
-	srv, got := discordStub(t)
-	f.hub.notify = NewNotifier(srv.URL, "")
-	defer f.hub.notify.Close()
-
-	f.post(t, `{"action":"load","ratingKey":"rk1","autoplay":true}`)
-	_ = waitEmbed(t, got) // drain the start embed
-	f.post(t, `{"action":"pause","positionSec":12}`)
-	e := waitEmbed(t, got)
-	if e.Title != "⏸ Paused" {
-		t.Errorf("title = %q", e.Title)
+	if v, ok := findField(e.Fields, "Genres"); !ok || v != "Drama · Sci-Fi" {
+		t.Errorf("genres = %q,%v", v, ok)
 	}
-	if v, ok := findField(e.Fields, "Paused by"); !ok || v != "Tester" {
-		t.Errorf("paused-by = %q,%v", v, ok)
+	if v, ok := findField(e.Fields, "Links"); !ok ||
+		!strings.Contains(v, "IMDb") || !strings.Contains(v, "Rotten Tomatoes") || !strings.Contains(v, "TMDB") {
+		t.Errorf("links = %q,%v", v, ok)
+	}
+	if v, ok := findField(e.Fields, "Rating"); !ok ||
+		!strings.Contains(v, "PG-13") || !strings.Contains(v, "7.5") || !strings.Contains(v, "8.1") {
+		t.Errorf("rating = %q,%v", v, ok)
 	}
 }

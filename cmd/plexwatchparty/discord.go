@@ -64,30 +64,37 @@ type notifyKind int
 
 const (
 	notifyStart notifyKind = iota
-	notifyPause
-	notifyResume
 	notifyStop
 )
 
 // Embed accent colors (Discord expects a decimal int; hex literals are fine).
 const (
 	colorGreen = 0x57F287
-	colorAmber = 0xFEE75C
 	colorGrey  = 0x95A5A6
 )
 
 // notifyEvent is the structured, transport-agnostic description of a
 // playback change. The Hub builds one and hands it to Notifier.Enqueue.
+// Only movie start and end are notified; pause/resume are intentionally not.
 type notifyEvent struct {
 	Kind        notifyKind
 	Title       string
 	Year        int
 	RatingKey   string
-	Actor       string  // display name, or a synthetic label ("idle — everyone left", "admin", "host stepped away")
-	PositionSec float64 // pause/resume/stop
+	Actor       string  // display name, or a synthetic label ("idle — everyone left", "admin")
+	PositionSec float64 // stop only
 	RuntimeSec  float64 // start only
 	ResumeSec   float64 // start only; 0 = not a resume
 	Quality     string  // start only; "" = omit
+	// Enrichment (start only) — drives the rich "Now Playing" embed.
+	Tagline        string
+	Summary        string
+	ContentRating  string
+	CriticRating   float64
+	AudienceRating float64
+	Genres         []string
+	IMDbID         string
+	TMDBID         string
 }
 
 type discordField struct {
@@ -100,12 +107,19 @@ type discordThumbnail struct {
 	URL string `json:"url"`
 }
 
+type discordAuthor struct {
+	Name string `json:"name"`
+}
+
 type discordEmbed struct {
+	Author      *discordAuthor    `json:"author,omitempty"`
 	Title       string            `json:"title"`
+	URL         string            `json:"url,omitempty"`
 	Description string            `json:"description,omitempty"`
 	Color       int               `json:"color"`
 	Fields      []discordField    `json:"fields,omitempty"`
 	Thumbnail   *discordThumbnail `json:"thumbnail,omitempty"`
+	Image       *discordThumbnail `json:"image,omitempty"`
 }
 
 type discordPayload struct {
@@ -121,6 +135,80 @@ func posterURL(baseURL, ratingKey string) string {
 	return baseURL + "/poster/" + ratingKey + ".jpg"
 }
 
+// imdbURL / tmdbURL / rtSearchURL build external movie links for the embed.
+// IMDb and TMDB are direct (from Plex GUIDs); Rotten Tomatoes has no stable
+// ID in Plex, so it's a search link.
+func imdbURL(id string) string {
+	if id == "" {
+		return ""
+	}
+	return "https://www.imdb.com/title/" + id + "/"
+}
+
+func tmdbURL(id string) string {
+	if id == "" {
+		return ""
+	}
+	return "https://www.themoviedb.org/movie/" + id
+}
+
+func rtSearchURL(title string, year int) string {
+	q := title
+	if year > 0 {
+		q = fmt.Sprintf("%s %d", title, year)
+	}
+	return "https://www.rottentomatoes.com/search?search=" + url.QueryEscape(q)
+}
+
+// ratingLine renders "PG · ⭐ 7.7 / 👥 8.2" from whatever pieces are present.
+func ratingLine(ev notifyEvent) string {
+	var parts []string
+	if ev.ContentRating != "" {
+		parts = append(parts, ev.ContentRating)
+	}
+	var scores []string
+	if ev.CriticRating > 0 {
+		scores = append(scores, fmt.Sprintf("⭐ %.1f", ev.CriticRating))
+	}
+	if ev.AudienceRating > 0 {
+		scores = append(scores, fmt.Sprintf("👥 %.1f", ev.AudienceRating))
+	}
+	if len(scores) > 0 {
+		parts = append(parts, strings.Join(scores, " / "))
+	}
+	return strings.Join(parts, " · ")
+}
+
+// linksField renders the markdown "[IMDb](…) · [Rotten Tomatoes](…) · [TMDB](…)"
+// field. Rotten Tomatoes is always present (search); IMDb/TMDB only when
+// Plex supplied the ID.
+func linksField(ev notifyEvent) string {
+	var links []string
+	if u := imdbURL(ev.IMDbID); u != "" {
+		links = append(links, "[IMDb]("+u+")")
+	}
+	links = append(links, "[Rotten Tomatoes]("+rtSearchURL(ev.Title, ev.Year)+")")
+	if u := tmdbURL(ev.TMDBID); u != "" {
+		links = append(links, "[TMDB]("+u+")")
+	}
+	return strings.Join(links, " · ")
+}
+
+// truncateText trims s to at most max runes, breaking on a word boundary and
+// appending an ellipsis when it had to cut.
+func truncateText(s string, max int) string {
+	s = strings.TrimSpace(s)
+	r := []rune(s)
+	if len(r) <= max {
+		return s
+	}
+	cut := strings.TrimSpace(string(r[:max]))
+	if i := strings.LastIndex(cut, " "); i > 0 {
+		cut = cut[:i]
+	}
+	return cut + "…"
+}
+
 // buildPayload turns a notifyEvent into the Discord webhook JSON. Pure and
 // deterministic — all delivery concerns live in the worker.
 func buildPayload(ev notifyEvent, baseURL string) discordPayload {
@@ -128,10 +216,8 @@ func buildPayload(ev notifyEvent, baseURL string) discordPayload {
 	if ev.Year > 0 {
 		movie = fmt.Sprintf("%s (%d)", ev.Title, ev.Year)
 	}
-	e := discordEmbed{Description: movie}
-	if u := posterURL(baseURL, ev.RatingKey); u != "" {
-		e.Thumbnail = &discordThumbnail{URL: u}
-	}
+	e := discordEmbed{}
+	poster := posterURL(baseURL, ev.RatingKey)
 	addField := func(name, value string, inline bool) {
 		if value != "" {
 			e.Fields = append(e.Fields, discordField{Name: name, Value: value, Inline: inline})
@@ -139,29 +225,43 @@ func buildPayload(ev notifyEvent, baseURL string) discordPayload {
 	}
 	switch ev.Kind {
 	case notifyStart:
-		e.Title = "▶ Now Playing"
+		e.Author = &discordAuthor{Name: "▶ Now Playing"}
+		e.Title = movie
+		e.URL = imdbURL(ev.IMDbID) // clickable title → IMDb (omitted if none)
 		e.Color = colorGreen
-		addField("Started by", ev.Actor, true)
+		// Tagline (italic) + plot synopsis.
+		var desc strings.Builder
+		if ev.Tagline != "" {
+			desc.WriteString("*" + ev.Tagline + "*")
+		}
+		if ev.Summary != "" {
+			if desc.Len() > 0 {
+				desc.WriteString("\n\n")
+			}
+			desc.WriteString(truncateText(ev.Summary, 350))
+		}
+		e.Description = desc.String()
+		if poster != "" {
+			e.Image = &discordThumbnail{URL: poster} // big, full-width
+		}
 		if ev.RuntimeSec > 0 {
 			addField("Runtime", fmtClock(ev.RuntimeSec), true)
 		}
+		addField("Rating", ratingLine(ev), true)
 		addField("Quality", ev.Quality, true)
+		addField("Genres", strings.Join(ev.Genres, " · "), false)
+		addField("Links", linksField(ev), false)
+		addField("Started by", ev.Actor, false)
 		if ev.ResumeSec > 0 {
 			addField("Resuming at", fmtClock(ev.ResumeSec), true)
 		}
-	case notifyPause:
-		e.Title = "⏸ Paused"
-		e.Color = colorAmber
-		addField("Paused by", ev.Actor, true)
-		addField("Position", fmtClock(ev.PositionSec)+" in", true)
-	case notifyResume:
-		e.Title = "▶ Resumed"
-		e.Color = colorGreen
-		addField("Resumed by", ev.Actor, true)
-		addField("Position", fmtClock(ev.PositionSec)+" in", true)
 	case notifyStop:
 		e.Title = "⏹ Movie Ended"
+		e.Description = movie
 		e.Color = colorGrey
+		if poster != "" {
+			e.Thumbnail = &discordThumbnail{URL: poster} // small
+		}
 		addField("Ended by", ev.Actor, true)
 		if ev.PositionSec > 0 {
 			addField("Stopped at", fmtClock(ev.PositionSec), true)
