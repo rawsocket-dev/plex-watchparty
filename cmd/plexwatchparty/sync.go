@@ -135,6 +135,11 @@ type Hub struct {
 	store   *StateStore
 	audit   *AuditLog
 
+	// notify posts playback events to a Discord webhook. Nil = feature
+	// off. A leaf dependency: Enqueue is non-blocking and never calls back
+	// into Hub, so it is safe to invoke while Hub.mu is held.
+	notify *Notifier
+
 	// aliases maps a verified email to an admin-assigned display name
 	// that overrides the viewer's Google-profile name in every roster.
 	// Resolved at roster-build time via displayName. Own lock; never
@@ -215,7 +220,7 @@ const hostExitGrace = 10 * time.Second
 // merely slow client (bad mobile link) isn't dropped mid-stream.
 const sseWriteTimeout = 30 * time.Second
 
-func NewHub(plex *Plex, session *PlexSession, cache *SegmentCache, recent *RecentMovies, store *StateStore, hostStore *HostStore, audit *AuditLog, aliases *AliasStore) *Hub {
+func NewHub(plex *Plex, session *PlexSession, cache *SegmentCache, recent *RecentMovies, store *StateStore, hostStore *HostStore, audit *AuditLog, aliases *AliasStore, notify *Notifier) *Hub {
 	h := &Hub{
 		plex:          plex,
 		session:       session,
@@ -225,6 +230,7 @@ func NewHub(plex *Plex, session *PlexSession, cache *SegmentCache, recent *Recen
 		hostStore:     hostStore,
 		audit:         audit,
 		aliases:       aliases,
+		notify:        notify,
 		clients:       make(map[*clientEntry]struct{}),
 		broadcastWake: make(chan struct{}, 1),
 		done:          make(chan struct{}),

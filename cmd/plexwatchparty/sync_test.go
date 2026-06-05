@@ -62,7 +62,7 @@ func newHubTestFixture(t *testing.T) *hubTestFixture {
 	hostStore := NewHostStore(filepath.Join(dir, "host.json"))
 	aliasStore := NewAliasStore(filepath.Join(dir, "aliases.json"))
 	session := NewPlexSession(plex, 12000)
-	hub := NewHub(plex, session, cache, recent, store, hostStore, audit, aliasStore)
+	hub := NewHub(plex, session, cache, recent, store, hostStore, audit, aliasStore, nil)
 	hub.mu.Lock()
 	hub.clients[&clientEntry{id: "t", email: testHostEmail, host: false, name: "Tester", send: make(chan []byte, 8), kill: make(chan struct{})}] = struct{}{}
 	hub.activeHost = testHostEmail
@@ -217,7 +217,7 @@ func TestHubRestoresActiveHostFromDisk(t *testing.T) {
 	store := NewStateStore(filepath.Join(dir, "state.json"))
 	aliasStore := NewAliasStore(filepath.Join(dir, "aliases.json"))
 	session := NewPlexSession(plex, 12000)
-	hub := NewHub(plex, session, cache, recent, store, hostStore, audit, aliasStore)
+	hub := NewHub(plex, session, cache, recent, store, hostStore, audit, aliasStore, nil)
 	t.Cleanup(hub.Close)
 
 	if !hub.IsActiveHost("alice@x.com") {

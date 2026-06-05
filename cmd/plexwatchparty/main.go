@@ -242,7 +242,15 @@ func main() {
 	// Sits next to state.json / recent.json.
 	hostStore := NewHostStore(filepath.Join(filepath.Dir(workDir), "host.json"))
 
-	hub := NewHub(plex, plexSession, segCache, recent, stateStore, hostStore, audit, aliasStore)
+	// Discord playback webhook (optional). Unset DISCORD_WEBHOOK_URL → nil
+	// notifier → feature off. Poster links need a public origin; default to
+	// the OAuth redirect's origin, overridable with PUBLIC_BASE_URL.
+	notifier := NewNotifier(os.Getenv("DISCORD_WEBHOOK_URL"), publicBaseURL(os.Getenv("PUBLIC_BASE_URL"), googleRedirect))
+	if notifier != nil {
+		log.Printf("discord: playback webhook enabled")
+	}
+
+	hub := NewHub(plex, plexSession, segCache, recent, stateStore, hostStore, audit, aliasStore, notifier)
 	auth := NewAuth(googleSecret, allowedEmails, os.Getenv("HOST_EMAILS"), os.Getenv("ADMIN_EMAILS"))
 	oauth := NewOAuth(googleID, googleSecret, googleRedirect, auth, audit)
 	bw := newBwTracker()
@@ -265,6 +273,9 @@ func main() {
 	mux.HandleFunc("/logout", auth.HandleLogout)
 	mux.HandleFunc("/oauth/start", oauth.HandleStart)
 	mux.HandleFunc("/oauth/callback", oauth.HandleCallback)
+	// Unauthenticated, read-only poster art for Discord embeds (validated
+	// alphanumeric ratingKey, image bytes only, token stripped — see poster.go).
+	mux.HandleFunc("/poster/", posterHandler(plex))
 
 	// Admin maintenance panel — same identity, gated on ADMIN_EMAILS.
 	registerAdminRoutes(mux, auth, plex, segCache, plexSession, hub, bw, audit, aliasStore)
