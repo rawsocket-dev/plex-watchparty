@@ -702,6 +702,11 @@ func (h *Hub) hostExitPause(forRatingKey string) {
 	log.Printf("host-exit: pausing %q at %.2fs (no host returned in %s)",
 		h.state.Title, h.state.PositionSec, hostExitGrace)
 	h.broadcast()
+	h.notify.Enqueue(notifyEvent{
+		Kind: notifyPause, Title: h.state.Title, Year: h.state.Year,
+		RatingKey: h.state.RatingKey, Actor: "host stepped away",
+		PositionSec: h.state.PositionSec,
+	})
 }
 
 // idleShutdown fires when the grace timer expires. Guards against the
@@ -726,6 +731,11 @@ func (h *Hub) idleShutdown(forRatingKey string) {
 	// viewers, so there's no SSE writer to stall. Don't copy this pattern
 	// to a path that can run with viewers connected.
 	h.audit.Record(AuditEvent{Type: "plex", Email: "system", Detail: fmt.Sprintf("idle: stopped %q after %s with no viewers", h.state.Title, idleGrace)})
+	h.notify.Enqueue(notifyEvent{
+		Kind: notifyStop, Title: h.state.Title, Year: h.state.Year,
+		RatingKey: h.state.RatingKey, Actor: "idle — everyone left",
+		PositionSec: h.snapshot().PositionSec,
+	})
 	h.session.Stop()
 	h.state = State{UpdatedAtMs: nowMs()}
 	h.broadcast()
@@ -1335,9 +1345,15 @@ func (h *Hub) HandleControl(w http.ResponseWriter, r *http.Request) {
 			SessionToken: h.session.SessionToken(),
 			UpdatedAtMs:  nowMs(),
 		}
+		hostName := h.nameForEmailLocked(actor)
 		h.broadcast()
 		h.mu.Unlock()
 		auditDetail = fmt.Sprintf("started %q at %s", title, fmtClock(offsetSec))
+		h.notify.Enqueue(notifyEvent{
+			Kind: notifyStart, Title: title, Year: year, RatingKey: req.RatingKey,
+			Actor: hostName, RuntimeSec: float64(si.Duration) / 1000.0,
+			ResumeSec: offsetSec, Quality: qualityLine(*si),
+		})
 		// Tell Plex about the new session immediately so it knows our
 		// starting position. The 5s ticker would catch it eventually
 		// but the first segments hls.js requests would race ahead of
@@ -1371,14 +1387,21 @@ func (h *Hub) HandleControl(w http.ResponseWriter, r *http.Request) {
 		h.mu.Lock()
 		rk := h.state.RatingKey
 		stoppedTitle := h.state.Title
-		posMs := int64(h.snapshot().PositionSec * 1000)
+		stoppedYear := h.state.Year
+		posSec := h.snapshot().PositionSec
+		posMs := int64(posSec * 1000)
 		durMs := int64(h.state.DurationSec * 1000)
+		hostName := h.nameForEmailLocked(actor)
 		h.mu.Unlock()
 		if rk != "" {
 			auditDetail = fmt.Sprintf("stopped %q", stoppedTitle)
 			if err := h.session.ReportTimeline("stopped", rk, posMs, durMs); err != nil {
 				log.Printf("timeline: stop report failed: %v", err)
 			}
+			h.notify.Enqueue(notifyEvent{
+				Kind: notifyStop, Title: stoppedTitle, Year: stoppedYear,
+				RatingKey: rk, Actor: hostName, PositionSec: posSec,
+			})
 		}
 		h.session.Stop()
 		h.mu.Lock()
@@ -1408,10 +1431,18 @@ func (h *Hub) HandleControl(w http.ResponseWriter, r *http.Request) {
 		cur.Playing = true
 		log.Printf("state: play  ip=%s title=%q at=%.2f", clientIP(r), cur.Title, cur.PositionSec)
 		auditDetail = fmt.Sprintf("resumed %q at %s", cur.Title, fmtClock(cur.PositionSec))
+		h.notify.Enqueue(notifyEvent{
+			Kind: notifyResume, Title: cur.Title, Year: cur.Year, RatingKey: cur.RatingKey,
+			Actor: h.nameForEmailLocked(actor), PositionSec: cur.PositionSec,
+		})
 	case "pause":
 		cur.Playing = false
 		log.Printf("state: pause ip=%s title=%q at=%.2f", clientIP(r), cur.Title, cur.PositionSec)
 		auditDetail = fmt.Sprintf("paused %q at %s", cur.Title, fmtClock(cur.PositionSec))
+		h.notify.Enqueue(notifyEvent{
+			Kind: notifyPause, Title: cur.Title, Year: cur.Year, RatingKey: cur.RatingKey,
+			Actor: h.nameForEmailLocked(actor), PositionSec: cur.PositionSec,
+		})
 	case "seek":
 		log.Printf("state: seek  ip=%s title=%q from=%.2f to=%.2f",
 			clientIP(r), cur.Title, cur.PositionSec, req.PositionSec)
@@ -1483,14 +1514,20 @@ func (h *Hub) HandleControl(w http.ResponseWriter, r *http.Request) {
 func (h *Hub) SendEveryoneToLobby() {
 	h.mu.Lock()
 	rk := h.state.RatingKey
-	posMs := int64(h.snapshot().PositionSec * 1000)
+	posSec := h.snapshot().PositionSec
+	posMs := int64(posSec * 1000)
 	durMs := int64(h.state.DurationSec * 1000)
 	title := h.state.Title
+	year := h.state.Year
 	h.mu.Unlock()
 	if rk != "" {
 		if err := h.session.ReportTimeline("stopped", rk, posMs, durMs); err != nil {
 			log.Printf("timeline: stop report failed: %v", err)
 		}
+		h.notify.Enqueue(notifyEvent{
+			Kind: notifyStop, Title: title, Year: year, RatingKey: rk,
+			Actor: "admin", PositionSec: posSec,
+		})
 	}
 	h.session.Stop()
 	h.mu.Lock()

@@ -734,3 +734,74 @@ func TestHandoffByActiveHost(t *testing.T) {
 		t.Error("Handoff by non-active-host = nil err, want error")
 	}
 }
+
+// discordStub captures delivered embeds on a channel.
+func discordStub(t *testing.T) (*httptest.Server, chan discordPayload) {
+	t.Helper()
+	got := make(chan discordPayload, 8)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var p discordPayload
+		_ = json.NewDecoder(r.Body).Decode(&p)
+		got <- p
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	t.Cleanup(srv.Close)
+	return srv, got
+}
+
+func waitEmbed(t *testing.T, got chan discordPayload) discordEmbed {
+	t.Helper()
+	select {
+	case p := <-got:
+		if len(p.Embeds) == 0 {
+			t.Fatal("payload had no embeds")
+		}
+		return p.Embeds[0]
+	case <-time.After(2 * time.Second):
+		t.Fatal("no Discord delivery within 2s")
+		return discordEmbed{}
+	}
+}
+
+func TestControlLoadPostsStart(t *testing.T) {
+	f := newHubTestFixture(t)
+	srv, got := discordStub(t)
+	f.hub.notify = NewNotifier(srv.URL, "https://party.example")
+	defer f.hub.notify.Close()
+
+	w := f.post(t, `{"action":"load","ratingKey":"rk1","autoplay":true}`)
+	if w.Code != http.StatusOK {
+		t.Fatalf("load status = %d", w.Code)
+	}
+	e := waitEmbed(t, got)
+	if e.Title != "▶ Now Playing" {
+		t.Errorf("title = %q", e.Title)
+	}
+	if e.Description != "Test Movie (2024)" {
+		t.Errorf("description = %q", e.Description)
+	}
+	if e.Thumbnail == nil || e.Thumbnail.URL != "https://party.example/poster/rk1.jpg" {
+		t.Errorf("thumbnail = %+v", e.Thumbnail)
+	}
+	if v, ok := findField(e.Fields, "Started by"); !ok || v != "Tester" {
+		t.Errorf("started-by = %q,%v", v, ok)
+	}
+}
+
+func TestControlPausePostsPause(t *testing.T) {
+	f := newHubTestFixture(t)
+	srv, got := discordStub(t)
+	f.hub.notify = NewNotifier(srv.URL, "")
+	defer f.hub.notify.Close()
+
+	f.post(t, `{"action":"load","ratingKey":"rk1","autoplay":true}`)
+	_ = waitEmbed(t, got) // drain the start embed
+	f.post(t, `{"action":"pause","positionSec":12}`)
+	e := waitEmbed(t, got)
+	if e.Title != "⏸ Paused" {
+		t.Errorf("title = %q", e.Title)
+	}
+	if v, ok := findField(e.Fields, "Paused by"); !ok || v != "Tester" {
+		t.Errorf("paused-by = %q,%v", v, ok)
+	}
+}
