@@ -275,7 +275,11 @@ func main() {
 	mux.HandleFunc("/oauth/callback", oauth.HandleCallback)
 	// Unauthenticated, read-only poster art for Discord embeds (validated
 	// alphanumeric ratingKey, image bytes only, token stripped — see poster.go).
-	mux.HandleFunc("/poster/", posterHandler(plex))
+	// Mounted only when the webhook is on: it exists solely for Discord's
+	// embed fetchers, so there's no reason to expose poster art otherwise.
+	if notifier != nil {
+		mux.HandleFunc("/poster/", posterHandler(plex))
+	}
 
 	// Admin maintenance panel — same identity, gated on ADMIN_EMAILS.
 	registerAdminRoutes(mux, auth, plex, segCache, plexSession, hub, bw, audit, aliasStore)
