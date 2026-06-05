@@ -74,9 +74,13 @@ func TestPosterStreamThumbStatusError(t *testing.T) {
 func TestResolveMovieMeta(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
+		// Real Plex returns BOTH a scalar "guid"/"rating" and a capital-letter
+		// "Guid"/"Rating" array — this fixture mirrors that so the case-
+		// insensitive-collision regression stays caught.
 		w.Write([]byte(`{"MediaContainer":{"Metadata":[{
-			"title":"Real Genius","tagline":"He gets creative.","summary":"Plot.",
+			"title":"Real Genius","guid":"plex://movie/5d776b","tagline":"He gets creative.","summary":"Plot.",
 			"contentRating":"PG","rating":7.7,"audienceRating":8.2,
+			"Rating":[{"image":"imdb://image.rating","value":7.7,"type":"critic"},{"image":"themoviedb://image.rating","value":8.2,"type":"audience"}],
 			"Genre":[{"tag":"Comedy"},{"tag":"Sci-Fi"}],
 			"Guid":[{"id":"imdb://tt0089886"},{"id":"tmdb://14370"},{"id":"tvdb://4068"}],
 			"Media":[{"videoCodec":"hevc","width":3840,"height":2160,"Part":[{"key":"/p"}]}]

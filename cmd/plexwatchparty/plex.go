@@ -409,7 +409,14 @@ type metadataResp struct {
 			ContentRating  string  `json:"contentRating"`
 			Rating         float64 `json:"rating"`
 			AudienceRating float64 `json:"audienceRating"`
-			Genre          []struct {
+			// Plex returns BOTH a scalar "guid"/"rating" and a capital-letter
+			// "Guid"/"Rating" array for the same concepts. Go's json matching
+			// is case-insensitive, so without these exact-case absorber fields
+			// the string "guid" and the array "Rating" get unmarshaled into the
+			// scalar fields above and fail the whole decode. Captured + ignored.
+			GUIDString  string          `json:"guid"`
+			RatingArray json.RawMessage `json:"Rating"`
+			Genre       []struct {
 				Tag string `json:"tag"`
 			} `json:"Genre"`
 			Guid []struct {

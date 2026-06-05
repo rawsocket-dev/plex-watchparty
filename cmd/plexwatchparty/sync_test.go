@@ -42,7 +42,7 @@ func newHubTestFixture(t *testing.T) *hubTestFixture {
 			w.WriteHeader(http.StatusOK)
 		case r.URL.Path == "/library/metadata/rk1":
 			w.Header().Set("Content-Type", "application/json")
-			w.Write([]byte(`{"MediaContainer":{"Metadata":[{"title":"Test Movie","tagline":"A test tagline.","summary":"A test plot summary.","contentRating":"PG-13","rating":7.5,"audienceRating":8.1,"duration":600000,"Genre":[{"tag":"Drama"},{"tag":"Sci-Fi"}],"Guid":[{"id":"imdb://tt1234567"},{"id":"tmdb://99999"}],"Media":[{"videoCodec":"h264","width":1920,"height":1080,"bitrate":12000,"Part":[{"key":"/p"}]}]}]}}`))
+			w.Write([]byte(`{"MediaContainer":{"Metadata":[{"title":"Test Movie","guid":"plex://movie/abc","tagline":"A test tagline.","summary":"A test plot summary.","contentRating":"PG-13","rating":7.5,"audienceRating":8.1,"Rating":[{"image":"imdb://image.rating","value":7.5,"type":"critic"}],"duration":600000,"Genre":[{"tag":"Drama"},{"tag":"Sci-Fi"}],"Guid":[{"id":"imdb://tt1234567"},{"id":"tmdb://99999"}],"Media":[{"videoCodec":"h264","width":1920,"height":1080,"bitrate":12000,"Part":[{"key":"/p"}]}]}]}}`))
 		case r.URL.Path == "/library/sections":
 			w.Header().Set("Content-Type", "application/json")
 			w.Write([]byte(`{"MediaContainer":{"Directory":[{"key":"1","type":"movie"}]}}`))
