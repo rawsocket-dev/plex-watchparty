@@ -308,8 +308,11 @@ body.viewer .role-cell .r-viewer { display: inline; }
   gap: 0;
 }
 .vol-icon {
-  width: 22px;
-  height: 22px;
+  /* viewBox is cropped to the glyph (player.html: "2 4 20 16") so the
+     speaker fills the box instead of floating tiny in 24 units of
+     padding — that, not the px size, was why it read so small. */
+  width: 24px;
+  height: 24px;
   color: var(--paper-mute);
   transition: color .2s ease;
 }
