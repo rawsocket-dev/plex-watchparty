@@ -308,11 +308,12 @@ body.viewer .role-cell .r-viewer { display: inline; }
   gap: 0;
 }
 .vol-icon {
-  /* viewBox is cropped to the glyph (player.html: "2 4 20 16") so the
+  /* viewBox is cropped tight to the glyph (player.html: "3 5 17 14") so the
      speaker fills the box instead of floating tiny in 24 units of
-     padding — that, not the px size, was why it read so small. */
-  width: 24px;
-  height: 24px;
+     padding — that, not the px size, was why it read so small. Verified
+     headless that all four states render without clipping at this crop. */
+  width: 28px;
+  height: 28px;
   color: var(--paper-mute);
   transition: color .2s ease;
 }
