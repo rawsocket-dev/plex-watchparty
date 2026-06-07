@@ -71,6 +71,51 @@ func TestPosterStreamThumbStatusError(t *testing.T) {
 	}
 }
 
+func TestListMoviesRatings(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/library/sections":
+			w.Write([]byte(`{"MediaContainer":{"Directory":[
+				{"key":"1","type":"movie","title":"Movies"},
+				{"key":"2","type":"show","title":"TV"}]}}`))
+		case "/library/sections/1/all":
+			// Mirrors the real listing: scalar rating/audienceRating, no
+			// capital arrays. The first item ALSO carries a capital "Rating"
+			// array — the listing endpoint doesn't send one today, but if it
+			// ever does the absorber field must keep the decode from
+			// colliding (the bug that 502'd every load). One item has only an
+			// audience rating; one has neither.
+			w.Write([]byte(`{"MediaContainer":{"Metadata":[
+				{"ratingKey":"10","title":"The 'Burbs","year":1990,"rating":5.8,"audienceRating":7.1,
+				 "Rating":[{"value":5.8,"type":"critic"},{"value":7.1,"type":"audience"}]},
+				{"ratingKey":"11","title":"A '90s Christmas","year":2022,"audienceRating":6.0},
+				{"ratingKey":"12","title":"Unrated Obscurity","year":1998}]}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	p := NewPlex(srv.URL, "tok", filepath.Join(t.TempDir(), "lib.json"), nil)
+
+	movies, err := p.ListMovies()
+	if err != nil {
+		t.Fatalf("ListMovies: %v", err)
+	}
+	if len(movies) != 3 {
+		t.Fatalf("got %d movies, want 3 (show section must be skipped)", len(movies))
+	}
+	if movies[0].Title != "The 'Burbs" || movies[0].Rating != 5.8 || movies[0].AudienceRating != 7.1 {
+		t.Errorf("movie[0] = %+v, want The 'Burbs 5.8/7.1", movies[0])
+	}
+	if movies[1].Rating != 0 || movies[1].AudienceRating != 6.0 {
+		t.Errorf("movie[1] ratings = %v/%v, want 0/6.0", movies[1].Rating, movies[1].AudienceRating)
+	}
+	if movies[2].Rating != 0 || movies[2].AudienceRating != 0 {
+		t.Errorf("movie[2] ratings = %v/%v, want 0/0", movies[2].Rating, movies[2].AudienceRating)
+	}
+}
+
 func TestResolveMovieMeta(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

@@ -145,9 +145,11 @@ func (p *Plex) healthRecoveryLoop() {
 }
 
 type Movie struct {
-	RatingKey string `json:"ratingKey"`
-	Title     string `json:"title"`
-	Year      int    `json:"year"`
+	RatingKey      string  `json:"ratingKey"`
+	Title          string  `json:"title"`
+	Year           int     `json:"year"`
+	Rating         float64 `json:"rating,omitempty"`         // Plex critic "rating" (0–10), 0 = absent
+	AudienceRating float64 `json:"audienceRating,omitempty"` // Plex "audienceRating" (0–10), 0 = absent
 }
 
 // StreamInfo describes a movie's source metadata in enough detail to log
@@ -241,9 +243,18 @@ type sectionsResp struct {
 type libraryResp struct {
 	MediaContainer struct {
 		Metadata []struct {
-			RatingKey string `json:"ratingKey"`
-			Title     string `json:"title"`
-			Year      int    `json:"year"`
+			RatingKey      string  `json:"ratingKey"`
+			Title          string  `json:"title"`
+			Year           int     `json:"year"`
+			Rating         float64 `json:"rating"`
+			AudienceRating float64 `json:"audienceRating"`
+			// The listing endpoint sends only scalar rating/audienceRating
+			// (no capital arrays), unlike /library/metadata. This absorber is
+			// defense-in-depth: if Plex ever adds a capital "Rating" array
+			// here too, give it an exact-case home so Go's case-insensitive
+			// json matching can't misroute it into the float above and fail
+			// the whole decode (the collision that 502'd every load).
+			RatingArray json.RawMessage `json:"Rating"`
 		} `json:"Metadata"`
 	} `json:"MediaContainer"`
 }
@@ -368,7 +379,13 @@ func (p *Plex) ListMovies() ([]Movie, error) {
 			return nil, err
 		}
 		for _, m := range lr.MediaContainer.Metadata {
-			out = append(out, Movie{RatingKey: m.RatingKey, Title: m.Title, Year: m.Year})
+			out = append(out, Movie{
+				RatingKey:      m.RatingKey,
+				Title:          m.Title,
+				Year:           m.Year,
+				Rating:         m.Rating,
+				AudienceRating: m.AudienceRating,
+			})
 		}
 	}
 

@@ -4,6 +4,8 @@ Notable, user-facing changes to plex-watchparty. Newest first.
 No version numbers — the app ships continuously as a container.
 
 ## 2026-06-07
+- Added: Library list shows each title's Plex rating — gold ★ critic and
+  👥 audience score — between the title and the year, when Plex has them.
 - Fixed: Volume slider popover no longer closes while you move the mouse
   from the icon down to the slider.
 - Changed: Larger, more legible volume icon.

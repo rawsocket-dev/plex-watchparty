@@ -332,6 +332,19 @@ ul.films .year {
   padding-top: .15rem;
   font-variant-numeric: tabular-nums;
 }
+/* Plex rating chip — gold critic star + audience marker, between the
+   title and the year. Each half is rendered only when Plex has it. */
+ul.films .rating {
+  font-family: var(--mono);
+  font-size: .62rem;
+  letter-spacing: .06em;
+  color: var(--paper-mute);
+  flex-shrink: 0;
+  padding-top: .2rem;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+ul.films .rating .rt-c { color: var(--warn); }
 
 .empty {
   padding: 3rem clamp(1.25rem, 4vw, 3rem);
