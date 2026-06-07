@@ -191,11 +191,22 @@ window.addEventListener('keydown', (e) => {
   }
 });
 
+// Compact Plex rating chip: gold critic star + audience marker, each
+// shown only when Plex actually has that score (0/absent → omitted).
+// Returns '' when neither exists, so most-obscure titles stay clean.
+function ratingHTML(m) {
+  const parts = [];
+  if (m.rating > 0)         parts.push('<span class="rt-c">★ ' + m.rating.toFixed(1) + '</span>');
+  if (m.audienceRating > 0) parts.push('👥 ' + m.audienceRating.toFixed(1));
+  return parts.length ? '<span class="rating">' + parts.join(' · ') + '</span>' : '';
+}
+
 function makeButton(m) {
   const b = document.createElement('button');
   b.type = 'button';
   b.innerHTML =
     '<span class="title">' + escapeHTML(m.title) + '</span>' +
+    ratingHTML(m) +
     (m.year ? '<span class="year">' + m.year + '</span>' : '');
   b.onclick = async () => {
     if (!isHost) return; // viewer: no-op
