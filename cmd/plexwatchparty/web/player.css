@@ -308,8 +308,8 @@ body.viewer .role-cell .r-viewer { display: inline; }
   gap: 0;
 }
 .vol-icon {
-  width: 18px;
-  height: 18px;
+  width: 22px;
+  height: 22px;
   color: var(--paper-mute);
   transition: color .2s ease;
 }
@@ -343,6 +343,19 @@ body.viewer .role-cell .r-viewer { display: inline; }
 }
 .vol-cell:hover .vol-popover,
 .vol-cell:focus-within .vol-popover { display: flex; }
+/* Invisible bridge spanning the gap between the cell and the popover.
+   Without it the 4px dead band drops .vol-cell:hover mid-transit, so
+   moving the mouse down to the slider hid the popover before you got
+   there. The ::before only exists while the popover is shown, so it
+   never captures hover when closed. */
+.vol-popover::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -6px;
+  height: 6px;
+}
 
 #vol-slider {
   appearance: none;
