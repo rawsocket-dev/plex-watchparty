@@ -283,11 +283,11 @@ ul.films button {
   border: 0;
   color: var(--paper);
   cursor: pointer;
-  padding: .9rem .25rem .9rem 1rem;
+  padding: .9rem 1rem;
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 1rem;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: .3rem;
   font-family: var(--mono);
   font-size: .88rem;
   font-weight: 500;
@@ -321,10 +321,15 @@ ul.films button:disabled {
   cursor: progress;
   font-style: italic;
 }
-ul.films .title { flex: 1; }
-/* Year + rating deliberately inherit the button's title size (.88rem,
-   .015em, weight 500) and baseline so the whole row is one size; the
+ul.films .title { flex: none; }
+/* Rating + year sit on their own line under the title (.meta), left-
+   aligned. They inherit the button's title size (.88rem, weight 500); the
    muted colour — not a smaller font — keeps them secondary to the title. */
+ul.films .meta {
+  display: flex;
+  align-items: baseline;
+  gap: .6rem;
+}
 ul.films .year {
   font-family: var(--mono);
   color: var(--paper-mute);
