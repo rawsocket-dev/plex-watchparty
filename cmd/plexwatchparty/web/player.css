@@ -311,9 +311,11 @@ body.viewer .role-cell .r-viewer { display: inline; }
   /* viewBox is cropped tight to the glyph (player.html: "3 5 17 14") so the
      speaker fills the box instead of floating tiny in 24 units of
      padding — that, not the px size, was why it read so small. Verified
-     headless that all four states render without clipping at this crop. */
-  width: 28px;
-  height: 28px;
+     headless that all four states render without clipping at this crop.
+     The .ctl row is min-height 60px, so this sits comfortably; ~40px is
+     about the ceiling before it crowds the 46px button. */
+  width: 36px;
+  height: 36px;
   color: var(--paper-mute);
   transition: color .2s ease;
 }
