@@ -204,10 +204,13 @@ function ratingHTML(m) {
 function makeButton(m) {
   const b = document.createElement('button');
   b.type = 'button';
+  // Rating + year live on their own line UNDER the title (.meta), so the
+  // title gets the full column width instead of wrapping next to the
+  // now title-sized metadata. Omit the line entirely if there's nothing.
+  const meta = ratingHTML(m) + (m.year ? '<span class="year">' + m.year + '</span>' : '');
   b.innerHTML =
     '<span class="title">' + escapeHTML(m.title) + '</span>' +
-    ratingHTML(m) +
-    (m.year ? '<span class="year">' + m.year + '</span>' : '');
+    (meta ? '<span class="meta">' + meta + '</span>' : '');
   b.onclick = async () => {
     if (!isHost) return; // viewer: no-op
     // Probe current state first so we can offer Resume/Start-over
