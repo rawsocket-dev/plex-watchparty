@@ -3,6 +3,11 @@
 Notable, user-facing changes to plex-watchparty. Newest first.
 No version numbers — the app ships continuously as a container.
 
+## 2026-06-10
+- Fixed: Dismissing the "Resume where you left off" banner now keeps it
+  hidden across page reloads — it stays gone until a new resume hint
+  (a different movie or a fresh save) appears.
+
 ## 2026-06-07
 - Added: Library list shows each title's Plex rating — gold ★ critic and
   👥 audience score — between the title and the year, when Plex has them.
