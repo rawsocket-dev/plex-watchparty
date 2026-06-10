@@ -33,7 +33,9 @@ let lastActiveHostName;   // tracks election / hand-off changes seen over the SS
 // container restart or idle shutdown when state.ratingKey is empty but a
 // prior session left a state.json. Host buttons trigger a /control load at
 // the saved offset (Resume) or 0 (Start over); the Dismiss button hides
-// the banner client-side for this tab only (the server hint persists).
+// the banner and remembers (in localStorage) that this exact hint was
+// dismissed, so it stays hidden across reloads. A *new* hint (different
+// movie or a fresh save) still shows — the key is scoped to the hint.
 const resumeBanner    = document.getElementById('resume-banner');
 const resumeBannerTitle    = document.getElementById('rb-title');
 const resumeBannerPosition = document.getElementById('rb-position');
@@ -60,6 +62,15 @@ function fmtSavedAgo(savedAtUnix) {
   if (sec < 86400) return Math.floor(sec / 3600) + ' h ago';
   return Math.floor(sec / 86400) + ' d ago';
 }
+// A stable identity for a resume hint so a dismissal sticks to *this*
+// hint but a later one (new movie or a fresh save) reappears.
+function resumeHintKey(hint) {
+  return 'rb-dismissed:' + (hint.ratingKey || '') + ':' + (hint.savedAtUnix || 0);
+}
+function resumeHintDismissed(hint) {
+  try { return localStorage.getItem(resumeHintKey(hint)) === '1'; }
+  catch (e) { return false; }
+}
 function showResumeBanner(hint) {
   resumeHint = hint;
   resumeBannerTitle.textContent    = hint.title || hint.ratingKey;
@@ -71,6 +82,19 @@ function showResumeBanner(hint) {
   resumeBanner.classList.remove('hidden');
 }
 function hideResumeBanner() {
+  if (resumeHint) {
+    try {
+      const key = resumeHintKey(resumeHint);
+      // Only one resume hint is ever live at a time, so drop any older
+      // dismissal flags before recording this one — keeps localStorage
+      // from accumulating a key per restart.
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith('rb-dismissed:') && k !== key) localStorage.removeItem(k);
+      }
+      localStorage.setItem(key, '1');
+    } catch (e) {}
+  }
   resumeBanner.classList.add('hidden');
   resumeHint = null;
 }
@@ -103,7 +127,9 @@ resumeBannerDismiss.addEventListener('click', hideResumeBanner);
 // Probe initial state for a resume hint at page load. Doesn't need to
 // wait for SSE — the snapshot endpoint reflects the same data.
 fetch('/api/state').then(r => r.ok ? r.json() : null).then(st => {
-  if (st && !st.ratingKey && st.resume) showResumeBanner(st.resume);
+  if (st && !st.ratingKey && st.resume && !resumeHintDismissed(st.resume)) {
+    showResumeBanner(st.resume);
+  }
 }).catch(() => {});
 
 // Time formatter used in the resume modal subtitle. Hours-aware but
