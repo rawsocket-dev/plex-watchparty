@@ -325,6 +325,13 @@ func main() {
 		w.Write(playerHTML)
 	})
 
+	// Quality-display mockup gallery — a static design-review page reusing
+	// the real player.css chrome. No live data; safe to leave mounted.
+	protected.HandleFunc("/mockups", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Write(mockupsHTML)
+	})
+
 	// Static assets are content-addressed via their embedded bytes —
 	// versions only change at build time, so a far-future immutable
 	// cache header is safe and avoids re-fetches on every page load.
