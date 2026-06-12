@@ -3,6 +3,12 @@
 Notable, user-facing changes to plex-watchparty. Newest first.
 No version numbers — the app ships continuously as a container.
 
+## 2026-06-12
+- Added: The player toolbar shows a Quality readout — the source
+  resolution + codec as a pill, then the fixed 1080p transcode target
+  (e.g. "4K HEVC → 1080p"). Hidden when Plex doesn't report source
+  dimensions.
+
 ## 2026-06-10
 - Fixed: Dismissing the "Resume where you left off" banner now keeps it
   hidden across page reloads — it stays gone until a new resume hint

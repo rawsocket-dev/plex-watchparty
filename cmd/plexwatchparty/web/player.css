@@ -145,6 +145,21 @@ body.viewer .role-cell .r-viewer { display: inline; }
   letter-spacing: .15em;
 }
 
+/* Quality cell — the source resolution+codec as a mint-outlined pill,
+   our fixed 1080p transcode target dimmed after the arrow. Populated
+   from the SSE state's .quality (qualityLine()); cell hidden when the
+   server sends none (unknown source dims). */
+.quality-cell .v { display: inline-flex; align-items: center; gap: .5rem; }
+.quality-cell .v .q-pill {
+  border: 1px solid var(--signal-deep);
+  color: var(--signal);
+  border-radius: 3px;
+  padding: .04rem .42rem;
+  font-size: .72rem;
+  letter-spacing: .1em;
+}
+.quality-cell .v .q-tgt { color: var(--paper-mute); }
+
 /* Sync cell — listening / locked / drifting / host / paused.
    min-width on the .v prevents the cell from resizing as the text
    rotates between short ("host") and long ("drift -0.42s") states.

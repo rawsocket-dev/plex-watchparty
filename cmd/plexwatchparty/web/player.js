@@ -3,6 +3,7 @@ const titleEl = document.getElementById('title');
 const syncEl  = document.getElementById('sync');
 const joinEl  = document.getElementById('join');
 const bwEl    = document.getElementById('bw');
+const qualityEl = document.getElementById('quality');
 // #wrap is the fullscreen target and carries the .playing / .fill / .fs
 // state classes the top-bar status lights key off. Declared up here with
 // the other element refs so applyState (and any early caller) can touch
@@ -604,6 +605,26 @@ function targetFromState(s) {
 // (see broadcastHostPosition below) so viewers can sync to reality.
 let firstStateApplied = false;
 
+// Fill the Quality cell from the SSE state's source→target string
+// (e.g. "4K HEVC → 1080p"): the source resolution+codec becomes a mint
+// pill, the fixed 1080p target stays dim after the arrow. Hidden when
+// the server sends no quality (unknown source dimensions). Pieces are set
+// via textContent so Plex-sourced codec/res strings can't inject markup.
+function renderQuality(q) {
+  if (!qualityEl) return;
+  if (!q) { qualityEl.hidden = true; return; }
+  const qv = qualityEl.querySelector('.v');
+  const i = q.indexOf(' → ');
+  if (i === -1) {
+    qv.textContent = q;
+  } else {
+    qv.innerHTML = '<span class="q-pill"></span><span class="q-tgt"></span>';
+    qv.querySelector('.q-pill').textContent = q.slice(0, i);
+    qv.querySelector('.q-tgt').textContent  = q.slice(i); // " → 1080p"
+  }
+  qualityEl.hidden = false;
+}
+
 function applyState(s, reason) {
   if (lastLocalActionMs && s.updatedAtMs && s.updatedAtMs < lastLocalActionMs - 500) {
     console.log('ignoring stale state @', s.updatedAtMs, '(local action @', lastLocalActionMs, ')');
@@ -620,6 +641,7 @@ function applyState(s, reason) {
   // library + waiting room label movies). Omitted when the year is unknown.
   titleEl.textContent = s.year ? s.title + ' (' + s.year + ')' : s.title;
   titleEl.classList.remove('idle');
+  renderQuality(s.quality);
   if (typeof s.durationSec === 'number' && s.durationSec > 0) {
     serverDuration = s.durationSec;
     updateScrub();
