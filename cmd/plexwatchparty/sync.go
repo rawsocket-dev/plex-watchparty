@@ -22,6 +22,11 @@ type State struct {
 	// Year is the movie's release year (Plex metadata). The player shows
 	// it in parens after the title; omitted from the wire when unknown.
 	Year        int     `json:"year,omitempty"`
+	// Quality is a source→target stream summary like "4K HEVC → 1080p"
+	// (the target is always 1080p — our fixed transcode), built from the
+	// source StreamInfo at load via qualityLine(). Empty when the source
+	// dimensions are unknown; the player hides its Quality cell then.
+	Quality     string  `json:"quality,omitempty"`
 	Playing     bool    `json:"playing"`
 	PositionSec float64 `json:"positionSec"`
 	// DurationSec is the source-of-truth length of the movie, sourced
@@ -1334,6 +1339,7 @@ func (h *Hub) HandleControl(w http.ResponseWriter, r *http.Request) {
 			RatingKey:    req.RatingKey,
 			Title:        title,
 			Year:         year,
+			Quality:      qualityLine(*si),
 			Playing:      req.Autoplay,
 			PositionSec:  offsetSec,
 			DurationSec:  float64(si.Duration) / 1000.0,
