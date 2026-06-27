@@ -304,7 +304,7 @@ const posterObserver = ('IntersectionObserver' in window)
         loadPosterNow(e.target);
         obs.unobserve(e.target);
       }
-    }, { rootMargin: '300px' }) // begin fetching just before they scroll into view
+    }, { rootMargin: '200% 0px' }) // preload ~2 screens ahead so scrolling stays ahead of the fetch
   : null;
 function observePosters() {
   const lazy = groupsEl.querySelectorAll('.poster[data-poster]');
