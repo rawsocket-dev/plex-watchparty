@@ -22,7 +22,7 @@ func newCountingPosterPlex(t *testing.T, hits *int64) *Plex {
 			atomic.AddInt64(hits, 1)
 			w.Header().Set("Content-Type", "application/json")
 			w.Write([]byte(`{"MediaContainer":{"Metadata":[{"thumb":"/library/metadata/55/thumb/1"}]}}`))
-		case "/library/metadata/55/thumb/1":
+		case "/photo/:/transcode": // card-sized poster transcode
 			w.Header().Set("Content-Type", "image/jpeg")
 			w.Write([]byte("IMGDATA"))
 		case "/library/metadata/77":
@@ -125,6 +125,32 @@ func TestPosterCacheNeverExpiresWhenTTLZero(t *testing.T) {
 	}
 	if hits != 1 {
 		t.Errorf("ttl=0 hits = %d, want 1 (never expires)", hits)
+	}
+}
+
+func TestPosterUsesCachedThumbSkipsMetadata(t *testing.T) {
+	var hits int64
+	p := newCountingPosterPlex(t, &hits)
+	// Seed the in-memory library index with the thumb path, as a real
+	// ListMovies would. The poster fetch should now read the thumb from there
+	// and skip the /library/metadata round-trip entirely.
+	p.moviesMu.Lock()
+	p.moviesByKey = buildMoviesIndex([]Movie{{RatingKey: "55", Thumb: "/library/metadata/55/thumb/1"}})
+	p.moviesMu.Unlock()
+
+	c := NewPosterCache(p, t.TempDir(), time.Hour)
+	body, ct, err := c.Stream("55")
+	if err != nil {
+		t.Fatalf("Stream: %v", err)
+	}
+	if got := readClose(t, body); got != "IMGDATA" {
+		t.Fatalf("body = %q, want IMGDATA", got)
+	}
+	if ct != "image/jpeg" {
+		t.Errorf("ct = %q, want image/jpeg", ct)
+	}
+	if hits != 0 {
+		t.Errorf("metadata hits = %d, want 0 (thumb came from the library cache)", hits)
 	}
 }
 

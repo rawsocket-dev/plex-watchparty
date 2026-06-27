@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -150,6 +151,11 @@ type Movie struct {
 	Year           int     `json:"year"`
 	Rating         float64 `json:"rating,omitempty"`         // Plex critic "rating" (0–10), 0 = absent
 	AudienceRating float64 `json:"audienceRating,omitempty"` // Plex "audienceRating" (0–10), 0 = absent
+	// Thumb is the Plex poster path (e.g. "/library/metadata/55/thumb/123").
+	// Carried so the poster handler can skip a per-image /library/metadata
+	// round-trip. Persisted in the on-disk library cache; harmless to the
+	// front end (which addresses posters by ratingKey, not this path).
+	Thumb string `json:"thumb,omitempty"`
 }
 
 // StreamInfo describes a movie's source metadata in enough detail to log
@@ -246,6 +252,7 @@ type libraryResp struct {
 			RatingKey      string  `json:"ratingKey"`
 			Title          string  `json:"title"`
 			Year           int     `json:"year"`
+			Thumb          string  `json:"thumb"`
 			Rating         float64 `json:"rating"`
 			AudienceRating float64 `json:"audienceRating"`
 			// The listing endpoint sends only scalar rating/audienceRating
@@ -385,6 +392,7 @@ func (p *Plex) ListMovies() ([]Movie, error) {
 				Year:           m.Year,
 				Rating:         m.Rating,
 				AudienceRating: m.AudienceRating,
+				Thumb:          m.Thumb,
 			})
 		}
 	}
@@ -579,28 +587,50 @@ func (p *Plex) Resolve(ratingKey string) (*StreamInfo, *MovieMeta, error) {
 // errNoPoster signals the movie has no thumb art (handler maps it to 404).
 var errNoPoster = errors.New("no poster art for movie")
 
+// posterTranscodeW/H are the box Plex scales the poster into. 400×600 (2:3)
+// covers the library grid's ~150–250px columns at 2x/retina, so the result
+// looks identical to the source on screen while transferring a fraction of
+// the bytes of a full-res poster.
+const posterTranscodeW = 400
+const posterTranscodeH = 600
+
 // PosterStream fetches a movie's Plex poster art for ratingKey. The caller
 // owns the returned ReadCloser and must Close it. The Plex token is sent
 // only as a query param to Plex and never appears in anything we hand back.
+//
+// Two optimizations over a naive fetch: (1) the thumb path is taken from the
+// in-memory library cache when present, avoiding a per-image /library/metadata
+// round-trip (it falls back to a metadata fetch when the cache lacks it — a
+// key outside the library, or a disk cache restored from before thumbs were
+// stored); (2) the image is pulled through Plex's photo transcoder at card
+// size instead of full resolution.
 func (p *Plex) PosterStream(ratingKey string) (io.ReadCloser, string, error) {
-	var mr metadataResp
-	if err := p.get("/library/metadata/"+ratingKey, &mr); err != nil {
-		return nil, "", err
+	thumb := ""
+	if m, ok := p.MovieByKey(ratingKey); ok {
+		thumb = m.Thumb
 	}
-	if len(mr.MediaContainer.Metadata) == 0 {
-		return nil, "", fmt.Errorf("no metadata for ratingKey %s", ratingKey)
+	if thumb == "" {
+		var mr metadataResp
+		if err := p.get("/library/metadata/"+ratingKey, &mr); err != nil {
+			return nil, "", err
+		}
+		if len(mr.MediaContainer.Metadata) == 0 {
+			return nil, "", fmt.Errorf("no metadata for ratingKey %s", ratingKey)
+		}
+		thumb = mr.MediaContainer.Metadata[0].Thumb
 	}
-	thumb := mr.MediaContainer.Metadata[0].Thumb
 	if thumb == "" {
 		return nil, "", errNoPoster
 	}
-	u := p.BaseURL + thumb
-	if strings.Contains(thumb, "?") {
-		u += "&"
-	} else {
-		u += "?"
-	}
-	u += "X-Plex-Token=" + url.QueryEscape(p.Token)
+	// Ask Plex's photo transcoder for a card-sized JPEG of the thumb rather
+	// than streaming the full-res source. minSize=1 fits within the box
+	// preserving aspect; upscale=1 keeps small sources from coming back tiny.
+	u := p.BaseURL + "/photo/:/transcode" +
+		"?width=" + strconv.Itoa(posterTranscodeW) +
+		"&height=" + strconv.Itoa(posterTranscodeH) +
+		"&minSize=1&upscale=1" +
+		"&url=" + url.QueryEscape(thumb) +
+		"&X-Plex-Token=" + url.QueryEscape(p.Token)
 	req, err := http.NewRequest(http.MethodGet, u, nil)
 	if err != nil {
 		return nil, "", err

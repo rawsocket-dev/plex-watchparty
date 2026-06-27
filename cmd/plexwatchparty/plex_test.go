@@ -14,9 +14,12 @@ func TestPosterStream(t *testing.T) {
 		case r.URL.Path == "/library/metadata/55":
 			w.Header().Set("Content-Type", "application/json")
 			w.Write([]byte(`{"MediaContainer":{"Metadata":[{"title":"M","thumb":"/library/metadata/55/thumb/123","Media":[{"Part":[{"key":"/p"}]}]}]}}`))
-		case r.URL.Path == "/library/metadata/55/thumb/123":
+		case r.URL.Path == "/photo/:/transcode":
 			if r.URL.Query().Get("X-Plex-Token") != "tok" {
-				t.Errorf("token missing on thumb fetch")
+				t.Errorf("token missing on poster transcode")
+			}
+			if got := r.URL.Query().Get("url"); got != "/library/metadata/55/thumb/123" {
+				t.Errorf("transcode url = %q, want the thumb path", got)
 			}
 			w.Header().Set("Content-Type", "image/jpeg")
 			w.Write([]byte("JPEGBYTES"))
@@ -54,7 +57,7 @@ func TestPosterStreamThumbStatusError(t *testing.T) {
 		case "/library/metadata/99":
 			w.Header().Set("Content-Type", "application/json")
 			w.Write([]byte(`{"MediaContainer":{"Metadata":[{"thumb":"/library/metadata/99/thumb/1"}]}}`))
-		case "/library/metadata/99/thumb/1":
+		case "/photo/:/transcode":
 			http.Error(w, "boom", http.StatusInternalServerError)
 		default:
 			http.NotFound(w, r)

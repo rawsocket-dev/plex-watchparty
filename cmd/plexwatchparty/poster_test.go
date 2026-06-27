@@ -16,7 +16,7 @@ func newPosterPlex(t *testing.T) *Plex {
 		case "/library/metadata/55":
 			w.Header().Set("Content-Type", "application/json")
 			w.Write([]byte(`{"MediaContainer":{"Metadata":[{"thumb":"/library/metadata/55/thumb/1"}]}}`))
-		case "/library/metadata/55/thumb/1":
+		case "/photo/:/transcode": // card-sized poster transcode
 			w.Header().Set("Content-Type", "image/jpeg")
 			w.Write([]byte("IMG"))
 		case "/library/metadata/77":
