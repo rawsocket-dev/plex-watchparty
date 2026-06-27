@@ -1,17 +1,23 @@
 :root {
   color-scheme: dark;
-  /* Console palette: brushed graphite + signal mint. */
-  --ink:        #0f1217;
-  --ink-2:      #1a1e24;
-  --ink-3:      #11141a;
-  --paper:      #e8ecf2;
-  --paper-mute: #5e6878;
-  --paper-dim:  #4a5260;
-  --rule:       #2a323e;
-  --rule-hi:    #3a424e;
-  --signal:     #9fe6ad;
-  --signal-deep:#6ab37d;
-  --warn:       #f0a830;
+  /* Velvet palette: true-black surfaces + electric-violet accent, teal for "in sync". */
+  --ink:        #0c0c10;
+  --ink-2:      #101016;
+  --ink-3:      #0b0b0f;
+  --paper:      #ECECF2;
+  --paper-2:    #cdcdd8;
+  --paper-mute: #8a8a99;
+  --paper-dim:  #6b6b7a;
+  --rule:       rgba(255,255,255,.07);
+  --rule-hi:    rgba(255,255,255,.12);
+  --accent:     #7a5cff;
+  --accent-lt:  #9a7bff;
+  --lilac:      #b9a6ff;
+  --accent-soft:#cbbcff;
+  --teal:       #5fd0c5;
+  --warn:       #ff9a7a;
+  --display: "Space Grotesk", system-ui, sans-serif;
+  --body:    "Hanken Grotesk", system-ui, sans-serif;
   --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
 * { box-sizing: border-box; }
@@ -57,29 +63,24 @@ html, body {
    movement, while the toolbar only returns near the top. */
 #wrap.cursor-hidden { cursor: none; }
 
-/* Top bar — studio control panel.
-   Two repeating-linear-gradient layers fake the brushed-aluminum grain;
-   inset shadows give cells the "recessed-into-the-rack" feel. */
+/* Top bar — Velvet status strip + control dock. */
 #bar {
   display: flex;
   flex-direction: column;
-  background:
-    repeating-linear-gradient(90deg, rgba(255,255,255,.014) 0 1px, transparent 1px 3px),
-    linear-gradient(180deg, var(--ink-2) 0%, var(--ink-3) 100%);
+  background: var(--ink-2);
   border-bottom: 1px solid var(--rule);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.04), inset 0 -1px 0 rgba(0,0,0,.5);
 }
-/* Tier 1 — thin status strip; reuses the existing .cell sub-styles
-   (role dot, bw slash, viewers roster) but laid out horizontally. */
+/* Tier 1 — thin status strip; cells separated by hairline dividers. */
 .strip { display: flex; align-items: stretch; border-bottom: 1px solid var(--rule); }
 .strip .cell {
   flex-direction: row; align-items: center; gap: .55rem;
-  min-height: 0; padding: .42rem .9rem;
-  box-shadow: inset 1px 0 0 rgba(255,255,255,.025);
+  min-height: 0; padding: .5rem .95rem;
+  box-shadow: inset 1px 0 0 var(--rule);
 }
+.strip .cell:first-child { box-shadow: none; }
 .strip .cell .lbl { font-size: .5rem; }
 /* Tier 2 — control row. */
-.ctl { display: flex; align-items: stretch; min-height: 60px; }
+.ctl { display: flex; align-items: stretch; min-height: 64px; }
 .cell-group { display: flex; align-items: stretch; }
 .cell {
   border-right: 1px solid var(--rule);
@@ -87,44 +88,49 @@ html, body {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: .2rem;
+  gap: .25rem;
   min-height: 56px;
-  box-shadow: inset 0 0 18px rgba(0,0,0,.45), inset 1px 0 0 rgba(255,255,255,.025);
+  box-shadow: inset 1px 0 0 var(--rule);
 }
 .cell .lbl {
   font-family: var(--mono);
   font-size: .58rem;
-  font-weight: 500;
-  letter-spacing: .25em;
+  font-weight: 600;
+  letter-spacing: .18em;
   text-transform: uppercase;
-  color: var(--paper-mute);
+  color: var(--paper-dim);
 }
 .cell .v {
   font-family: var(--mono);
   font-weight: 500;
   font-size: .82rem;
-  letter-spacing: .08em;
-  color: var(--paper);
+  letter-spacing: .04em;
+  color: var(--paper-2);
   font-variant-numeric: tabular-nums;
 }
 
-/* Role cell: pulsing mint LED before "Host" when broadcasting; dim
-   grey dot for the Viewer state. */
-.role-cell .v { color: var(--signal); display: inline-flex; align-items: center; gap: .55rem; }
+/* Role cell: violet LED before "Host" when broadcasting; dim grey dot
+   for the Viewer state. */
+.role-cell .v {
+  font-family: var(--display);
+  font-weight: 600;
+  color: var(--accent-soft);
+  display: inline-flex; align-items: center; gap: .55rem;
+}
 .role-cell .v::before {
   content: '';
   display: inline-block;
   width: 7px; height: 7px;
   border-radius: 50%;
-  background: var(--signal);
-  box-shadow: 0 0 8px rgba(159,230,173,.7), inset 0 0 2px rgba(255,255,255,.4);
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--accent);
   animation: cellpulse 2.4s ease-in-out infinite;
 }
 @keyframes cellpulse { 0%,100% { opacity: 1; } 50% { opacity: .55; } }
 .role-cell .r-viewer { display: none; }
 body.viewer .role-cell .v { color: var(--paper); }
 body.viewer .role-cell .v::before {
-  background: var(--paper-dim);
+  background: #3a3a48;
   box-shadow: none;
   animation: none;
 }
@@ -142,64 +148,62 @@ body.viewer .role-cell .r-viewer { display: inline; }
   font-size: .58rem;
   color: var(--paper-mute);
   margin-left: .35em;
-  letter-spacing: .15em;
+  letter-spacing: .12em;
 }
 
-/* Quality cell — the source resolution+codec as a mint-outlined pill,
+/* Quality cell — source resolution+codec as a violet-outlined pill,
    our fixed 1080p transcode target dimmed after the arrow. Populated
    from the SSE state's .quality (qualityLine()); cell hidden when the
-   server sends none (unknown source dims). */
+   server sends none. */
 .quality-cell .v { display: inline-flex; align-items: center; gap: .5rem; }
 .quality-cell .v .q-pill {
-  border: 1px solid var(--signal-deep);
-  color: var(--signal);
-  border-radius: 3px;
-  padding: .04rem .42rem;
+  border: 1px solid rgba(123,92,255,.4);
+  color: var(--lilac);
+  border-radius: 7px;
+  padding: .06rem .45rem;
   font-size: .72rem;
-  letter-spacing: .1em;
+  letter-spacing: .08em;
 }
 .quality-cell .v .q-tgt { color: var(--paper-mute); }
 
 /* Sync cell — listening / locked / drifting / host / paused.
    min-width on the .v prevents the cell from resizing as the text
-   rotates between short ("host") and long ("drift -0.42s") states.
-   Bar layout no longer shifts when sync changes. */
+   rotates between short ("host") and long ("drift -0.42s") states. */
 .sync-cell .v {
   display: inline-flex;
   align-items: center;
   gap: .45rem;
+  font-family: var(--body);
   font-variant-numeric: tabular-nums;
   /* Holds "listening" / "host" / "paused" / "locked" / "drift -0.42s"
-     without resizing — measured for the longest variant + LED + gap
-     in IBM Plex Mono at the cell's font-size. */
+     without resizing. */
   min-width: 8.5rem;
 }
 .sync-cell .v::before {
   content: '';
   width: 7px; height: 7px;
   border-radius: 50%;
-  background: var(--paper-dim);
-  box-shadow: inset 0 0 2px rgba(0,0,0,.6);
+  background: #3a3a48;
   transition: background .3s ease, box-shadow .3s ease;
   flex-shrink: 0;
 }
+.sync-cell .v.locked { color: var(--teal); }
 .sync-cell .v.locked::before {
-  background: var(--signal);
-  box-shadow: 0 0 8px rgba(159,230,173,.7), inset 0 0 2px rgba(255,255,255,.4);
+  background: var(--teal);
+  box-shadow: 0 0 8px var(--teal);
 }
+.sync-cell .v.drifting { color: var(--warn); }
 .sync-cell .v.drifting::before {
   background: var(--warn);
-  box-shadow: 0 0 8px rgba(240,168,48,.6);
+  box-shadow: 0 0 8px rgba(255,154,122,.6);
 }
 
-/* Title cell — the marquee. Darker recessed well (Console title-well
-   style) with a label above. Mono font, title-case preserved. */
+/* Title cell — the marquee. Centered, Space Grotesk display, label above. */
 .title-cell {
   flex: 1;
   border-left: 1px solid var(--rule);
   border-right: 1px solid var(--rule);
   background: var(--ink);
-  box-shadow: inset 0 0 30px rgba(0,0,0,.6);
   padding: .4rem 1.4rem;
   min-width: 0;
   display: flex;
@@ -208,12 +212,12 @@ body.viewer .role-cell .r-viewer { display: inline; }
   justify-content: center;
   text-align: center;
 }
-.title-cell .lbl { color: var(--paper-dim); }
+.title-cell .lbl { color: var(--accent-lt); }
 .title-cell .v {
-  font-family: var(--mono);
-  font-weight: 500;
-  font-size: 1.35rem;
-  letter-spacing: .04em;
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 1.3rem;
+  letter-spacing: .01em;
   color: var(--paper);
   text-transform: none;
   line-height: 1.1;
@@ -224,93 +228,97 @@ body.viewer .role-cell .r-viewer { display: inline; }
 }
 .title-cell .v.idle {
   color: var(--paper-mute);
+  font-family: var(--body);
+  font-weight: 400;
   font-style: italic;
-  letter-spacing: .02em;
+  letter-spacing: .01em;
 }
 
 /* Tier-2 buttons. Transport = icon + label (.tbtn); view tools = 46px
-   icon squares (.ibtn). The button that reflects current state glows
-   mint (mint text/icon + a mint top edge + faint green fill), driven by
-   the same #wrap.playing / .fill / .fs classes the old LED dots used. */
+   icon squares (.ibtn). The button reflecting current state glows violet,
+   driven by the same #wrap.playing / .fill / .fs classes. */
 .ico { width: 18px; height: 18px; display: block; flex: none; }
 
 .tbtn, .ibtn {
-  background: linear-gradient(180deg, #1d2129 0%, #131820 100%);
+  background: rgba(255,255,255,.05);
   border: 0; border-right: 1px solid var(--rule);
-  color: #7e8794;
-  font-family: var(--mono); font-size: .64rem; font-weight: 500;
-  letter-spacing: .22em; text-transform: uppercase;
+  color: var(--paper-mute);
+  font-family: var(--mono); font-size: .64rem; font-weight: 600;
+  letter-spacing: .18em; text-transform: uppercase;
   cursor: pointer; text-decoration: none;
   display: inline-flex; align-items: center; justify-content: center;
-  transition: background .2s ease;
+  transition: background .15s ease, color .15s ease;
 }
 .cell-group.left .tbtn:first-child { border-left: 1px solid var(--rule); }
 .tbtn { padding: 0 1rem; gap: .55rem; }
 .tbtn .ico { width: 14px; height: 14px; }
 .ibtn { width: 46px; padding: 0; }
-.tbtn:hover, .ibtn:hover { color: var(--paper); background: linear-gradient(180deg, #252b34 0%, #1a1f27 100%); }
+.tbtn:hover, .ibtn:hover { color: var(--paper); background: rgba(255,255,255,.09); }
 
 /* lit / engaged state */
 #wrap.playing #play,
 #wrap:not(.playing) #pause,
 #wrap.fill #zoom,
 #wrap.fs #fullscreen {
-  color: var(--signal);
-  background: linear-gradient(180deg, #1d2c23 0%, #131e18 100%);
-  box-shadow: inset 0 2px 0 var(--signal-deep);
+  color: var(--accent-soft);
+  background: rgba(123,92,255,.16);
+  box-shadow: inset 0 2px 0 var(--accent);
 }
 #wrap.playing #play .ico,
 #wrap:not(.playing) #pause .ico,
 #wrap.fill #zoom .ico,
-#wrap.fs #fullscreen .ico { filter: drop-shadow(0 0 6px rgba(159,230,173,.75)); }
+#wrap.fs #fullscreen .ico { filter: drop-shadow(0 0 6px rgba(123,92,255,.75)); }
 
-/* Exit stays neutral, warming to amber on hover only. */
-.ibtn.warn { color: #a07a48; }
+/* Exit stays neutral, warming to coral on hover only. */
+.ibtn.warn { color: #b07d6d; }
 .ibtn.warn:hover { color: var(--warn); }
 #admin-link[hidden] { display: none; }
 #room-cell[hidden] { display: none; }
 .room-cell { position: relative; cursor: pointer; } /* anyone can open it to see the room */
-.room-cell .v { color: var(--signal); white-space: nowrap; }
+.room-cell .v { font-family: var(--display); font-weight: 600; color: var(--paper); white-space: nowrap; }
 .room-cell .chev { color: var(--paper-mute); font-size: .6rem; margin-left: .1rem; }
-.room-cell.open .chev { color: var(--signal); }
-.room-cell:hover { background: rgba(159,230,173,.06); }
+.room-cell.open .chev { color: var(--lilac); }
+.room-cell:hover { background: rgba(255,255,255,.05); }
 
 /* Room dropdown (audience roster + hand-off) anchored under the chip. */
 .pop {
-  position: absolute; top: calc(100% + 5px); left: .4rem;
+  position: absolute; top: calc(100% + 6px); left: .4rem;
   min-width: 220px; z-index: 60;
-  background: var(--ink-2); border: 1px solid var(--rule-hi); border-radius: 5px;
-  box-shadow: 0 14px 34px rgba(0,0,0,.6);
+  background: rgba(16,16,22,.96); border: 1px solid var(--rule-hi); border-radius: 12px;
+  box-shadow: 0 16px 40px rgba(0,0,0,.5);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   overflow: hidden;
 }
 .pop[hidden] { display: none; }
 .pop-h {
-  font-size: .5rem; letter-spacing: .22em; text-transform: uppercase;
-  color: var(--paper-mute); padding: .55rem .8rem .35rem;
+  font-family: var(--mono);
+  font-size: .5rem; letter-spacing: .18em; text-transform: uppercase;
+  color: var(--paper-dim); padding: .65rem .85rem .4rem;
 }
 .pop-u {
   display: flex; align-items: center; gap: .6rem; width: 100%;
-  padding: .5rem .8rem; cursor: pointer;
+  padding: .55rem .85rem; cursor: pointer;
   background: transparent; border: 0; border-top: 1px solid var(--rule);
-  font-family: var(--mono); color: var(--paper);
-  letter-spacing: .04em; text-align: left;
+  font-family: var(--body); color: var(--paper);
+  letter-spacing: .01em; text-align: left;
 }
-.pop-u:hover { background: rgba(159,230,173,.08); }
-.pop-u .nm { font-size: .8rem; white-space: nowrap; }
+.pop-u:hover { background: rgba(123,92,255,.1); }
+.pop-u .nm { font-family: var(--display); font-weight: 500; font-size: .8rem; white-space: nowrap; }
 .pop-u .arr { margin-left: auto; color: var(--paper-mute); }
-.pop-u:hover .arr { color: var(--signal); }
-.pop-empty { padding: .6rem .8rem; color: var(--paper-mute); font-size: .72rem; border-top: 1px solid var(--rule); }
+.pop-u:hover .arr { color: var(--lilac); }
+.pop-empty { padding: .65rem .85rem; color: var(--paper-mute); font-size: .72rem; border-top: 1px solid var(--rule); }
 .av {
   width: 24px; height: 24px; border-radius: 50%; flex: none;
-  border: 1px solid var(--signal-deep); color: var(--signal);
-  background: rgba(159,230,173,.05);
+  border: 1px solid rgba(123,92,255,.5); color: var(--lilac);
+  background: rgba(123,92,255,.08);
   display: inline-flex; align-items: center; justify-content: center;
-  font-size: .62rem;
+  font-family: var(--display); font-weight: 600; font-size: .62rem;
 }
 /* Active host's avatar glows; the trailing label says who's driving. */
-.av.host { border-color: var(--signal); color: var(--signal); box-shadow: 0 0 8px rgba(159,230,173,.4); }
-.pop-u .role { margin-left: auto; font-size: .55rem; letter-spacing: .22em; text-transform: uppercase; color: var(--paper-mute); }
-.pop-u.driver .role { color: var(--signal); }
+.av.host { border-color: var(--accent); color: var(--accent-soft); box-shadow: 0 0 8px rgba(123,92,255,.4); }
+.pop-u .role { margin-left: auto; font-family: var(--mono); font-size: .55rem; letter-spacing: .18em; text-transform: uppercase; color: var(--paper-mute); }
+.pop-u.driver .role { color: var(--lilac); }
 /* Non-tappable rows (the driver, and every row for a viewer) read as info. */
 .pop-u[disabled] { cursor: default; opacity: 1; color: var(--paper); }
 .pop-u[disabled]:hover { background: transparent; }
@@ -323,19 +331,13 @@ body.viewer .role-cell .r-viewer { display: inline; }
   gap: 0;
 }
 .vol-icon {
-  /* viewBox is cropped tight to the glyph (player.html: "3 5 17 14") so the
-     speaker fills the box instead of floating tiny in 24 units of
-     padding — that, not the px size, was why it read so small. Verified
-     headless that all four states render without clipping at this crop.
-     The .ctl row is min-height 60px, so this sits comfortably; ~40px is
-     about the ceiling before it crowds the 46px button. */
   width: 36px;
   height: 36px;
   color: var(--paper-mute);
-  transition: color .2s ease;
+  transition: color .15s ease;
 }
 .vol-cell:hover .vol-icon,
-.vol-cell:focus-within .vol-icon { color: var(--signal); }
+.vol-cell:focus-within .vol-icon { color: var(--lilac); }
 .vol-icon .vol-base { display: block; }
 .vol-icon .vol-mid  { display: none; }
 .vol-icon .vol-hi   { display: none; }
@@ -350,11 +352,13 @@ body.viewer .role-cell .r-viewer { display: inline; }
   top: calc(100% + 4px);
   left: 50%;
   transform: translateX(-50%);
-  background: var(--ink-2);
-  border: 1px solid var(--rule);
-  border-radius: 2px;
+  background: rgba(16,16,22,.96);
+  border: 1px solid var(--rule-hi);
+  border-radius: 12px;
   padding: 1rem .85rem .7rem;
-  box-shadow: 0 10px 30px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,255,255,.04);
+  box-shadow: 0 16px 40px rgba(0,0,0,.5);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   display: none;
   z-index: 60;
   flex-direction: column;
@@ -364,11 +368,8 @@ body.viewer .role-cell .r-viewer { display: inline; }
 }
 .vol-cell:hover .vol-popover,
 .vol-cell:focus-within .vol-popover { display: flex; }
-/* Invisible bridge spanning the gap between the cell and the popover.
-   Without it the 4px dead band drops .vol-cell:hover mid-transit, so
-   moving the mouse down to the slider hid the popover before you got
-   there. The ::before only exists while the popover is shown, so it
-   never captures hover when closed. */
+/* Invisible bridge spanning the gap between the cell and the popover so
+   moving the mouse down to the slider doesn't drop the hover mid-transit. */
 .vol-popover::before {
   content: "";
   position: absolute;
@@ -389,32 +390,32 @@ body.viewer .role-cell .r-viewer { display: inline; }
 }
 #vol-slider:focus { outline: none; }
 #vol-slider::-webkit-slider-runnable-track {
-  height: 3px;
-  background: var(--rule);
-  border-radius: 2px;
+  height: 5px;
+  background: rgba(255,255,255,.12);
+  border-radius: 999px;
 }
 #vol-slider::-moz-range-track {
-  height: 3px;
-  background: var(--rule);
-  border-radius: 2px;
+  height: 5px;
+  background: rgba(255,255,255,.12);
+  border-radius: 999px;
 }
 #vol-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
   width: 12px; height: 12px;
-  background: var(--signal);
+  background: #fff;
   border-radius: 50%;
   border: 0;
-  margin-top: -4.5px;
-  box-shadow: 0 0 8px rgba(159,230,173,.55);
+  margin-top: -3.5px;
+  box-shadow: 0 0 8px rgba(123,92,255,.7);
   transition: transform .15s ease;
 }
 #vol-slider::-moz-range-thumb {
   width: 12px; height: 12px;
-  background: var(--signal);
+  background: #fff;
   border: 0;
   border-radius: 50%;
-  box-shadow: 0 0 8px rgba(159,230,173,.55);
+  box-shadow: 0 0 8px rgba(123,92,255,.7);
 }
 #vol-slider:hover::-webkit-slider-thumb,
 #vol-slider:focus::-webkit-slider-thumb { transform: scale(1.2); }
@@ -422,16 +423,16 @@ body.viewer .role-cell .r-viewer { display: inline; }
    element to drive the percentage. */
 #vol-slider {
   background-image: linear-gradient(to right,
-    var(--signal) 0%, var(--signal) var(--vol, 100%),
-    var(--rule) var(--vol, 100%), var(--rule) 100%);
-  background-size: 100% 3px;
+    var(--lilac) 0%, var(--lilac) var(--vol, 100%),
+    rgba(255,255,255,.12) var(--vol, 100%), rgba(255,255,255,.12) 100%);
+  background-size: 100% 5px;
   background-repeat: no-repeat;
   background-position: 0 center;
 }
 .vol-value {
   font-family: var(--mono);
   font-size: .65rem;
-  letter-spacing: .12em;
+  letter-spacing: .08em;
   color: var(--paper-mute);
   font-variant-numeric: tabular-nums;
 }
@@ -442,7 +443,7 @@ body.viewer .role-cell .r-viewer { display: inline; }
    per-client and always available. */
 body.viewer #play, body.viewer #pause { display: none; }
 body.viewer #scrub-hit { cursor: default; }
-body.viewer #scrub-hit:hover #scrub-track { height: 4px; }
+body.viewer #scrub-hit:hover #scrub-track { height: 5px; }
 body.viewer #scrub-thumb { opacity: .65; }
 body.viewer #scrub-hit:hover #scrub-thumb,
 body.viewer #scrub-hit.dragging #scrub-thumb { transform: translateY(-50%); }
@@ -460,20 +461,18 @@ video {
 }
 #wrap.fill video { object-fit: cover; }
 
-/* Scrub bar — Console treatment: dim recessed strip with mint fill
-   for the played portion and a mint thumb. Cached ranges show as
-   low-opacity mint bands so you can see what's instant-seekable. */
+/* Scrub bar — Velvet treatment: rounded track with an accent-gradient
+   fill for the played portion and a white thumb with a violet glow.
+   Cached ranges show as violet-tint bands so you can see what's
+   instant-seekable. */
 #scrub {
   display: flex;
   align-items: stretch;
   gap: 1rem;
   padding: 0 clamp(.8rem, 2vw, 1.5rem);
-  background:
-    repeating-linear-gradient(90deg, rgba(255,255,255,.012) 0 1px, transparent 1px 3px),
-    linear-gradient(180deg, var(--ink-2) 0%, var(--ink-3) 100%);
+  background: var(--ink-2);
   border-bottom: 1px solid var(--rule);
-  min-height: 2.6rem;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.025);
+  min-height: 2.8rem;
 }
 #scrub-hit {
   flex: 1;
@@ -489,19 +488,18 @@ video {
 #scrub-track {
   position: relative;
   width: 100%;
-  height: 4px;
-  background: var(--rule);
-  border-radius: 2px;
+  height: 5px;
+  background: rgba(255,255,255,.12);
+  border-radius: 999px;
   transition: height .15s ease;
-  box-shadow: inset 0 1px 2px rgba(0,0,0,.4);
 }
 #scrub-hit:hover #scrub-track,
-#scrub-hit.dragging #scrub-track { height: 8px; }
+#scrub-hit.dragging #scrub-track { height: 9px; }
 #scrub-buffered, #scrub-fill {
   position: absolute;
   left: 0; top: 0;
   height: 100%;
-  border-radius: 2px;
+  border-radius: 999px;
   pointer-events: none;
 }
 #scrub-seekable {
@@ -512,43 +510,44 @@ video {
 #scrub-seekable .cached-band {
   position: absolute;
   top: 0; bottom: 0;
-  background: var(--signal);
-  opacity: .22;
+  background: var(--accent);
+  opacity: .28;
 }
-#scrub-buffered { background: var(--rule-hi); width: 0; }
-#scrub-fill     { background: var(--signal); width: 0; box-shadow: 0 0 6px rgba(159,230,173,.45); }
+#scrub-buffered { background: rgba(255,255,255,.14); width: 0; }
+#scrub-fill     { background: linear-gradient(90deg, var(--accent), var(--accent-lt)); width: 0; }
 #scrub-thumb {
   position: absolute;
   left: 0;
   top: 50%;
-  width: 13px; height: 13px;
-  margin-left: -6.5px;
+  width: 15px; height: 15px;
+  margin-left: -7.5px;
   border-radius: 50%;
-  background: var(--signal);
+  background: #fff;
   pointer-events: none;
   transform: translateY(-50%);
   transition: transform .12s ease, box-shadow .12s ease, opacity .15s ease;
-  box-shadow: 0 0 10px rgba(159,230,173,.65), inset 0 0 2px rgba(255,255,255,.4);
+  box-shadow: 0 0 12px rgba(123,92,255,.8);
   opacity: 0;
 }
 #scrub-hit.ready #scrub-thumb { opacity: 1; }
 #scrub-hit:hover #scrub-thumb,
 #scrub-hit.dragging #scrub-thumb {
-  transform: translateY(-50%) scale(1.25);
-  box-shadow: 0 0 16px rgba(159,230,173,.85), inset 0 0 2px rgba(255,255,255,.5);
+  transform: translateY(-50%) scale(1.2);
+  box-shadow: 0 0 18px rgba(123,92,255,.95);
 }
 #scrub-tooltip {
   position: absolute;
   bottom: calc(100% - .5rem);
   transform: translateX(-50%);
-  background: var(--ink);
-  border: 1px solid var(--rule);
+  background: var(--paper);
+  border: 0;
   padding: .25rem .55rem;
-  border-radius: 2px;
+  border-radius: 6px;
   font-family: var(--mono);
   font-size: .68rem;
-  letter-spacing: .08em;
-  color: var(--paper);
+  font-weight: 600;
+  letter-spacing: .04em;
+  color: var(--ink-3);
   pointer-events: none;
   white-space: nowrap;
   opacity: 0;
@@ -561,7 +560,7 @@ video {
 #scrub-time {
   font-family: var(--mono);
   font-size: .65rem;
-  letter-spacing: .12em;
+  letter-spacing: .08em;
   color: var(--paper-mute);
   white-space: nowrap;
   min-width: 9em;
@@ -577,11 +576,12 @@ video {
   flex: 1;
   min-height: 0;
   display: flex;
+  background: var(--ink-3);
 }
 .stage video { flex: 1; }
 
-/* Browser autoplay-policy join overlay — Console-skinned: graphite
-   blur, mint LED-glow halo on the icon, mono labels. */
+/* Browser autoplay-policy join overlay — Velvet-skinned: dark blur,
+   violet glow halo on the icon. */
 #join {
   position: absolute; inset: 0;
   display: flex;
@@ -589,8 +589,9 @@ video {
   align-items: center;
   justify-content: center;
   gap: 1rem;
-  background: rgba(15, 18, 23, .72);
-  backdrop-filter: blur(4px);
+  background: rgba(8, 8, 12, .72);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
   cursor: default;
   z-index: 50;
   transition: opacity .4s ease;
@@ -602,11 +603,10 @@ video {
   position: relative;
   width: 84px; height: 84px;
   border-radius: 50%;
-  border: 1.5px solid var(--rule);
+  border: 1.5px solid var(--rule-hi);
   display: flex; align-items: center; justify-content: center;
   color: var(--paper-mute);
-  background: rgba(26, 30, 36, .55);
-  box-shadow: inset 0 0 20px rgba(0,0,0,.55);
+  background: rgba(255, 255, 255, .04);
   transition: transform .25s ease, background .25s ease,
               box-shadow .25s ease, border-color .25s ease, color .25s ease;
 }
@@ -615,8 +615,8 @@ video {
   position: absolute;
   inset: -18px;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(159, 230, 173, .35) 0%,
-                                      rgba(159, 230, 173, 0) 70%);
+  background: radial-gradient(circle, rgba(123, 92, 255, .4) 0%,
+                                      rgba(123, 92, 255, 0) 70%);
   opacity: 0;
   pointer-events: none;
   transition: opacity .25s ease;
@@ -628,31 +628,30 @@ video {
 }
 @media (hover: hover) and (pointer: fine) {
   #join.ready:hover .icon {
-    background: rgba(159, 230, 173, .12);
+    background: rgba(123, 92, 255, .14);
     transform: scale(1.08);
-    border-color: var(--signal);
-    color: var(--signal);
-    box-shadow: 0 0 0 2px rgba(159, 230, 173, .35),
-                0 0 28px rgba(159, 230, 173, .5),
-                0 0 64px rgba(159, 230, 173, .3),
-                inset 0 0 8px rgba(159, 230, 173, .15);
+    border-color: var(--accent);
+    color: #fff;
+    box-shadow: 0 0 0 2px rgba(123, 92, 255, .35),
+                0 0 28px rgba(123, 92, 255, .5),
+                0 0 64px rgba(123, 92, 255, .3);
   }
   #join.ready:hover .icon svg {
-    filter: drop-shadow(0 0 8px rgba(159, 230, 173, .8));
+    filter: drop-shadow(0 0 8px rgba(123, 92, 255, .8));
   }
   #join.ready:hover .icon::before { opacity: .85; }
 }
 #join .label {
-  font-family: var(--mono);
-  font-weight: 400;
-  font-size: clamp(1.05rem, 2.2vw, 1.45rem);
-  letter-spacing: .02em;
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: clamp(1.1rem, 2.2vw, 1.5rem);
+  letter-spacing: .01em;
   color: var(--paper);
 }
 #join .hint {
   font-family: var(--mono);
   font-size: .65rem;
-  letter-spacing: .3em;
+  letter-spacing: .24em;
   text-transform: uppercase;
   color: var(--paper-mute);
   font-variant-numeric: tabular-nums;

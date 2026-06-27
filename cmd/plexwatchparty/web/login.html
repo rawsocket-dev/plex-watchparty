@@ -6,186 +6,141 @@
 <title>Late Show · sign in</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Hanken+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
   :root {
     color-scheme: dark;
-    --ink:        #0f1217;
-    --ink-2:      #1a1e24;
-    --ink-3:      #11141a;
-    --paper:      #e8ecf2;
-    --paper-mute: #5e6878;
-    --paper-dim:  #4a5260;
-    --rule:       #2a323e;
-    --rule-hi:    #3a424e;
-    --signal:     #9fe6ad;
-    --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+    --bg:         #08080b;
+    --surface:    #0c0c10;
+    --ink:        #ECECF2;
+    --ink-mute:   #8a8a99;
+    --ink-faint:  #5b5b6a;
+    --accent:     #7a5cff;
+    --accent-lt:  #9a7bff;
+    --lilac:      #b9a6ff;
+    --teal:       #5fd0c5;
+    --warn:       #ff9a7a;
+    --hairline:   rgba(255,255,255,.08);
+    --display: "Space Grotesk", system-ui, sans-serif;
+    --body:    "Hanken Grotesk", system-ui, sans-serif;
+    --mono:    "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
   }
   * { box-sizing: border-box; }
-  html, body { margin: 0; min-height: 100%; background: var(--ink-3); color: var(--paper); }
+  html, body { margin: 0; min-height: 100%; background: var(--surface); color: var(--ink); }
   body {
-    font-family: var(--mono);
+    font-family: var(--body);
     display: grid;
     place-items: center;
     padding: 2rem;
-    overflow: hidden;
+    /* Two radial glows: violet top-right, faint teal bottom-left. */
     background:
-      repeating-linear-gradient(90deg, rgba(255,255,255,.01) 0 1px, transparent 1px 3px),
-      linear-gradient(180deg, var(--ink-2) 0%, var(--ink-3) 100%);
-  }
-  /* Mint vignette so the panel sits in a soft pool of console light. */
-  body::before {
-    content: '';
-    position: fixed; inset: 0;
-    background: radial-gradient(900px 600px at 50% 38%, rgba(159,230,173,0.05), transparent 70%);
-    pointer-events: none;
+      radial-gradient(700px 460px at 70% 20%, rgba(123,92,255,.22), transparent 60%),
+      radial-gradient(600px 400px at 20% 90%, rgba(95,208,197,.1), transparent 60%),
+      var(--surface);
   }
   main {
-    width: min(440px, 100%);
+    width: min(430px, 100%);
     position: relative;
     z-index: 1;
+    padding: 40px;
+    border-radius: 18px;
+    background: rgba(21,21,28,.7);
+    border: 1px solid var(--hairline);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    box-shadow: 0 24px 60px rgba(0,0,0,.4);
     animation: rise .9s cubic-bezier(.2,.7,.2,1) both;
   }
   @keyframes rise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
 
-  .marquee {
-    font-family: var(--mono);
-    font-weight: 500;
-    font-size: .62rem;
-    letter-spacing: .35em;
-    color: var(--paper-mute);
-    text-transform: uppercase;
+  .brand {
     display: flex;
     align-items: center;
-    gap: .8rem;
-    margin-bottom: 3.5rem;
+    gap: 10px;
+    margin-bottom: 30px;
   }
-  .marquee::before, .marquee::after {
-    content: '';
-    flex: 1; height: 1px;
-    background: var(--rule);
+  .brand .mark {
+    width: 34px; height: 34px;
+    border-radius: 10px;
+    background: linear-gradient(140deg, var(--accent), var(--teal));
+    display: grid; place-items: center;
+    color: var(--surface);
+    font: 700 16px var(--display);
+  }
+  .brand .name {
+    font: 600 16px var(--display);
+    color: var(--ink);
+    letter-spacing: .01em;
   }
 
   h1 {
-    margin: 0 0 .35rem;
-    font-family: var(--mono);
-    font-weight: 600;
-    font-size: clamp(1.8rem, 5vw, 2.5rem);
-    line-height: 1.05;
-    letter-spacing: .02em;
-    color: var(--paper);
-    text-transform: uppercase;
+    margin: 0;
+    font: 600 32px/1.1 var(--display);
+    color: var(--ink);
   }
-  h1::before { content: '// '; color: var(--signal); font-weight: 400; }
   .sub {
-    font-family: var(--mono);
-    font-weight: 500;
-    font-size: .68rem;
-    letter-spacing: .25em;
-    text-transform: uppercase;
-    color: var(--paper-mute);
-    margin: 0 0 2.5rem;
+    font: 400 14px/1.6 var(--body);
+    color: var(--ink-mute);
+    margin: 14px 0 0;
+  }
+  /* Denied notice — toggled by the inline script on ?error=denied. */
+  #denied {
+    color: var(--warn);
+    font: 500 13px/1.5 var(--body);
+    margin: 14px 0 0;
   }
 
   form { margin: 0; }
-  .field {
-    position: relative;
-    display: flex;
-    align-items: center;
-    gap: .7rem;
-    background: var(--ink);
-    border: 1px solid var(--rule);
-    border-radius: 2px;
-    padding: .75rem 1rem;
-    box-shadow: inset 0 0 14px rgba(0,0,0,.45);
-    transition: border-color .25s ease, box-shadow .25s ease;
-  }
-  .field:focus-within {
-    border-color: var(--signal);
-    box-shadow: inset 0 0 14px rgba(0,0,0,.45), 0 0 12px rgba(159,230,173,.25);
-  }
-  .field::before {
-    content: '$';
-    font-family: var(--mono);
-    color: var(--signal);
-    font-size: .9rem;
-    font-weight: 500;
-  }
-  input[type="text"], input[type="password"] {
-    flex: 1;
-    background: transparent;
-    border: 0;
-    outline: 0;
-    color: var(--paper);
-    font-family: var(--mono);
-    font-size: .95rem;
-    letter-spacing: .12em;
-    padding: 0;
-    caret-color: var(--signal);
-  }
-  input::placeholder {
-    color: var(--paper-mute);
-    letter-spacing: .18em;
-    text-transform: lowercase;
-    opacity: .55;
-  }
-  .field + .field { margin-top: .5rem; }
-
-  .row {
-    margin-top: 1.6rem;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 1rem;
-  }
-  .hint {
-    font-family: var(--mono);
-    font-weight: 500;
-    font-size: .62rem;
-    letter-spacing: .22em;
-    text-transform: uppercase;
-    color: var(--paper-mute);
-  }
   button {
-    background: linear-gradient(180deg, #9fe6ad 0%, #6ab37d 100%);
-    border: 1px solid var(--signal);
-    color: var(--ink);
-    font-family: var(--mono);
-    font-weight: 600;
-    font-size: .72rem;
-    letter-spacing: .25em;
-    text-transform: uppercase;
-    cursor: pointer;
-    padding: .6rem 1.3rem;
-    border-radius: 2px;
-    transition: all .2s ease;
-    box-shadow: 0 0 12px rgba(159,230,173,.3), inset 0 1px 0 rgba(255,255,255,.2);
+    margin-top: 26px;
+    width: 100%;
     display: inline-flex;
     align-items: center;
-    gap: .5rem;
+    justify-content: center;
+    gap: 12px;
+    background: var(--ink);
+    color: var(--surface);
+    border: none;
+    border-radius: 11px;
+    padding: 15px;
+    font: 600 14px var(--body);
+    cursor: pointer;
+    transition: transform .15s ease, box-shadow .15s ease, filter .15s ease;
   }
-  button:hover {
-    background: linear-gradient(180deg, #b8efc4 0%, #7ec491 100%);
-    box-shadow: 0 0 18px rgba(159,230,173,.55), inset 0 1px 0 rgba(255,255,255,.25);
+  button:hover { filter: brightness(1.05); box-shadow: 0 8px 22px rgba(0,0,0,.35); }
+  button:active { transform: translateY(1px); }
+  button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+  button .g {
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    background: linear-gradient(140deg, var(--accent), var(--teal));
+    color: #fff;
+    display: grid; place-items: center;
+    font: 700 12px var(--display);
   }
-  button .arrow {
-    display: inline-block;
-    transition: transform .25s cubic-bezier(.2,.7,.2,1);
+
+  .footnote {
+    margin-top: 20px;
+    text-align: center;
+    font: 500 11px var(--mono);
+    letter-spacing: .12em;
+    color: var(--ink-faint);
   }
-  button:hover .arrow { transform: translateX(.35rem); }
 </style>
 </head>
 <body>
 <main>
-  <div class="marquee">Late Show · Console · Est. MMXXVI</div>
-  <h1>Sign in.</h1>
-  <p class="sub">a private screening — google sign-in required</p>
-  <p id="denied" class="sub" hidden style="color:#f0a830">that account isn't on the guest list.</p>
+  <div class="brand">
+    <span class="mark">L</span>
+    <span class="name">Late Show</span>
+  </div>
+  <h1>Movie night,<br>in sync.</h1>
+  <p class="sub">Sign in with Google. Access is gated by an email allowlist — no Plex account needed.</p>
+  <p id="denied" hidden>That account isn't on the guest list.</p>
   <form method="post" action="/oauth/start">
-    <div class="row" style="justify-content:flex-start">
-      <button type="submit">Sign in with Google <span class="arrow">→</span></button>
-    </div>
+    <button type="submit"><span class="g">G</span> Continue with Google</button>
   </form>
+  <div class="footnote">ALLOWLISTED GUESTS ONLY</div>
 </main>
 <script>
   if (location.search.indexOf('error=denied') >= 0) document.getElementById('denied').hidden = false;

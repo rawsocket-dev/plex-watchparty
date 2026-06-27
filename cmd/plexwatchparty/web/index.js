@@ -227,16 +227,33 @@ function ratingHTML(m) {
   return parts.length ? '<span class="rating">' + parts.join(' · ') + '</span>' : '';
 }
 
+// Stable per-title hue (0–360) so each poster gets its own duotone tint
+// that doesn't shuffle between renders. Hashes the ratingKey (falling
+// back to the title) — same inputs always land on the same colour.
+function hueFor(seed) {
+  const s = String(seed || '');
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return h % 360;
+}
+
 function makeButton(m) {
   const b = document.createElement('button');
   b.type = 'button';
-  // Rating + year live on their own line UNDER the title (.meta), so the
-  // title gets the full column width instead of wrapping next to the
-  // now title-sized metadata. Omit the line entirely if there's nothing.
-  const meta = ratingHTML(m) + (m.year ? '<span class="year">' + m.year + '</span>' : '');
+  // Velvet poster card: a 2/3 gradient tile (per-title hue) carries the
+  // rating chip (top-right) and the title overlaid over a bottom scrim;
+  // the year sits below the card. The .title/.rating/.year spans and the
+  // click handler are unchanged so the rest of the JS keeps working.
+  const hue = hueFor(m.ratingKey || m.title);
+  const poster =
+    'linear-gradient(155deg, oklch(0.44 0.15 ' + hue + '), oklch(0.2 0.1 ' + hue + '))';
   b.innerHTML =
-    '<span class="title">' + escapeHTML(m.title) + '</span>' +
-    (meta ? '<span class="meta">' + meta + '</span>' : '');
+    '<span class="poster" style="background:' + poster + '">' +
+      '<span class="scrim"></span>' +
+      ratingHTML(m) +
+      '<span class="title">' + escapeHTML(m.title) + '</span>' +
+    '</span>' +
+    (m.year ? '<span class="year">' + m.year + '</span>' : '');
   b.onclick = async () => {
     if (!isHost) return; // viewer: no-op
     // Probe current state first so we can offer Resume/Start-over
