@@ -196,7 +196,11 @@
     color: var(--ink-faint);
     font-variant-numeric: tabular-nums;
   }
-  /* Resume-after-restart card — shown when state.resume is set. */
+  /* Resume-after-restart card — shown when state.resume is set. The
+     [hidden] guard is required because the author `display:flex` below
+     would otherwise beat the UA `[hidden]{display:none}` rule and leak
+     an empty banner on every load. */
+  .resume-banner[hidden] { display: none; }
   .resume-banner {
     margin: 1rem auto 2rem;
     max-width: 36rem;

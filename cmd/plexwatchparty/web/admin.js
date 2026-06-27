@@ -143,6 +143,13 @@ function renderSession(s, lifecycle) {
   }
   $('btn-session-restart').disabled = !s.ratingKey;
   $('btn-session-stop').disabled = !s.ratingKey;
+  // State chip: teal LIVE while a session is loaded, dim IDLE otherwise.
+  const stateEl = $('sess-state');
+  if (stateEl) {
+    const live = !!s.ratingKey;
+    stateEl.classList.toggle('live', live);
+    stateEl.textContent = live ? 'LIVE' : 'IDLE';
+  }
 }
 
 function renderCache(c) {

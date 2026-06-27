@@ -115,6 +115,21 @@ main {
 }
 /* Velvet drops the 01–07 numerals in favour of a clean display title. */
 .panel h2 .prefix { display: none; }
+/* Session state chip — teal "LIVE" when a session is loaded, dim "IDLE"
+   otherwise. admin.js toggles the .live class from the polled state. */
+.panel h2 .state-chip {
+  margin-left: auto;
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: var(--mono); font-weight: 600;
+  font-size: .6rem; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--paper-dim);
+}
+.panel h2 .state-chip::before {
+  content: ''; width: 6px; height: 6px; border-radius: 50%;
+  background: #3a3a48;
+}
+.panel h2 .state-chip.live { color: var(--teal); }
+.panel h2 .state-chip.live::before { background: var(--teal); box-shadow: 0 0 8px var(--teal); }
 
 .kv { display: flex; flex-direction: column; gap: .35rem; margin-bottom: 1rem; }
 .kv .row {
