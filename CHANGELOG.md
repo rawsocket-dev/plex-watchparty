@@ -3,6 +3,29 @@
 Notable, user-facing changes to plex-watchparty. Newest first.
 No version numbers — the app ships continuously as a container.
 
+## 2026-06-26
+- Changed: New "Velvet" look across every screen — true-black surfaces, an
+  electric-violet accent (teal for "in sync"), glassy rounded cards, and a
+  Space Grotesk + Hanken Grotesk type pairing. Sign-in, library, player,
+  waiting room, and admin are all re-skinned; behavior is unchanged.
+- Added: The library is now a poster grid with real Plex artwork. Each card
+  shows the movie's poster (a per-title gradient stands in while it loads, or
+  when a title has no art), with the ★ critic / 👥 audience rating and the
+  year on a line beneath the card.
+- Added: Posters load lazily as you scroll — faster scrolling fetches further
+  ahead — and are cached on disk and served at card size (downscaled by Plex),
+  so even a library of thousands of titles opens instantly instead of stalling
+  on a flood of image downloads.
+- Added: The admin Session panel shows a LIVE / IDLE state chip.
+- Changed: Dismissing the "Resume where you left off" banner now hides that
+  movie's prompt for good — including after its position is saved again. A
+  different movie still prompts.
+- Fixed: The resume banner no longer briefly shows an empty placeholder on load.
+- Fixed: A single viewer on two tabs (or mid-reconnect) is no longer counted
+  as two — connection logs report distinct people and a single active host.
+- Fixed: Live updates send a keepalive every 2 seconds, so a short
+  reverse-proxy timeout no longer cuts the stream and causes reconnect loops.
+
 ## 2026-06-12
 - Added: The player toolbar shows a Quality readout — the source
   resolution + codec as a pill, then the fixed 1080p transcode target
