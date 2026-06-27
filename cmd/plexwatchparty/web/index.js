@@ -296,15 +296,12 @@ function loadPosterNow(el) {
   if (!url) return;
   el.style.backgroundImage = "url('" + url + "'), " + el.style.backgroundImage;
   delete el.dataset.poster;
+  if (posterObserver) posterObserver.unobserve(el);
 }
 const posterObserver = ('IntersectionObserver' in window)
-  ? new IntersectionObserver((entries, obs) => {
-      for (const e of entries) {
-        if (!e.isIntersecting) continue;
-        loadPosterNow(e.target);
-        obs.unobserve(e.target);
-      }
-    }, { rootMargin: '200% 0px' }) // preload ~2 screens ahead so scrolling stays ahead of the fetch
+  ? new IntersectionObserver((entries) => {
+      for (const e of entries) if (e.isIntersecting) loadPosterNow(e.target);
+    }, { rootMargin: '200% 0px' }) // at rest keep ~2 screens of posters loaded
   : null;
 function observePosters() {
   const lazy = groupsEl.querySelectorAll('.poster[data-poster]');
@@ -315,6 +312,40 @@ function observePosters() {
   posterObserver.disconnect(); // drop targets from a previous render
   lazy.forEach(el => posterObserver.observe(el));
 }
+
+// Velocity-aware preloading. The observer's 2-screen window is plenty at rest,
+// but a fast scroll/fling can outrun the network and reach cards whose art
+// hasn't downloaded yet. While scrolling quickly we fire poster requests
+// further ahead — scaled by scroll speed, so the faster you go the more lead
+// time the network gets — capped so a fling-to-the-bottom doesn't request the
+// whole library at once.
+function preloadAhead(lookaheadPx) {
+  const vh = window.innerHeight;
+  const limit = vh + lookaheadPx;
+  // querySelectorAll returns only the still-unloaded posters, in document
+  // (vertical) order, so we can stop at the first one past the window.
+  for (const el of groupsEl.querySelectorAll('.poster[data-poster]')) {
+    const top = el.getBoundingClientRect().top;
+    if (top > limit) break;           // everything after is further down
+    if (top > -vh) loadPosterNow(el); // within reach (skip ones already scrolled well past)
+  }
+}
+let lastScrollY = window.scrollY;
+let lastScrollT = performance.now();
+let scrollScheduled = false;
+window.addEventListener('scroll', () => {
+  if (scrollScheduled) return;     // coalesce to one measurement per frame
+  scrollScheduled = true;
+  requestAnimationFrame(() => {
+    scrollScheduled = false;
+    const y = window.scrollY, t = performance.now();
+    const v = Math.abs(y - lastScrollY) / Math.max(1, t - lastScrollT); // px per ms
+    lastScrollY = y; lastScrollT = t;
+    // Below a gentle-scroll threshold the observer's base window already
+    // covers it; above it, look ahead to roughly where they'll be in ~0.7s.
+    if (v > 0.4) preloadAhead(Math.min(v * 700, window.innerHeight * 16));
+  });
+}, { passive: true });
 
 function render(movies) {
   groupsEl.innerHTML = '';
