@@ -223,7 +223,7 @@ window.addEventListener('keydown', (e) => {
 function ratingHTML(m) {
   const parts = [];
   if (m.rating > 0)         parts.push('<span class="rt-c">★ ' + m.rating.toFixed(1) + '</span>');
-  if (m.audienceRating > 0) parts.push('👥 ' + m.audienceRating.toFixed(1));
+  if (m.audienceRating > 0) parts.push('<span class="rt-a">👥 ' + m.audienceRating.toFixed(1) + '</span>');
   return parts.length ? '<span class="rating">' + parts.join(' · ') + '</span>' : '';
 }
 
@@ -240,10 +240,11 @@ function hueFor(seed) {
 function makeButton(m) {
   const b = document.createElement('button');
   b.type = 'button';
-  // Velvet poster card: a 2/3 gradient tile (per-title hue) carries the
-  // rating chip (top-right) and the title overlaid over a bottom scrim;
-  // the year sits below the card. The .title/.rating/.year spans and the
-  // click handler are unchanged so the rest of the JS keeps working.
+  b.className = 'film';
+  if (m.ratingKey) b.dataset.key = m.ratingKey;
+  // Velvet poster card: a 2/3 artwork tile, then the title and a .meta row
+  // (rating + year) BELOW the card so nothing overlaps the artwork. The
+  // .title/.meta/.rating/.year classes and the click handler are unchanged.
   const hue = hueFor(m.ratingKey || m.title);
   const grad =
     'linear-gradient(155deg, oklch(0.44 0.15 ' + hue + '), oklch(0.2 0.1 ' + hue + '))';
@@ -254,13 +255,15 @@ function makeButton(m) {
   const poster = m.ratingKey
     ? "url('/poster/" + encodeURIComponent(m.ratingKey) + ".jpg') center/cover no-repeat, " + grad
     : grad;
+  // Rating (.rt-c critic / .rt-a audience, each only when Plex has it) and
+  // the year share a .meta row under the card.
+  const rating = ratingHTML(m);
+  const year = m.year ? '<span class="year">' + m.year + '</span>' : '';
+  const meta = (rating || year) ? '<span class="meta">' + rating + year + '</span>' : '';
   b.innerHTML =
-    '<span class="poster" style="background:' + poster + '">' +
-      '<span class="scrim"></span>' +
-      ratingHTML(m) +
-      '<span class="title">' + escapeHTML(m.title) + '</span>' +
-    '</span>' +
-    (m.year ? '<span class="year">' + m.year + '</span>' : '');
+    '<span class="poster" style="background:' + poster + '"></span>' +
+    '<span class="title">' + escapeHTML(m.title) + '</span>' +
+    meta;
   b.onclick = async () => {
     if (!isHost) return; // viewer: no-op
     // Probe current state first so we can offer Resume/Start-over

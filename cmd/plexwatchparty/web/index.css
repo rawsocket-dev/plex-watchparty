@@ -283,58 +283,48 @@ ul.films button {
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 9px;
+  gap: 0;
   font-family: var(--body);
   transition: transform .15s ease;
 }
-/* The poster itself — per-title gradient tint set inline (data hue). */
+/* The poster — a 2/3 artwork tile; the per-title gradient + real art are set
+   inline. No overlay children, so nothing covers the artwork. */
 ul.films .poster {
-  position: relative;
+  display: block;
   aspect-ratio: 2 / 3;
   border-radius: 12px;
   overflow: hidden;
   box-shadow: 0 8px 22px rgba(0,0,0,.4);
-  background: linear-gradient(155deg, #2a2a36, #15151c);
+  background-color: #15151c;
+  background-size: cover;
+  background-position: center;
   transition: box-shadow .15s ease;
 }
-ul.films .poster .scrim {
-  position: absolute; inset: 0;
-  background: linear-gradient(to top, rgba(12,12,16,.7), transparent 55%);
-}
+/* Title + rating/year live in a row BELOW the card — never over the art. */
 ul.films .title {
-  position: absolute;
-  left: 11px; right: 11px; bottom: 11px;
-  font-family: var(--display);
-  font-weight: 600;
-  font-size: 13px;
-  line-height: 1.16;
-  color: #fff;
+  display: block;
+  margin-top: .5rem;
+  font: 600 13px var(--display);
+  color: var(--ink);
+  line-height: 1.2;
 }
-/* Rating chip overlaid top-right of the poster. */
+ul.films .meta {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  margin-top: .18rem;
+  font: 500 11px var(--mono);
+  color: var(--paper-mute);
+}
 ul.films .rating {
-  position: absolute;
-  top: 10px; right: 10px;
-  padding: 3px 8px;
-  border-radius: 999px;
-  background: rgba(12,12,16,.55);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
-  font-family: var(--mono);
-  font-weight: 600;
-  font-size: 10px;
-  color: var(--lilac);
+  position: static;
+  background: none;
+  padding: 0;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
 ul.films .rating .rt-c { color: var(--lilac); }
-/* Year sits below the card, muted. */
-ul.films .year {
-  font-family: var(--mono);
-  font-weight: 500;
-  font-size: 11px;
-  color: var(--paper-mute);
-  font-variant-numeric: tabular-nums;
-}
+ul.films .year { color: var(--paper-mute); font-variant-numeric: tabular-nums; }
 ul.films button:hover,
 ul.films button:focus-visible {
   transform: translateY(-2px);
