@@ -12,6 +12,9 @@ and caching them to disk so backward seek is instant. Friends stay in sync via
 Server-Sent Events — the host's play/pause/seek actions are broadcast to all
 viewers.
 
+> **Built with AI.** This project — the Go server, the web UI, and these docs —
+> was written largely with AI coding assistance, under human direction and review.
+
 ## Screenshots
 
 > Rendered against placeholder data — no real Plex library or accounts.
