@@ -34,8 +34,9 @@ let lastActiveHostName;   // tracks election / hand-off changes seen over the SS
 // prior session left a state.json. Host buttons trigger a /control load at
 // the saved offset (Resume) or 0 (Start over); the Dismiss button hides
 // the banner and remembers (in localStorage) that this exact hint was
-// dismissed, so it stays hidden across reloads. A *new* hint (different
-// movie or a fresh save) still shows — the key is scoped to the hint.
+// dismissed, so it stays hidden across reloads — permanently for that movie
+// (the key is the ratingKey, so a fresh save of the same movie won't bring it
+// back). A hint for a DIFFERENT movie is a different key and still shows.
 const resumeBanner    = document.getElementById('resume-banner');
 const resumeBannerTitle    = document.getElementById('rb-title');
 const resumeBannerPosition = document.getElementById('rb-position');
@@ -62,10 +63,13 @@ function fmtSavedAgo(savedAtUnix) {
   if (sec < 86400) return Math.floor(sec / 3600) + ' h ago';
   return Math.floor(sec / 86400) + ' d ago';
 }
-// A stable identity for a resume hint so a dismissal sticks to *this*
-// hint but a later one (new movie or a fresh save) reappears.
+// Dismissal identity, keyed by ratingKey ONLY (not savedAtUnix): once the
+// user dismisses the resume prompt for a movie it must never reappear for
+// that same movie, even if the server later re-saves its position with a
+// fresher timestamp. A DIFFERENT movie is a different key, so its hint still
+// shows.
 function resumeHintKey(hint) {
-  return 'rb-dismissed:' + (hint.ratingKey || '') + ':' + (hint.savedAtUnix || 0);
+  return 'rb-dismissed:' + (hint.ratingKey || '');
 }
 function resumeHintDismissed(hint) {
   try { return localStorage.getItem(resumeHintKey(hint)) === '1'; }
@@ -84,15 +88,11 @@ function showResumeBanner(hint) {
 function hideResumeBanner() {
   if (resumeHint) {
     try {
-      const key = resumeHintKey(resumeHint);
-      // Only one resume hint is ever live at a time, so drop any older
-      // dismissal flags before recording this one — keeps localStorage
-      // from accumulating a key per restart.
-      for (let i = localStorage.length - 1; i >= 0; i--) {
-        const k = localStorage.key(i);
-        if (k && k.startsWith('rb-dismissed:') && k !== key) localStorage.removeItem(k);
-      }
-      localStorage.setItem(key, '1');
+      // Persist the dismissal per-movie (key is the ratingKey) so it sticks
+      // across reloads AND future saves of the same title — dismissing a
+      // movie hides its resume prompt for good. Keys are bounded by the
+      // number of distinct movies ever dismissed, so no pruning is needed.
+      localStorage.setItem(resumeHintKey(resumeHint), '1');
     } catch (e) {}
   }
   resumeBanner.classList.add('hidden');
