@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func newPosterPlex(t *testing.T) *Plex {
@@ -30,7 +31,8 @@ func newPosterPlex(t *testing.T) *Plex {
 }
 
 func TestPosterHandler(t *testing.T) {
-	h := posterHandler(newPosterPlex(t))
+	cache := NewPosterCache(newPosterPlex(t), t.TempDir(), time.Hour)
+	h := posterHandler(cache)
 
 	// Valid key → 200 image/jpeg, no token in response.
 	w := httptest.NewRecorder()

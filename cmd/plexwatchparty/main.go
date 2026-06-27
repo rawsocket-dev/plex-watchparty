@@ -210,6 +210,24 @@ func main() {
 	log.Printf("cache: %d entries loaded, %d MB on disk, cap %d GB",
 		cs.Entries, cs.TotalBytes/1024/1024, cacheGB)
 
+	// On-disk cache for Plex poster art, kept beside the segment cache so it
+	// survives restarts. Posters are tiny and bounded by the library size, so
+	// there's no size cap — entries just refresh after POSTER_CACHE_TTL_HOURS
+	// (default 7 days; 0 = never expire).
+	postersDir := filepath.Join(filepath.Dir(workDir), "posters")
+	if err := os.MkdirAll(postersDir, 0o755); err != nil {
+		log.Fatalf("create posters dir: %v", err)
+	}
+	posterTTL := 7 * 24 * time.Hour
+	if v := os.Getenv("POSTER_CACHE_TTL_HOURS"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 0 {
+			log.Fatalf("POSTER_CACHE_TTL_HOURS must be a non-negative integer, got %q", v)
+		}
+		posterTTL = time.Duration(n) * time.Hour
+	}
+	posterCache := NewPosterCache(plex, postersDir, posterTTL)
+
 	plexSession := NewPlexSession(plex, transcodeKbps)
 	// Startup health check. On success we log the friendly identity;
 	// on failure we hand off to Plex's own recovery loop, which polls
@@ -278,7 +296,7 @@ func main() {
 	// Mounted only when the webhook is on: it exists solely for Discord's
 	// embed fetchers, so there's no reason to expose poster art otherwise.
 	if notifier != nil {
-		mux.HandleFunc("/poster/", posterHandler(plex))
+		mux.HandleFunc("/poster/", posterHandler(posterCache))
 	}
 
 	// Admin maintenance panel — same identity, gated on ADMIN_EMAILS.
