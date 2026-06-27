@@ -217,13 +217,15 @@ window.addEventListener('keydown', (e) => {
   }
 });
 
-// Compact Plex rating chip: gold critic star + audience marker, each
-// shown only when Plex actually has that score (0/absent → omitted).
+// Compact rating chips: IMDb score + Rotten Tomatoes audience score, each
+// shown only when Plex actually has it (0/absent → omitted) and each LABELLED
+// so neither number is mistaken for the other (the divergence that prompted
+// this — e.g. IMDb 5.9 vs RT-audience 7.7 for the same film).
 // Returns '' when neither exists, so most-obscure titles stay clean.
 function ratingHTML(m) {
   const parts = [];
-  if (m.rating > 0)         parts.push('<span class="rt-c">★ ' + m.rating.toFixed(1) + '</span>');
-  if (m.audienceRating > 0) parts.push('<span class="rt-a">👥 ' + m.audienceRating.toFixed(1) + '</span>');
+  if (m.imdbRating > 0)     parts.push('<span class="imdb">IMDb ' + m.imdbRating.toFixed(1) + '</span>');
+  if (m.audienceRating > 0) parts.push('<span class="rt-a">🍿 ' + m.audienceRating.toFixed(1) + '</span>');
   return parts.length ? '<span class="rating">' + parts.join(' · ') + '</span>' : '';
 }
 

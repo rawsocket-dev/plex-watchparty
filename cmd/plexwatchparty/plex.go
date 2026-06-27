@@ -151,6 +151,11 @@ type Movie struct {
 	Year           int     `json:"year"`
 	Rating         float64 `json:"rating,omitempty"`         // Plex critic "rating" (0–10), 0 = absent
 	AudienceRating float64 `json:"audienceRating,omitempty"` // Plex "audienceRating" (0–10), 0 = absent
+	// IMDbRating is the IMDb score (0–10), pulled from the per-movie Rating
+	// array by enrichIMDb — the listing endpoint doesn't carry it. 0 = absent
+	// or not yet enriched. Persisted in the disk cache and carried forward
+	// across refreshes so steady-state refreshes don't re-fetch every title.
+	IMDbRating float64 `json:"imdbRating,omitempty"`
 	// Thumb is the Plex poster path (e.g. "/library/metadata/55/thumb/123").
 	// Carried so the poster handler can skip a per-image /library/metadata
 	// round-trip. Persisted in the on-disk library cache; harmless to the
@@ -370,6 +375,7 @@ func (p *Plex) ListMovies() ([]Movie, error) {
 		p.moviesMu.Unlock()
 		return out, nil
 	}
+	prev := p.moviesByKey // snapshot for IMDb carry-forward; read off-lock below
 	p.moviesMu.Unlock()
 
 	var sr sectionsResp
@@ -397,6 +403,10 @@ func (p *Plex) ListMovies() ([]Movie, error) {
 		}
 	}
 
+	// Fill in IMDb scores (the listing endpoint omits them). Best-effort and
+	// done with no lock held — it makes its own Plex round-trips.
+	p.enrichIMDb(out, prev)
+
 	p.moviesMu.Lock()
 	p.moviesVal = out
 	p.moviesAt = time.Now()
@@ -404,6 +414,88 @@ func (p *Plex) ListMovies() ([]Movie, error) {
 	p.moviesMu.Unlock()
 	p.saveCacheToDisk()
 	return out, nil
+}
+
+// plexRating is one entry of a movie's capital "Rating" array, e.g.
+// {"image":"imdb://image.rating","value":5.9}.
+type plexRating struct {
+	Image string  `json:"image"`
+	Value float64 `json:"value"`
+}
+
+// ratingBatchResp decodes a comma-batched /library/metadata/<k1,k2,…> reply,
+// keeping only the ratingKey and the per-source Rating array. The scalar
+// "rating" absorber is REQUIRED: Plex sends both a scalar "rating" (float)
+// and a capital "Rating" (array) for each movie, and without an exact-case
+// home for the scalar, Go's case-insensitive matching routes it into the
+// array field and fails the whole decode — see [[plex-json-case-insensitive-collision]].
+type ratingBatchResp struct {
+	MediaContainer struct {
+		Metadata []struct {
+			RatingKey string       `json:"ratingKey"`
+			Scalar    float64      `json:"rating"` // absorber, ignored
+			Ratings   []plexRating `json:"Rating"`
+		} `json:"Metadata"`
+	} `json:"MediaContainer"`
+}
+
+// imdbFromRatings returns the IMDb score from a movie's Rating array, or 0 if
+// Plex has none. Plex labels the imdb entry's type "audience", so match on
+// the image source, not the type.
+func imdbFromRatings(rs []plexRating) float64 {
+	for _, r := range rs {
+		if strings.HasPrefix(r.Image, "imdb://") {
+			return r.Value
+		}
+	}
+	return 0
+}
+
+// imdbBatchSize caps how many ratingKeys ride on one /library/metadata call.
+// 200 keeps the URL well under any sane limit while collapsing a 5k-title
+// library into ~26 requests on a cold cache.
+const imdbBatchSize = 200
+
+// enrichIMDb fills movies[i].IMDbRating. Scores already known from the prior
+// cache (prev) are carried forward untouched; only titles still at 0 are
+// fetched, in comma-batched /library/metadata calls. Best-effort: a failed
+// batch is logged and skipped, leaving those titles at 0 (the listing — RT
+// audience and all — still loads). prev may be nil on a cold start.
+func (p *Plex) enrichIMDb(movies []Movie, prev map[string]Movie) {
+	var need []string
+	for i := range movies {
+		if pm, ok := prev[movies[i].RatingKey]; ok && pm.IMDbRating > 0 {
+			movies[i].IMDbRating = pm.IMDbRating
+			continue
+		}
+		need = append(need, movies[i].RatingKey)
+	}
+	if len(need) == 0 {
+		return
+	}
+	got := make(map[string]float64, len(need))
+	for start := 0; start < len(need); start += imdbBatchSize {
+		end := start + imdbBatchSize
+		if end > len(need) {
+			end = len(need)
+		}
+		keys := need[start:end]
+		var br ratingBatchResp
+		if err := p.get("/library/metadata/"+strings.Join(keys, ","), &br); err != nil {
+			log.Printf("library: IMDb enrich batch of %d failed: %v", len(keys), err)
+			continue
+		}
+		for _, m := range br.MediaContainer.Metadata {
+			if v := imdbFromRatings(m.Ratings); v > 0 {
+				got[m.RatingKey] = v
+			}
+		}
+	}
+	for i := range movies {
+		if v, ok := got[movies[i].RatingKey]; ok {
+			movies[i].IMDbRating = v
+		}
+	}
 }
 
 // MovieByKey returns the movie metadata for ratingKey from the in-memory

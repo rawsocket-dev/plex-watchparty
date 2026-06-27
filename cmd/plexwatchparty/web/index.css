@@ -323,7 +323,8 @@ ul.films .rating {
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
-ul.films .rating .rt-c { color: var(--lilac); }
+ul.films .rating .imdb { color: #f5c518; font-weight: 600; } /* IMDb yellow */
+ul.films .rating .rt-a { color: #fa320a; }                   /* RT audience red */
 ul.films .year { color: var(--paper-mute); font-variant-numeric: tabular-nums; }
 ul.films button:hover,
 ul.films button:focus-visible {

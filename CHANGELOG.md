@@ -3,6 +3,15 @@
 Notable, user-facing changes to plex-watchparty. Newest first.
 No version numbers — the app ships continuously as a container.
 
+## 2026-06-27
+- Changed: Library cards now show the **IMDb** score and the **Rotten Tomatoes
+  audience** score, each clearly labelled (`IMDb 5.9 · 🍿 7.7`). Previously the
+  card showed Plex's unlabelled critic/audience numbers, which on libraries
+  sourced from Rotten Tomatoes are the *Tomatometer* — easily mistaken for an
+  IMDb score it didn't match (e.g. a film at 5.9 on IMDb showed 8.1). IMDb
+  ratings are fetched from Plex per title and cached, so the library still
+  opens instantly.
+
 ## 2026-06-26
 - Changed: New "Velvet" look across every screen — true-black surfaces, an
   electric-violet accent (teal for "in sync"), glassy rounded cards, and a
