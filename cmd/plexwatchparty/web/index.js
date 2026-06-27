@@ -245,8 +245,15 @@ function makeButton(m) {
   // the year sits below the card. The .title/.rating/.year spans and the
   // click handler are unchanged so the rest of the JS keeps working.
   const hue = hueFor(m.ratingKey || m.title);
-  const poster =
+  const grad =
     'linear-gradient(155deg, oklch(0.44 0.15 ' + hue + '), oklch(0.2 0.1 ' + hue + '))';
+  // Real Plex art (served unauthenticated at /poster/<key>.jpg) layered over
+  // the per-title gradient. The gradient shows through as a placeholder while
+  // the image loads, and as a graceful fallback when a title has no art (the
+  // endpoint 404s, so the image layer simply never paints — no broken icon).
+  const poster = m.ratingKey
+    ? "url('/poster/" + encodeURIComponent(m.ratingKey) + ".jpg') center/cover no-repeat, " + grad
+    : grad;
   b.innerHTML =
     '<span class="poster" style="background:' + poster + '">' +
       '<span class="scrim"></span>' +
