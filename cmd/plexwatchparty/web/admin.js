@@ -189,7 +189,7 @@ function renderLibrary(l) {
   $('lib-age').textContent = l.ageSec > 0 ? fmtSeconds(l.ageSec) + ' ago' : '—';
   const health = $('lib-health');
   if (l.healthy) {
-    health.innerHTML = '<span style="color: var(--signal)">● healthy</span>';
+    health.innerHTML = '<span style="color: var(--teal)">● healthy</span>';
   } else {
     health.innerHTML = '<span style="color: var(--warn)">● unreachable</span>';
   }
