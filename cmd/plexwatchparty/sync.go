@@ -225,6 +225,14 @@ const hostExitGrace = 10 * time.Second
 // merely slow client (bad mobile link) isn't dropped mid-stream.
 const sseWriteTimeout = 30 * time.Second
 
+// sseHeartbeatInterval is how often we send a comment ping on an idle SSE
+// stream. It must stay comfortably below any upstream proxy's read/idle
+// timeout: if the proxy cuts the idle stream first, the browser's EventSource
+// reconnects in a loop — wasteful, and it briefly double-counts the user's
+// sockets. 2 s clears the short read timeouts seen on common reverse-proxy
+// defaults while staying cheap (a few bytes per client every couple seconds).
+const sseHeartbeatInterval = 2 * time.Second
+
 func NewHub(plex *Plex, session *PlexSession, cache *SegmentCache, recent *RecentMovies, store *StateStore, hostStore *HostStore, audit *AuditLog, aliases *AliasStore, notify *Notifier) *Hub {
 	h := &Hub{
 		plex:          plex,
@@ -1141,10 +1149,11 @@ func (h *Hub) HandleEvents(w http.ResponseWriter, r *http.Request, isHost bool, 
 		return
 	}
 
-	// 5 s heartbeat: also doubles as our "is the client still there?"
-	// probe — a failed/timed-out write returns and reaps the connection,
-	// complementing Go's own r.Context() cancellation on a clean close.
-	heartbeat := time.NewTicker(5 * time.Second)
+	// Heartbeat: a periodic comment ping that keeps proxies from cutting the
+	// idle stream, and doubles as our "is the client still there?" probe — a
+	// failed/timed-out write returns and reaps the connection, complementing
+	// Go's own r.Context() cancellation on a clean close.
+	heartbeat := time.NewTicker(sseHeartbeatInterval)
 	defer heartbeat.Stop()
 	for {
 		select {
