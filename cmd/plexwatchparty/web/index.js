@@ -248,20 +248,22 @@ function makeButton(m) {
   const hue = hueFor(m.ratingKey || m.title);
   const grad =
     'linear-gradient(155deg, oklch(0.44 0.15 ' + hue + '), oklch(0.2 0.1 ' + hue + '))';
-  // Real Plex art (served unauthenticated at /poster/<key>.jpg) layered over
-  // the per-title gradient. The gradient shows through as a placeholder while
-  // the image loads, and as a graceful fallback when a title has no art (the
-  // endpoint 404s, so the image layer simply never paints — no broken icon).
-  const poster = m.ratingKey
-    ? "url('/poster/" + encodeURIComponent(m.ratingKey) + ".jpg') center/cover no-repeat, " + grad
-    : grad;
+  // Real Plex art (served unauthenticated at /poster/<key>.jpg) is LAZY-loaded:
+  // render only the per-title gradient now and stash the URL in data-poster;
+  // observePosters() swaps the image in when the card nears the viewport. With
+  // thousands of titles this avoids firing thousands of /poster requests just
+  // for sitting on the library. The gradient stays as the placeholder and as
+  // the fallback when a title has no art (the layer simply never paints).
+  const posterAttr = m.ratingKey
+    ? ' data-poster="/poster/' + encodeURIComponent(m.ratingKey) + '.jpg"'
+    : '';
   // Rating (.rt-c critic / .rt-a audience, each only when Plex has it) and
   // the year share a .meta row under the card.
   const rating = ratingHTML(m);
   const year = m.year ? '<span class="year">' + m.year + '</span>' : '';
   const meta = (rating || year) ? '<span class="meta">' + rating + year + '</span>' : '';
   b.innerHTML =
-    '<span class="poster" style="background:' + poster + '"></span>' +
+    '<span class="poster"' + posterAttr + ' style="background-image:' + grad + '"></span>' +
     '<span class="title">' + escapeHTML(m.title) + '</span>' +
     meta;
   b.onclick = async () => {
@@ -282,6 +284,36 @@ function makeButton(m) {
     sendLoad(b, m);
   };
   return b;
+}
+
+// --- Lazy poster loading ----------------------------------------------------
+// A library of thousands of titles must not fire a /poster request per card on
+// load. Each card renders with just its gradient + a data-poster URL; this
+// observer swaps the real art in only when the card nears the viewport, then
+// stops watching it. The gradient stays beneath as placeholder + fallback.
+function loadPosterNow(el) {
+  const url = el.dataset.poster;
+  if (!url) return;
+  el.style.backgroundImage = "url('" + url + "'), " + el.style.backgroundImage;
+  delete el.dataset.poster;
+}
+const posterObserver = ('IntersectionObserver' in window)
+  ? new IntersectionObserver((entries, obs) => {
+      for (const e of entries) {
+        if (!e.isIntersecting) continue;
+        loadPosterNow(e.target);
+        obs.unobserve(e.target);
+      }
+    }, { rootMargin: '300px' }) // begin fetching just before they scroll into view
+  : null;
+function observePosters() {
+  const lazy = groupsEl.querySelectorAll('.poster[data-poster]');
+  if (!posterObserver) { // no IntersectionObserver support → just load them all
+    lazy.forEach(loadPosterNow);
+    return;
+  }
+  posterObserver.disconnect(); // drop targets from a previous render
+  lazy.forEach(el => posterObserver.observe(el));
 }
 
 function render(movies) {
@@ -327,6 +359,9 @@ function render(movies) {
     section.appendChild(ul);
     groupsEl.appendChild(section);
   });
+
+  // Watch the freshly-rendered cards; only on-screen posters fetch their art.
+  observePosters();
 }
 
 function applyFilter() {
