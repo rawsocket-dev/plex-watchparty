@@ -382,6 +382,42 @@ func TestKickRemovesAllOfPersonsConnections(t *testing.T) {
 	}
 }
 
+func TestPeopleAndActiveHostCountsDedupeBySocket(t *testing.T) {
+	f := newHubTestFixture(t)
+	h := f.hub
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.clients = map[*clientEntry]struct{}{}
+	// Alice holds two sockets (two tabs / a mid-reconnect overlap); Bob one;
+	// plus one anonymous (no email) connection.
+	for _, c := range []*clientEntry{
+		{id: "a1", email: "alice@x.com", host: true, name: "Alice", kill: make(chan struct{}), send: make(chan []byte, 8)},
+		{id: "a2", email: "alice@x.com", host: true, name: "Alice", kill: make(chan struct{}), send: make(chan []byte, 8)},
+		{id: "b1", email: "bob@x.com", host: false, name: "Bob", kill: make(chan struct{}), send: make(chan []byte, 8)},
+		{id: "anon", email: "", host: false, name: "guest", kill: make(chan struct{}), send: make(chan []byte, 8)},
+	} {
+		h.clients[c] = struct{}{}
+	}
+
+	// Four sockets, but three people: Alice's two sockets collapse to one.
+	if got := len(h.clients); got != 4 {
+		t.Fatalf("raw socket count = %d, want 4", got)
+	}
+	if got := h.peopleCountLocked(); got != 3 {
+		t.Errorf("peopleCountLocked = %d, want 3 (alice once, bob, anon)", got)
+	}
+
+	// Active host is only ever 0 or 1, regardless of how many host sockets.
+	h.activeHost = ""
+	if got := h.activeHostCountLocked(); got != 0 {
+		t.Errorf("activeHostCountLocked with no host = %d, want 0", got)
+	}
+	h.activeHost = "alice@x.com"
+	if got := h.activeHostCountLocked(); got != 1 {
+		t.Errorf("activeHostCountLocked = %d, want 1 (single active host)", got)
+	}
+}
+
 func TestHubLoadSetsState(t *testing.T) {
 	f := newHubTestFixture(t)
 	w := f.post(t, `{"action":"load","ratingKey":"rk1"}`)

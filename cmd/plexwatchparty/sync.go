@@ -460,6 +460,37 @@ func (h *Hub) hostCount() int {
 	return n
 }
 
+// peopleCountLocked counts DISTINCT people connected — one per identity
+// (email), plus each anonymous (empty-email) connection as its own. Mirrors
+// viewerList's dedup so a logged/reported count reflects the room roster
+// (one person with several tabs or a mid-reconnect overlap is still ONE
+// person) rather than the raw socket count. Caller holds h.mu.
+func (h *Hub) peopleCountLocked() int {
+	seen := make(map[string]bool)
+	n := 0
+	for c := range h.clients {
+		if c.email == "" {
+			n++
+			continue
+		}
+		if !seen[c.email] {
+			seen[c.email] = true
+			n++
+		}
+	}
+	return n
+}
+
+// activeHostCountLocked is 0 or 1: there is only ever a single active host
+// (the one driving). Used so logs never imply multiple hosts just because a
+// host holds several sockets. Caller holds h.mu.
+func (h *Hub) activeHostCountLocked() int {
+	if h.activeHost == "" {
+		return 0
+	}
+	return 1
+}
+
 func (h *Hub) hasConnectionLocked(email string) bool {
 	if email == "" {
 		return false
@@ -1028,9 +1059,13 @@ func (h *Hub) HandleEvents(w http.ResponseWriter, r *http.Request, isHost bool, 
 	h.mu.Lock()
 	wasEmpty := len(h.clients) == 0
 	h.clients[entry] = struct{}{}
-	n := len(h.clients)
-	hosts := h.hostCount()
+	conns := len(h.clients)
 	hostAudit := h.onClientCountChange()
+	// Identity-based counts for the log: a user with several tabs / a
+	// mid-reconnect overlap is ONE person, and there's only ever ONE active
+	// host. conns is the raw socket count, kept to diagnose reconnect churn.
+	people := h.peopleCountLocked()
+	hosts := h.activeHostCountLocked()
 	if wasEmpty {
 		// First viewer in an idle room — unblock the broadcast loop.
 		h.wakeBroadcast()
@@ -1057,19 +1092,20 @@ func (h *Hub) HandleEvents(w http.ResponseWriter, r *http.Request, isHost bool, 
 	if isHost {
 		role = "host"
 	}
-	log.Printf("sse: connect ip=%s role=%s viewers=%d hosts=%d", ip, role, n, hosts)
+	log.Printf("sse: connect ip=%s role=%s viewers=%d hosts=%d conns=%d", ip, role, people, hosts, conns)
 	defer func() {
 		h.mu.Lock()
 		delete(h.clients, entry)
-		left := len(h.clients)
-		leftHosts := h.hostCount()
 		hostAudit := h.onClientCountChange()
+		leftConns := len(h.clients)
+		leftPeople := h.peopleCountLocked()
+		leftHosts := h.activeHostCountLocked()
 		h.mu.Unlock()
 		if hostAudit != "" {
 			h.audit.Record(AuditEvent{Type: "host", Email: "system", Detail: hostAudit})
 		}
-		log.Printf("sse: disconnect ip=%s role=%s viewers=%d hosts=%d after=%s",
-			ip, role, left, leftHosts, time.Since(connectedAt).Round(time.Second))
+		log.Printf("sse: disconnect ip=%s role=%s viewers=%d hosts=%d conns=%d after=%s",
+			ip, role, leftPeople, leftHosts, leftConns, time.Since(connectedAt).Round(time.Second))
 	}()
 
 	// Each write gets a deadline via the ResponseController. A healthy
