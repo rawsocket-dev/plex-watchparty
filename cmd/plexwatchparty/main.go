@@ -120,6 +120,89 @@ func fetchOrRecoverSegment(
 	}
 }
 
+// segHandler serves /hls/seg/<encoded>.ts: decode the segment context,
+// serve from cache if present, otherwise proxy from Plex (singleflight'd)
+// while writing to the cache for future requests.
+func segHandler(codec *segCodec, segCache *SegmentCache, plexSession *PlexSession, hub *Hub, bw *bwTracker) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		name := strings.TrimPrefix(r.URL.Path, "/hls/seg/")
+		name = strings.TrimSuffix(name, ".ts")
+		ctx, err := codec.decode(name)
+		if err != nil {
+			log.Printf("seg: decode failed name=%q: %v", name, err)
+			http.NotFound(w, r)
+			return
+		}
+		key := cacheKey{ratingKey: ctx.Rating, startMs: ctx.StartMs, endMs: ctx.EndMs}
+		cw := &countingResponseWriter{ResponseWriter: w}
+		defer func() { bw.record(clientIP(r), cw.n) }()
+
+		// Segment URLs are content-addressed via the base64 segCtx in
+		// the path, so the bytes for a given URL never change. Let the
+		// browser cache them aggressively — backward seek into a
+		// previously-fetched range skips a server round-trip entirely.
+		// Set ONLY on the success paths: explicit freshness makes even a
+		// 404/502 cacheable, and a browser that pins a transient failure
+		// keeps replaying it to hls.js's retries for a day.
+		serveHeaders := func() {
+			w.Header().Set("Content-Type", "video/mp2t")
+			w.Header().Set("Cache-Control", "public, max-age=86400, immutable")
+		}
+
+		// Cache hit: sendfile-fast path (ServeContent forwards to the
+		// TCP socket's ReadFrom via countingResponseWriter). An entry
+		// whose file vanished between the index lookup and the open —
+		// a concurrent eviction — falls through to the fetch path
+		// instead of serving a 404.
+		if path, ok := segCache.Get(key); ok {
+			if fh, err := os.Open(path); err == nil {
+				if fi, statErr := fh.Stat(); statErr == nil {
+					segCache.RecordHit()
+					serveHeaders()
+					http.ServeContent(cw, r, "", fi.ModTime(), fh)
+					fh.Close()
+					plexSession.RecordSegmentSuccess()
+					return
+				}
+				fh.Close()
+			}
+			log.Printf("seg: index hit but file unreadable (evicted mid-request?); refetching %s", path)
+		}
+		segCache.RecordMiss()
+		// Cache miss: singleflight'd Plex fetch + recovery cascade.
+		// Multiple viewers cold-missing the same segment collapse to
+		// one upstream request; followers reuse the leader's bytes.
+		flightKey := fmt.Sprintf("%s:%d:%d", ctx.Rating, ctx.StartMs, ctx.EndMs)
+		v, ferr, _ := segFlight.Do(flightKey, func() (interface{}, error) {
+			return fetchOrRecoverSegment(ctx, key, plexSession, segCache, hub)
+		})
+		if ferr != nil {
+			log.Printf("seg: cold-miss path failed: %v", ferr)
+			// Recovery itself failed. Track the streak; the existing
+			// safety net handles "Plex is fundamentally wedged" by
+			// running its own restart at the current play position
+			// after segFailureThreshold consecutive misses.
+			if plexSession.RecordSegmentFailure() {
+				go func() {
+					defer plexSession.ClearAutoRestart()
+					if !plexSession.AutoRestartShouldProceed() {
+						log.Printf("auto-restart: superseded by host action, skipping")
+						return
+					}
+					if err := hub.RestartAtCurrentPosition(RestartByAuto); err != nil {
+						log.Printf("auto-restart failed: %v", err)
+					}
+				}()
+			}
+			http.Error(cw, "plex segment: "+ferr.Error(), http.StatusBadGateway)
+			return
+		}
+		plexSession.RecordSegmentSuccess()
+		serveHeaders()
+		_, _ = cw.Write(v.([]byte))
+	}
+}
+
 // writeJSON is the standard one-shot JSON response: application/json
 // + no-store cache header + Encode. Used by every /api/* and the
 // inline JSON responses from /control. Encode errors are logged but
@@ -291,13 +374,14 @@ func main() {
 	mux.HandleFunc("/logout", auth.HandleLogout)
 	mux.HandleFunc("/oauth/start", oauth.HandleStart)
 	mux.HandleFunc("/oauth/callback", oauth.HandleCallback)
-	// Unauthenticated, read-only poster art for Discord embeds (validated
-	// alphanumeric ratingKey, image bytes only, token stripped — see poster.go).
-	// Mounted only when the webhook is on: it exists solely for Discord's
-	// embed fetchers, so there's no reason to expose poster art otherwise.
-	if notifier != nil {
-		mux.HandleFunc("/poster/", posterHandler(posterCache))
-	}
+	// Unauthenticated, read-only poster art (validated alphanumeric
+	// ratingKey, image bytes only, token stripped — see poster.go).
+	// Always mounted: the library grid lazy-loads its card art from
+	// here, and Discord's embed fetchers (when the webhook is on) pull
+	// the "Now Playing" poster from the same URL. It's unauthenticated
+	// because Discord fetches from the public internet; posterHandler
+	// only serves art for keys the library cache actually knows.
+	mux.HandleFunc("/poster/", posterHandler(posterCache))
 
 	// Admin maintenance panel — same identity, gated on ADMIN_EMAILS.
 	registerAdminRoutes(mux, auth, plex, segCache, plexSession, hub, bw, audit, aliasStore)
@@ -360,6 +444,11 @@ func main() {
 		w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
 		w.Header().Set("Cache-Control", "public, max-age=86400, immutable")
 		w.Write(playerJS)
+	})
+	protected.HandleFunc("/static/hls.min.js", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+		w.Header().Set("Cache-Control", "public, max-age=86400, immutable")
+		w.Write(hlsJS)
 	})
 	protected.HandleFunc("/static/index.css", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/css; charset=utf-8")
@@ -472,64 +561,7 @@ func main() {
 	// /hls/seg/<encoded>.ts — decode the segment context, serve from
 	// cache if present, otherwise proxy from Plex while tee-writing to
 	// the cache for future requests.
-	protected.HandleFunc("/hls/seg/", func(w http.ResponseWriter, r *http.Request) {
-		name := strings.TrimPrefix(r.URL.Path, "/hls/seg/")
-		name = strings.TrimSuffix(name, ".ts")
-		ctx, err := codec.decode(name)
-		if err != nil {
-			log.Printf("seg: decode failed name=%q: %v", name, err)
-			http.NotFound(w, r)
-			return
-		}
-		key := cacheKey{ratingKey: ctx.Rating, startMs: ctx.StartMs, endMs: ctx.EndMs}
-		w.Header().Set("Content-Type", "video/mp2t")
-		// Segment URLs are content-addressed via the base64 segCtx in
-		// the path, so the bytes for a given URL never change. Let the
-		// browser cache them aggressively — backward seek into a
-		// previously-fetched range skips a server round-trip entirely.
-		w.Header().Set("Cache-Control", "public, max-age=86400, immutable")
-		cw := &countingResponseWriter{ResponseWriter: w}
-		defer func() { bw.record(clientIP(r), cw.n) }()
-
-		// Cache hit: sendfile-fast path.
-		if path, ok := segCache.Get(key); ok {
-			segCache.RecordHit()
-			http.ServeFile(cw, r, path)
-			plexSession.RecordSegmentSuccess()
-			return
-		}
-		segCache.RecordMiss()
-		// Cache miss: singleflight'd Plex fetch + recovery cascade.
-		// Multiple viewers cold-missing the same segment collapse to
-		// one upstream request; followers reuse the leader's bytes.
-		flightKey := fmt.Sprintf("%s:%d:%d", ctx.Rating, ctx.StartMs, ctx.EndMs)
-		v, ferr, _ := segFlight.Do(flightKey, func() (interface{}, error) {
-			return fetchOrRecoverSegment(ctx, key, plexSession, segCache, hub)
-		})
-		if ferr != nil {
-			log.Printf("seg: cold-miss path failed: %v", ferr)
-			// Recovery itself failed. Track the streak; the existing
-			// safety net handles "Plex is fundamentally wedged" by
-			// running its own restart at the current play position
-			// after segFailureThreshold consecutive misses.
-			if plexSession.RecordSegmentFailure() {
-				go func() {
-					defer plexSession.ClearAutoRestart()
-					if !plexSession.AutoRestartShouldProceed() {
-						log.Printf("auto-restart: superseded by host action, skipping")
-						return
-					}
-					if err := hub.RestartAtCurrentPosition(RestartByAuto); err != nil {
-						log.Printf("auto-restart failed: %v", err)
-					}
-				}()
-			}
-			http.Error(cw, "plex segment: "+ferr.Error(), http.StatusBadGateway)
-			return
-		}
-		plexSession.RecordSegmentSuccess()
-		_, _ = cw.Write(v.([]byte))
-	})
+	protected.HandleFunc("/hls/seg/", segHandler(codec, segCache, plexSession, hub, bw))
 
 	// Lightweight per-connection telemetry: the player POSTs its
 	// currentTime + paused state every few seconds so the admin

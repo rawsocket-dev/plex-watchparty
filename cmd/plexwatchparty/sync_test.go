@@ -1,15 +1,18 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"math"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -847,5 +850,146 @@ func TestControlLoadPostsStart(t *testing.T) {
 	if v, ok := findField(e.Fields, "Rating"); !ok ||
 		!strings.Contains(v, "PG-13") || !strings.Contains(v, "7.5") || !strings.Contains(v, "8.1") {
 		t.Errorf("rating = %q,%v", v, ok)
+	}
+}
+
+// seekNeedsRestart decides whether a seek target is reachable in the
+// CURRENT Plex session's playlist window [offsetSec, edgeSec] (±0.5s
+// tolerance). Anything outside that window needs a Plex restart at the
+// target — the client's playlist has no fragments there, cached or not.
+func TestSeekNeedsRestart(t *testing.T) {
+	cases := []struct {
+		name                 string
+		target, offset, edge float64
+		want                 bool
+	}{
+		{"inside window", 100, 50, 200, false},
+		{"at edge within tolerance", 200.4, 50, 200, false},
+		{"past edge", 210, 50, 200, true},
+		{"before session offset", 30, 50, 200, true},
+		{"just below offset within tolerance", 49.6, 50, 200, false},
+		{"normal zero-offset session", 10, 0, 200, false},
+		{"exactly at offset", 50, 50, 200, false},
+	}
+	for _, c := range cases {
+		if got := seekNeedsRestart(c.target, c.offset, c.edge); got != c.want {
+			t.Errorf("%s: seekNeedsRestart(%v, %v, %v) = %v, want %v",
+				c.name, c.target, c.offset, c.edge, got, c.want)
+		}
+	}
+}
+
+// A seek to BEFORE the session's start offset must restart Plex: the
+// playlist only spans [offset, edge], so without a restart the player
+// clamps to the offset while the room state says the earlier position.
+func TestHubSeekBeforeSessionOffsetRestarts(t *testing.T) {
+	f := newHubTestFixture(t)
+	// Resume-style load: session begins at 300s into the 600s movie.
+	f.post(t, `{"action":"load","ratingKey":"rk1","positionSec":300}`)
+	tok1 := f.hub.Snapshot().SessionToken
+	w := f.post(t, `{"action":"seek","positionSec":100}`)
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("seek status = %d: %s", w.Code, w.Body.String())
+	}
+	if got := f.hub.Snapshot().SessionToken; got <= tok1 {
+		t.Errorf("seek to 100s (before session offset 300s) did not restart: token %d -> %d", tok1, got)
+	}
+}
+
+// A seek past the transcoded edge must restart even when the target lies
+// in a CACHED range: cached segments from a prior session are not in the
+// playlist hls.js holds, so skipping the restart stalls playback until
+// Plex's transcoder catches up.
+func TestHubSeekPastEdgeIntoCachedRangeStillRestarts(t *testing.T) {
+	f := newHubTestFixture(t)
+	f.post(t, `{"action":"load","ratingKey":"rk1"}`) // offset 0, edge 0
+	if _, err := f.cache.Put(cacheKey{ratingKey: "rk1", startMs: 400_000, endMs: 410_000}, strings.NewReader("segdata")); err != nil {
+		t.Fatalf("cache.Put: %v", err)
+	}
+	tok1 := f.hub.Snapshot().SessionToken
+	w := f.post(t, `{"action":"seek","positionSec":405}`)
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("seek status = %d: %s", w.Code, w.Body.String())
+	}
+	if got := f.hub.Snapshot().SessionToken; got <= tok1 {
+		t.Errorf("seek into cached-but-unplayable range did not restart: token %d -> %d", tok1, got)
+	}
+}
+
+// Concurrent kicks overlapping the same identity must not double-close a
+// kill channel (panic: close of closed channel). Kicking any one of a
+// person's connections kicks them all, so N concurrent kicks of N
+// different connection ids of the SAME person all race to close the same
+// 16 channels.
+func TestKickClientConcurrentNoDoubleClose(t *testing.T) {
+	f := newHubTestFixture(t)
+	h := f.hub
+	for round := 0; round < 20; round++ {
+		h.mu.Lock()
+		h.clients = map[*clientEntry]struct{}{}
+		ids := make([]string, 0, 16)
+		for i := 0; i < 16; i++ {
+			id := fmt.Sprintf("c%d", i)
+			ids = append(ids, id)
+			h.clients[&clientEntry{id: id, email: "alice@x.com", name: "Alice", kill: make(chan struct{}), send: make(chan []byte, 8)}] = struct{}{}
+		}
+		h.mu.Unlock()
+		start := make(chan struct{})
+		var wg sync.WaitGroup
+		for _, id := range ids {
+			wg.Add(1)
+			go func(id string) {
+				defer wg.Done()
+				<-start
+				h.KickClient(id)
+			}(id)
+		}
+		close(start)
+		wg.Wait()
+	}
+}
+
+// The per-connection hello frame must carry the server's clock
+// (serverNowMs) so the client can estimate its offset — viewers sync by
+// extrapolating from server-stamped updatedAtMs, and a client whose wall
+// clock is skewed would otherwise sit exactly that skew out of sync
+// forever.
+func TestHandleEventsHelloCarriesServerClock(t *testing.T) {
+	f := newHubTestFixture(t)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		f.hub.HandleEvents(w, r, false, "viewer@x.com")
+	}))
+	defer srv.Close()
+
+	resp, err := http.Get(srv.URL)
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	defer resp.Body.Close()
+
+	// First SSE frame is the hello envelope: "data: {...}\n\n".
+	sc := bufio.NewScanner(resp.Body)
+	var line string
+	for sc.Scan() {
+		if strings.HasPrefix(sc.Text(), "data: ") {
+			line = strings.TrimPrefix(sc.Text(), "data: ")
+			break
+		}
+	}
+	if line == "" {
+		t.Fatalf("no data frame received: %v", sc.Err())
+	}
+	var hello struct {
+		ClientID    string `json:"clientId"`
+		ServerNowMs int64  `json:"serverNowMs"`
+	}
+	if err := json.Unmarshal([]byte(line), &hello); err != nil {
+		t.Fatalf("hello parse: %v (line=%q)", err, line)
+	}
+	if hello.ClientID == "" {
+		t.Fatalf("hello missing clientId: %q", line)
+	}
+	if d := nowMs() - hello.ServerNowMs; hello.ServerNowMs == 0 || d < 0 || d > 5000 {
+		t.Errorf("hello serverNowMs = %d (delta %dms), want the server's current clock", hello.ServerNowMs, d)
 	}
 }

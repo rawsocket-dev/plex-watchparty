@@ -22,6 +22,18 @@ type PlexSession struct {
 	plex          *Plex
 	transcodeKbps int
 
+	// startMu serializes the session-lifecycle operations (Start, Stop,
+	// Restart) END-TO-END. ps.mu only protects the fields and is
+	// deliberately dropped across the HTTP round-trips and teardown
+	// sleeps so readers stay unblocked — but that leaves gaps where two
+	// overlapping Starts interleave and the loser's freshly-started
+	// session is overwritten without ever being stopped (an orphaned
+	// Plex transcoder slot, and Hub state pointing at the wrong stream).
+	// Ordering: startMu → ps.mu, never the reverse; recoverMu → startMu
+	// (RecoverSegmentBytes); Hub.mu may be held while acquiring startMu
+	// (idleShutdown's zero-viewer path).
+	startMu sync.Mutex
+
 	mu           sync.Mutex
 	ratingKey    string
 	sessionID    string // Plex's UUID session ID (currently unused for control; kept for logging)
@@ -180,6 +192,13 @@ func (ps *PlexSession) SessionToken() int64 {
 // /stop endpoint is unreliable and a freshly-stopped prior session
 // can stay tracked for a few seconds.
 func (ps *PlexSession) Start(ratingKey string, offsetSec float64) error {
+	ps.startMu.Lock()
+	defer ps.startMu.Unlock()
+	return ps.start(ratingKey, offsetSec)
+}
+
+// start is Start's body; the caller must hold ps.startMu.
+func (ps *PlexSession) start(ratingKey string, offsetSec float64) error {
 	ps.mu.Lock()
 	stopURL := ps.stopLocked()
 	ps.mu.Unlock()
@@ -275,6 +294,8 @@ func (ps *PlexSession) callDecision(ratingKey, sessionID string, offsetSec float
 // call when no session is active (no-op). The 400 ms cooldown only
 // fires when there was actually a session to tear down.
 func (ps *PlexSession) Stop() {
+	ps.startMu.Lock()
+	defer ps.startMu.Unlock()
 	ps.mu.Lock()
 	stopURL := ps.stopLocked()
 	ps.mu.Unlock()
@@ -386,6 +407,8 @@ func (ps *PlexSession) RestartFor(reason RestartReason, offsetSec float64) error
 // territory. The HTTP /stop call happens with ps.mu released so
 // concurrent readers (segment proxy, scrub bar) aren't stalled.
 func (ps *PlexSession) Restart(offsetSec float64) error {
+	ps.startMu.Lock()
+	defer ps.startMu.Unlock()
 	ps.mu.Lock()
 	ratingKey := ps.ratingKey
 	if ratingKey == "" {
@@ -400,7 +423,7 @@ func (ps *PlexSession) Restart(offsetSec float64) error {
 		// it'll accept a new session under our client identifier.
 		time.Sleep(400 * time.Millisecond)
 	}
-	return ps.Start(ratingKey, offsetSec)
+	return ps.start(ratingKey, offsetSec)
 }
 
 // EdgeSec is the highest segment-end time observed in Plex's playlist

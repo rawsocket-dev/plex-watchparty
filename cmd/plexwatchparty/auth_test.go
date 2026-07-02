@@ -17,8 +17,8 @@ func TestSanitizeName(t *testing.T) {
 		{"BG", "BG"},
 		{"  Alice  ", "Alice"},
 		{"", ""},
-		{"\x00BG\x07", "BG"},               // strip controls
-		{"Émile", "mile"},                  // non-ASCII letters dropped
+		{"\x00BG\x07", "BG"}, // strip controls
+		{"Émile", "mile"},    // non-ASCII letters dropped
 		{"thisnameiswaytoolongforouroption", "thisnameiswaytoo"}, // capped to 16 runes
 	}
 	for _, c := range cases {
@@ -143,7 +143,7 @@ func TestOAuthHandleLoginNoLoopForRevoked(t *testing.T) {
 	// allowlist must NOT be redirected to "/" (Guard would bounce them
 	// back, looping). HandleLogin should render the sign-in page (200).
 	signer := NewAuth("s", "ghost@x.com", "", "") // ghost was allowed when signed
-	a := NewAuth("s", "alice@x.com", "", "")       // ghost since removed; same secret
+	a := NewAuth("s", "alice@x.com", "", "")      // ghost since removed; same secret
 	o := NewOAuth("id", "secret", "https://h/oauth/callback", a, nil)
 	r := httptest.NewRequest("GET", "/login", nil)
 	r.AddCookie(&http.Cookie{Name: sessionCookie, Value: signer.token("ghost@x.com")})
@@ -242,7 +242,9 @@ func TestWithActorStashesEmail(t *testing.T) {
 	}
 }
 
-func TestGuardAndRequireHostAndAdmin(t *testing.T) {
+// (RequireHost was removed: /control gates on the ACTIVE host inside
+// HandleControl, so role-level host gating had no production caller.)
+func TestGuardAndRequireAdmin(t *testing.T) {
 	a := testAuth()
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(299) })
 
@@ -255,17 +257,6 @@ func TestGuardAndRequireHostAndAdmin(t *testing.T) {
 	a.Guard(next).ServeHTTP(w, reqWithSession(a, "alice@x.com"))
 	if w.Code != 299 {
 		t.Errorf("Guard allowed = %d, want passthrough", w.Code)
-	}
-
-	w = httptest.NewRecorder()
-	a.RequireHost(next).ServeHTTP(w, reqWithSession(a, "alice@x.com"))
-	if w.Code != http.StatusForbidden {
-		t.Errorf("RequireHost viewer = %d, want 403", w.Code)
-	}
-	w = httptest.NewRecorder()
-	a.RequireHost(next).ServeHTTP(w, reqWithSession(a, "op@x.com"))
-	if w.Code != 299 {
-		t.Errorf("RequireHost host = %d, want passthrough", w.Code)
 	}
 
 	w = httptest.NewRecorder()

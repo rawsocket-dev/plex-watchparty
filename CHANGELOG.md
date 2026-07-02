@@ -3,6 +3,33 @@
 Notable, user-facing changes to plex-watchparty. Newest first.
 No version numbers — the app ships continuously as a container.
 
+## 2026-07-02
+- Fixed: library poster art now shows without the Discord webhook configured.
+  The `/poster` route was only mounted when `DISCORD_WEBHOOK_URL` was set, so
+  plain deployments silently got gradient-only cards.
+- Fixed: seeking outside the current transcode window now restarts Plex at the
+  target. Previously a seek back to before the point a movie was resumed at,
+  or forward into ranges cached from an earlier session, skipped the restart —
+  and the player would stall or drift apart from the room state, since those
+  positions aren't in the playlist the players hold.
+- Fixed: a transient segment-fetch failure is no longer sent with cacheable
+  headers, so a browser can't pin a one-off error and replay it to the player
+  for a day.
+- Fixed: the library now falls back to the last cached title list when Plex is
+  unreachable at refresh time, instead of failing to load.
+- Changed: viewer sync now compensates for a wrong client clock — the server's
+  clock rides along on connect, so a machine whose clock is minutes off no
+  longer sits exactly that far out of sync.
+- Changed: hls.js is bundled with the app (pinned 1.6.16) instead of loaded
+  from a CDN at runtime; playback no longer needs internet access.
+- Changed: unauthenticated poster requests are only honored for titles in the
+  library, and "no art" answers are remembered briefly — outside keys can no
+  longer probe or hammer Plex.
+- Fixed: assorted races — near-simultaneous movie loads can no longer leak an
+  orphaned Plex transcoder session; kicking the same viewer twice at once can
+  no longer crash the request; a full admin cache wipe no longer stalls
+  viewers' streams while files delete.
+
 ## 2026-06-27
 - Changed: Library cards now show the **IMDb** score and the **Rotten Tomatoes
   audience** score, each clearly labelled (`IMDb 5.9 · 🍿 7.7`). Previously the

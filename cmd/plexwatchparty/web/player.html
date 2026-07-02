@@ -101,7 +101,8 @@
   </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/hls.js@1"></script>
+<!-- Vendored + embedded (see web.go) so movie night has no CDN dependency. -->
+<script src="/static/hls.min.js"></script>
 <script src="/static/common.js"></script>
 <script src="/static/player.js"></script>
 </body>

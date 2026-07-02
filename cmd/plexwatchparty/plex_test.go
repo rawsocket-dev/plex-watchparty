@@ -8,7 +8,9 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func TestPosterStream(t *testing.T) {
@@ -35,6 +37,11 @@ func TestPosterStream(t *testing.T) {
 	}))
 	defer srv.Close()
 	p := NewPlex(srv.URL, "tok", filepath.Join(t.TempDir(), "lib.json"), nil)
+	// Both keys are library titles (posters are only served for those);
+	// their empty Thumb forces the per-key metadata fallback.
+	p.moviesMu.Lock()
+	p.moviesByKey = buildMoviesIndex([]Movie{{RatingKey: "55"}, {RatingKey: "77"}})
+	p.moviesMu.Unlock()
 
 	body, ct, err := p.PosterStream("55")
 	if err != nil {
@@ -68,6 +75,9 @@ func TestPosterStreamThumbStatusError(t *testing.T) {
 	}))
 	defer srv.Close()
 	p := NewPlex(srv.URL, "tok", filepath.Join(t.TempDir(), "lib.json"), nil)
+	p.moviesMu.Lock()
+	p.moviesByKey = buildMoviesIndex([]Movie{{RatingKey: "99"}})
+	p.moviesMu.Unlock()
 	body, _, err := p.PosterStream("99")
 	if err == nil {
 		if body != nil {
@@ -252,5 +262,169 @@ func TestResolveMovieMeta(t *testing.T) {
 	// imdb:// id keeps the "tt" prefix; tvdb is ignored.
 	if meta.IMDbID != "tt0089886" || meta.TMDBID != "14370" {
 		t.Errorf("ids = %q / %q", meta.IMDbID, meta.TMDBID)
+	}
+}
+
+// listingHandler is a minimal healthy Plex listing (one movie section, two
+// titles, batch-enrichment endpoint) whose failure can be toggled: while
+// failing, every request returns 502.
+func listingHandler(failing *atomic.Bool, sectionsCalls *atomic.Int64, delay time.Duration) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if failing != nil && failing.Load() {
+			http.Error(w, "plex down", http.StatusBadGateway)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.URL.Path == "/library/sections":
+			if sectionsCalls != nil {
+				sectionsCalls.Add(1)
+			}
+			time.Sleep(delay)
+			w.Write([]byte(`{"MediaContainer":{"Directory":[{"key":"1","type":"movie","title":"Movies"}]}}`))
+		case r.URL.Path == "/library/sections/1/all":
+			w.Write([]byte(`{"MediaContainer":{"Metadata":[
+				{"ratingKey":"10","title":"A","year":1990},
+				{"ratingKey":"11","title":"B","year":1991}]}}`))
+		case strings.HasPrefix(r.URL.Path, "/library/metadata/"):
+			w.Write([]byte(`{"MediaContainer":{"Metadata":[]}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}
+}
+
+// A refresh that fails (Plex down, TTL expired) must fall back to the
+// previously-cached list instead of breaking the library page.
+func TestListMoviesServesStaleCacheWhenPlexDown(t *testing.T) {
+	var failing atomic.Bool
+	srv := httptest.NewServer(listingHandler(&failing, nil, 0))
+	defer srv.Close()
+	p := NewPlex(srv.URL, "tok", filepath.Join(t.TempDir(), "lib.json"), nil)
+
+	first, err := p.ListMovies()
+	if err != nil || len(first) != 2 {
+		t.Fatalf("prime: %v (%d movies)", err, len(first))
+	}
+	p.RefreshLibrary() // expire the TTL
+	failing.Store(true)
+
+	got, err := p.ListMovies()
+	if err != nil {
+		t.Fatalf("ListMovies with Plex down = error %v, want stale fallback", err)
+	}
+	if len(got) != 2 {
+		t.Errorf("stale fallback returned %d movies, want 2", len(got))
+	}
+}
+
+// Concurrent callers hitting an expired cache must collapse to ONE
+// upstream refresh, not N full library walks.
+func TestListMoviesSingleflightCollapsesConcurrentRefreshes(t *testing.T) {
+	var sectionsCalls atomic.Int64
+	srv := httptest.NewServer(listingHandler(nil, &sectionsCalls, 50*time.Millisecond))
+	defer srv.Close()
+	p := NewPlex(srv.URL, "tok", filepath.Join(t.TempDir(), "lib.json"), nil)
+
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if _, err := p.ListMovies(); err != nil {
+				t.Errorf("ListMovies: %v", err)
+			}
+		}()
+	}
+	wg.Wait()
+	if got := sectionsCalls.Load(); got != 1 {
+		t.Errorf("%d concurrent ListMovies performed %d upstream refreshes, want 1", 8, got)
+	}
+}
+
+// The poster endpoint is unauthenticated (Discord fetches embed images
+// from the public internet), so a key the library cache doesn't know must
+// be refused WITHOUT a Plex round-trip — otherwise alphanumeric key scans
+// enumerate the whole Plex server and hammer it with metadata fetches.
+func TestPosterStreamRefusesKeysOutsideLibrary(t *testing.T) {
+	var hits atomic.Int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"MediaContainer":{"Metadata":[{"thumb":"/library/metadata/999/thumb/1"}]}}`))
+	}))
+	defer srv.Close()
+	p := NewPlex(srv.URL, "tok", filepath.Join(t.TempDir(), "lib.json"), nil)
+	// Library cache knows only key 55.
+	p.moviesMu.Lock()
+	p.moviesByKey = buildMoviesIndex([]Movie{{RatingKey: "55", Title: "Known"}})
+	p.moviesMu.Unlock()
+
+	if _, _, err := p.PosterStream("999"); err != errNoPoster {
+		t.Errorf("unknown key err = %v, want errNoPoster", err)
+	}
+	if got := hits.Load(); got != 0 {
+		t.Errorf("unknown key reached Plex %d times, want 0", got)
+	}
+}
+
+// A title Plex has no IMDb rating for must not be re-fetched on every
+// TTL-expiry refresh — "known unrated" carries forward like a score does.
+// An explicit admin refresh (RefreshLibrary) clears that memory so newly
+// rated titles can be picked up on demand.
+func TestListMoviesUnratedNotRefetchedOnTTLRefresh(t *testing.T) {
+	var mu sync.Mutex
+	var requested []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/library/metadata/") {
+			metadataBatchHandler(t, &requested, &mu)(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/library/sections":
+			w.Write([]byte(`{"MediaContainer":{"Directory":[{"key":"1","type":"movie","title":"Movies"}]}}`))
+		case "/library/sections/1/all":
+			w.Write([]byte(`{"MediaContainer":{"Metadata":[
+				{"ratingKey":"10","title":"Has IMDb","year":1990},
+				{"ratingKey":"12","title":"No IMDb","year":1998}]}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	p := NewPlex(srv.URL, "tok", filepath.Join(t.TempDir(), "lib.json"), nil)
+
+	if _, err := p.ListMovies(); err != nil {
+		t.Fatalf("first ListMovies: %v", err)
+	}
+	mu.Lock()
+	requested = nil
+	mu.Unlock()
+
+	// TTL-expiry refresh (no admin action): nothing should be re-fetched —
+	// 10's score carries forward, 12 is known unrated.
+	p.moviesMu.Lock()
+	p.moviesAt = time.Now().Add(-2 * moviesCacheTTL)
+	p.moviesMu.Unlock()
+	if _, err := p.ListMovies(); err != nil {
+		t.Fatalf("TTL refresh: %v", err)
+	}
+	mu.Lock()
+	if len(requested) != 0 {
+		t.Errorf("TTL refresh re-fetched %v, want none (unrated title should carry forward)", requested)
+	}
+	requested = nil
+	mu.Unlock()
+
+	// Admin refresh: the unrated title gets one fresh look.
+	p.RefreshLibrary()
+	if _, err := p.ListMovies(); err != nil {
+		t.Fatalf("admin refresh: %v", err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(requested) != 1 || requested[0] != "12" {
+		t.Errorf("admin refresh requested %v, want only [12]", requested)
 	}
 }

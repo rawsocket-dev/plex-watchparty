@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -29,10 +30,18 @@ type PosterCache struct {
 	plex *Plex
 	dir  string
 	ttl  time.Duration // <= 0 means cached posters never expire
+
+	// Negative cache: titles that answered errNoPoster, so a poster-less
+	// movie doesn't cost a Plex metadata round-trip on every request
+	// (the endpoint is unauthenticated). Entries expire after negTTL so
+	// art added later still shows up.
+	negMu  sync.Mutex
+	neg    map[string]time.Time // ratingKey -> when the miss was recorded
+	negTTL time.Duration
 }
 
 func NewPosterCache(p *Plex, dir string, ttl time.Duration) *PosterCache {
-	return &PosterCache{plex: p, dir: dir, ttl: ttl}
+	return &PosterCache{plex: p, dir: dir, ttl: ttl, neg: make(map[string]time.Time), negTTL: 15 * time.Minute}
 }
 
 func (c *PosterCache) path(ratingKey string) string {
@@ -42,16 +51,30 @@ func (c *PosterCache) path(ratingKey string) string {
 // Stream returns the poster bytes for a (pre-validated) ratingKey along with
 // a content type. It serves a fresh-enough file from disk when present;
 // otherwise it fetches from Plex, writes the bytes to disk (best-effort), and
-// returns them. Returns errNoPoster when the title has no art — that result
-// is never cached, so art added later shows up on the next request.
+// returns them. Returns errNoPoster when the title has no art — remembered
+// in the negative cache for negTTL so a poster-less (or unknown) key can't
+// hammer Plex, then retried so art added later still shows up.
 func (c *PosterCache) Stream(ratingKey string) (io.ReadCloser, string, error) {
 	fpath := c.path(ratingKey)
 	if data, ct, ok := c.readDisk(fpath); ok {
 		return io.NopCloser(bytes.NewReader(data)), ct, nil
 	}
+	c.negMu.Lock()
+	at, known := c.neg[ratingKey]
+	if known && time.Since(at) < c.negTTL {
+		c.negMu.Unlock()
+		return nil, "", errNoPoster
+	}
+	delete(c.neg, ratingKey) // expired (or about to be refreshed below)
+	c.negMu.Unlock()
 
 	body, ct, err := c.plex.PosterStream(ratingKey)
 	if err != nil {
+		if err == errNoPoster {
+			c.negMu.Lock()
+			c.neg[ratingKey] = time.Now()
+			c.negMu.Unlock()
+		}
 		return nil, "", err
 	}
 	defer body.Close()

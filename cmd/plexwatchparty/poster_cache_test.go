@@ -26,6 +26,7 @@ func newCountingPosterPlex(t *testing.T, hits *int64) *Plex {
 			w.Header().Set("Content-Type", "image/jpeg")
 			w.Write([]byte("IMGDATA"))
 		case "/library/metadata/77":
+			atomic.AddInt64(hits, 1)
 			w.Header().Set("Content-Type", "application/json")
 			w.Write([]byte(`{"MediaContainer":{"Metadata":[{}]}}`))
 		default:
@@ -33,7 +34,13 @@ func newCountingPosterPlex(t *testing.T, hits *int64) *Plex {
 		}
 	}))
 	t.Cleanup(srv.Close)
-	return NewPlex(srv.URL, "tok", filepath.Join(t.TempDir(), "lib.json"), nil)
+	p := NewPlex(srv.URL, "tok", filepath.Join(t.TempDir(), "lib.json"), nil)
+	// Posters are only served for library titles; empty Thumb paths force
+	// the metadata fallback these tests count.
+	p.moviesMu.Lock()
+	p.moviesByKey = buildMoviesIndex([]Movie{{RatingKey: "55"}, {RatingKey: "77"}})
+	p.moviesMu.Unlock()
+	return p
 }
 
 func readClose(t *testing.T, rc io.ReadCloser) string {
@@ -164,5 +171,31 @@ func TestPosterCacheNoThumbNotCached(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dir, "77.jpg")); !os.IsNotExist(err) {
 		t.Errorf("errNoPoster should not write a cache file (stat err = %v)", err)
+	}
+}
+
+// A title with no art must not hit Plex on every request: the errNoPoster
+// result is remembered for negTTL, then retried (so art added later still
+// shows up).
+func TestPosterCacheNegativeResultCached(t *testing.T) {
+	var hits int64
+	c := NewPosterCache(newCountingPosterPlex(t, &hits), t.TempDir(), time.Hour)
+	c.negTTL = 50 * time.Millisecond
+
+	if _, _, err := c.Stream("77"); err != errNoPoster {
+		t.Fatalf("first Stream err = %v, want errNoPoster", err)
+	}
+	if _, _, err := c.Stream("77"); err != errNoPoster {
+		t.Fatalf("second Stream err = %v, want errNoPoster", err)
+	}
+	if got := atomic.LoadInt64(&hits); got != 1 {
+		t.Errorf("metadata fetches = %d, want 1 (negative result cached)", got)
+	}
+	time.Sleep(60 * time.Millisecond) // negative entry expires
+	if _, _, err := c.Stream("77"); err != errNoPoster {
+		t.Fatalf("post-expiry Stream err = %v, want errNoPoster", err)
+	}
+	if got := atomic.LoadInt64(&hits); got != 2 {
+		t.Errorf("metadata fetches after negTTL = %d, want 2 (retried)", got)
 	}
 }

@@ -38,7 +38,9 @@ func TestSegmentCacheAtomicRename(t *testing.T) {
 	c := NewSegmentCache(dir, 1<<30)
 	key := cacheKey{ratingKey: "rk1", startMs: 0, endMs: 6000}
 
-	// Write a stale .tmp file that should NOT survive a clean Put.
+	// A stale *.tmp from an interrupted write must never be served, and
+	// LoadFromDisk (the startup sweep) must clean it up. Put itself uses
+	// unique temp names, so the stale file doesn't collide with it.
 	movieDir := filepath.Join(dir, "rk1")
 	if err := os.MkdirAll(movieDir, 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
@@ -51,13 +53,16 @@ func TestSegmentCacheAtomicRename(t *testing.T) {
 	if _, err := c.Put(key, strings.NewReader("real")); err != nil {
 		t.Fatalf("Put: %v", err)
 	}
-	if _, err := os.Stat(tmpPath); !os.IsNotExist(err) {
-		t.Fatalf("expected tmp gone, stat err = %v", err)
-	}
 	gotPath, _ := c.Get(key)
 	b, _ := os.ReadFile(gotPath)
 	if string(b) != "real" {
 		t.Fatalf("final content = %q, want %q", string(b), "real")
+	}
+	if err := c.LoadFromDisk(); err != nil {
+		t.Fatalf("LoadFromDisk: %v", err)
+	}
+	if _, err := os.Stat(tmpPath); !os.IsNotExist(err) {
+		t.Fatalf("expected stale tmp cleaned by LoadFromDisk, stat err = %v", err)
 	}
 }
 

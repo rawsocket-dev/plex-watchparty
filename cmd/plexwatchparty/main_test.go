@@ -2,6 +2,9 @@ package main
 
 import (
 	"net/http"
+	"net/http/httptest"
+	"os"
+	"strings"
 	"testing"
 )
 
@@ -45,5 +48,97 @@ func TestNewServerTimeouts(t *testing.T) {
 	}
 	if srv.ReadTimeout != 0 {
 		t.Errorf("ReadTimeout = %v, want 0 (SSE/HLS are long-lived)", srv.ReadTimeout)
+	}
+}
+
+// segTestFixture wires a segHandler against the hub fixture's mock Plex.
+// encode() mints a real segment URL for a context pointing wherever the
+// test wants (usually at the mock, sometimes at a dead port).
+type segTestFixture struct {
+	*hubTestFixture
+	codec   *segCodec
+	handler http.HandlerFunc
+	bw      *bwTracker
+}
+
+func newSegTestFixture(t *testing.T) *segTestFixture {
+	t.Helper()
+	f := newHubTestFixture(t)
+	codec, err := newSegCodec("tok")
+	if err != nil {
+		t.Fatalf("newSegCodec: %v", err)
+	}
+	bw := newBwTracker()
+	return &segTestFixture{
+		hubTestFixture: f,
+		codec:          codec,
+		handler:        segHandler(codec, f.cache, f.hub.session, f.hub, bw),
+		bw:             bw,
+	}
+}
+
+func (f *segTestFixture) get(t *testing.T, ctx segCtx) *httptest.ResponseRecorder {
+	t.Helper()
+	r := httptest.NewRequest("GET", "/hls/seg/"+f.codec.encode(ctx)+".ts", nil)
+	w := httptest.NewRecorder()
+	f.handler(w, r)
+	return w
+}
+
+// An upstream failure must NOT go out with the immutable cache header —
+// explicit freshness makes even a 502 cacheable, and a browser that pins
+// the failure keeps replaying it to hls.js's retries for a day.
+func TestSegHandlerErrorNotCacheable(t *testing.T) {
+	f := newSegTestFixture(t)
+	// PlexURL points at the mock's 404 default; no cache entry; no active
+	// session, so server-side recovery fails fast too.
+	w := f.get(t, segCtx{PlexURL: f.mock.URL + "/no-such-segment.ts", StartMs: 0, EndMs: 6000, Rating: "rk1"})
+	if w.Code != http.StatusBadGateway {
+		t.Fatalf("status = %d, want 502", w.Code)
+	}
+	if cc := w.Header().Get("Cache-Control"); strings.Contains(cc, "immutable") || strings.Contains(cc, "max-age") {
+		t.Errorf("error response carries cacheable Cache-Control %q; must not be cacheable", cc)
+	}
+}
+
+// The success paths keep the aggressive immutable caching.
+func TestSegHandlerCacheHitServesImmutable(t *testing.T) {
+	f := newSegTestFixture(t)
+	key := cacheKey{ratingKey: "rk1", startMs: 0, endMs: 6000}
+	if _, err := f.cache.Put(key, strings.NewReader("cached-bytes")); err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+	w := f.get(t, segCtx{PlexURL: f.mock.URL + "/ignored.ts", StartMs: 0, EndMs: 6000, Rating: "rk1"})
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	if got := w.Body.String(); got != "cached-bytes" {
+		t.Errorf("body = %q, want cached bytes", got)
+	}
+	if cc := w.Header().Get("Cache-Control"); !strings.Contains(cc, "immutable") {
+		t.Errorf("cache hit Cache-Control = %q, want immutable", cc)
+	}
+}
+
+// A cache entry whose file was evicted between the index lookup and the
+// read must fall through to the normal fetch path — not serve a 404
+// (previously: a 404 stamped immutable-cacheable).
+func TestSegHandlerEvictedFileFallsThroughToFetch(t *testing.T) {
+	f := newSegTestFixture(t)
+	key := cacheKey{ratingKey: "rk1", startMs: 0, endMs: 6000}
+	path, err := f.cache.Put(key, strings.NewReader("stale"))
+	if err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+	if err := os.Remove(path); err != nil { // evict behind the index's back
+		t.Fatalf("remove: %v", err)
+	}
+	// The upstream URL serves real bytes via the mock's playlist path.
+	w := f.get(t, segCtx{PlexURL: f.mock.URL + "/video/:/transcode/universal/start.m3u8", StartMs: 0, EndMs: 6000, Rating: "rk1"})
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (fall through to Plex fetch)", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "#EXTM3U") {
+		t.Errorf("body = %q, want upstream bytes", w.Body.String())
 	}
 }

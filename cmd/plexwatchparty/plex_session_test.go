@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -189,5 +190,58 @@ func TestPlexSessionFetchSegment(t *testing.T) {
 	data, _ := io.ReadAll(rc)
 	if string(data) != "segment-bytes" {
 		t.Errorf("FetchSegment data = %q, want %q", string(data), "segment-bytes")
+	}
+}
+
+// Concurrent Starts must not orphan a Plex transcode session: every
+// session ever started must have been stopped by the time the final
+// Stop() returns. Without end-to-end serialization, two overlapping
+// Starts interleave in the stop→start gap (ps.mu is deliberately dropped
+// there) and the loser's freshly-started session is overwritten without
+// ever being stopped — a leaked transcoder slot, the exact failure the
+// pre-/decision + retry dance exists to paper over.
+func TestPlexSessionConcurrentStartsLeaveNoOrphans(t *testing.T) {
+	var mu sync.Mutex
+	started := map[string]bool{}
+	stopped := map[string]bool{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.Contains(r.URL.Path, "/transcode/universal/start.m3u8"):
+			mu.Lock()
+			started[r.URL.Query().Get("session")] = true
+			mu.Unlock()
+		case strings.Contains(r.URL.Path, "/transcode/universal/stop"):
+			mu.Lock()
+			stopped[r.URL.Query().Get("session")] = true
+			mu.Unlock()
+		}
+		w.Write([]byte("#EXTM3U\n"))
+	}))
+	defer srv.Close()
+
+	ps := NewPlexSession(NewPlex(srv.URL, "tok", "", nil), 12000)
+	if err := ps.Start("rk1", 0); err != nil {
+		t.Fatalf("initial Start: %v", err)
+	}
+	var wg sync.WaitGroup
+	for _, rk := range []string{"rk2", "rk3"} {
+		wg.Add(1)
+		go func(rk string) {
+			defer wg.Done()
+			if err := ps.Start(rk, 0); err != nil {
+				t.Errorf("Start(%s): %v", rk, err)
+			}
+		}(rk)
+	}
+	wg.Wait()
+	ps.Stop() // tear down whichever load won
+
+	mu.Lock()
+	defer mu.Unlock()
+	for id := range started {
+		if !stopped[id] {
+			t.Errorf("session %q started but never stopped (orphaned transcoder slot); started=%d stopped=%d",
+				id, len(started), len(stopped))
+		}
 	}
 }

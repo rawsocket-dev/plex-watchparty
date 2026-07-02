@@ -17,11 +17,11 @@ import (
 // State is the single source of truth for the watch party. Position is only
 // authoritative at UpdatedAtMs; while Playing, clients extrapolate from there.
 type State struct {
-	RatingKey   string  `json:"ratingKey"`
-	Title       string  `json:"title"`
+	RatingKey string `json:"ratingKey"`
+	Title     string `json:"title"`
 	// Year is the movie's release year (Plex metadata). The player shows
 	// it in parens after the title; omitted from the wire when unknown.
-	Year        int     `json:"year,omitempty"`
+	Year int `json:"year,omitempty"`
 	// Quality is a source→target stream summary like "4K HEVC → 1080p"
 	// (the target is always 1080p — our fixed transcode), built from the
 	// source StreamInfo at load via qualityLine(). Empty when the source
@@ -442,18 +442,20 @@ func (h *Hub) wakeBroadcast() {
 
 // Lock ordering — touching this invariant breaks the room.
 //
-// The three mutexes in play are Hub.mu, PlexSession.mu, and
-// SegmentCache.mu. They MUST be acquired in that order if any two
-// are held simultaneously:
+// The mutexes in play are Hub.mu, PlexSession's locks, SegmentCache.mu,
+// and bwTracker.mu. They MUST be acquired in this order if any two are
+// held simultaneously:
 //
-//	Hub.mu → PlexSession.mu (HandleControl seek/restart, idleShutdown)
+//	Hub.mu → PlexSession.startMu → PlexSession.mu (idleShutdown → Stop;
+//	  PlexSession internally: recoverMu → startMu → mu)
 //	Hub.mu → SegmentCache.mu (broadcast → cache.RangesFor)
+//	Hub.mu → bwTracker.mu (AdminRoster → bw.KbpsForIP)
 //
-// Neither PlexSession nor SegmentCache ever calls back into Hub, so
-// the reverse direction is impossible by construction. The cache
-// methods also never call into PlexSession and vice versa, so those
-// two are never held together. If any future refactor introduces a
-// cache or session callback that needs hub state, take it OUT of
+// None of PlexSession / SegmentCache / bwTracker ever calls back into
+// Hub, so the reverse direction is impossible by construction. The
+// cache methods also never call into PlexSession and vice versa, so
+// those two are never held together. If any future refactor introduces
+// a cache or session callback that needs hub state, take it OUT of
 // the lock and pass values, don't add an acquire.
 
 // hostCount returns the number of currently-connected hosts. Must be
@@ -1140,11 +1142,13 @@ func (h *Hub) HandleEvents(w http.ResponseWriter, r *http.Request, isHost bool, 
 		return write([]byte("\n\n"))
 	}
 	// Per-connection handshake: the client needs to know its own id
-	// so it can stamp heartbeat POSTs with it. Sent only to this
-	// connection (the rest of the room never sees a clientId field
-	// in their state stream). The carry-along _clientId on the init
-	// state body avoids a second framing protocol.
-	hello, _ := json.Marshal(map[string]any{"clientId": entry.id})
+	// so it can stamp heartbeat POSTs with it, and the server's clock
+	// (serverNowMs) so it can estimate its clock offset — every sync
+	// target is extrapolated from server-stamped updatedAtMs, and a
+	// client with a skewed wall clock would otherwise sit exactly that
+	// skew out of sync forever. Sent only to this connection (the rest
+	// of the room never sees these fields in their state stream).
+	hello, _ := json.Marshal(map[string]any{"clientId": entry.id, "serverNowMs": nowMs()})
 	if writeBytes(hello) != nil || writeBytes(initBytes) != nil {
 		return
 	}
@@ -1224,6 +1228,18 @@ func clampSeekTarget(target, durationSec float64) (float64, bool) {
 		target = durationSec
 	}
 	return target, true
+}
+
+// seekNeedsRestart reports whether a seek target requires a Plex restart.
+// The client's playlist only spans the CURRENT session's window
+// [offsetSec, edgeSec] (Plex transcodes forward from the start offset), so
+// any target outside it — before the offset OR past the transcoded edge —
+// is unreachable without a fresh session, even when the segment cache
+// holds that range: cached segments from a prior session are not in the
+// playlist hls.js is attached to, so nothing would ever request them. The
+// ±0.5s tolerance forgives float rounding at the window boundaries.
+func seekNeedsRestart(target, offsetSec, edgeSec float64) bool {
+	return target < offsetSec-0.5 || target > edgeSec+0.5
 }
 
 // validRatingKey reports whether s is a well-formed Plex rating key: a
@@ -1503,21 +1519,14 @@ func (h *Hub) HandleControl(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "invalid seek position", http.StatusBadRequest)
 			return
 		}
-		// Decide whether the seek target is reachable from cache alone
-		// (no Plex restart) or whether we need to restart Plex at the
-		// new offset. Cached ranges + the current session's edge define
-		// what's instantly seekable.
-		needRestart := target > h.session.EdgeSec()+0.5
-		if needRestart {
-			// Also check cache — backward seeks into a previously-watched
-			// range (perhaps before a prior Restart) don't need a restart.
-			for _, rng := range h.cache.RangesFor(cur.RatingKey) {
-				if target >= rng[0] && target <= rng[1] {
-					needRestart = false
-					break
-				}
-			}
-		}
+		// Decide whether the seek target is reachable in the current
+		// session's playlist window, or whether we must restart Plex at
+		// the new offset. The segment cache deliberately does NOT factor
+		// in: cached ranges outside the window can't be addressed by the
+		// playlist the players hold, so skipping the restart would stall
+		// the room (the cache still makes the post-restart session cheap
+		// via the overlap-serving path).
+		needRestart := seekNeedsRestart(target, float64(h.session.OffsetMs())/1000.0, h.session.EdgeSec())
 		if needRestart {
 			// We must drop h.mu before calling session.Restart — it
 			// holds PlexSession.mu internally for the duration of the
@@ -1529,8 +1538,8 @@ func (h *Hub) HandleControl(w http.ResponseWriter, r *http.Request) {
 			// target overrides whatever PositionSec they wrote, but
 			// the rest of the state must be current.
 			h.mu.Unlock()
-			log.Printf("seek: restart needed (target=%.2f > edge=%.2f, no cache hit)",
-				target, h.session.EdgeSec())
+			log.Printf("seek: restart needed (target=%.2fs outside session window [%.2f, %.2f])",
+				target, float64(h.session.OffsetMs())/1000.0, h.session.EdgeSec())
 			// Host action wins over any in-flight auto-restart.
 			h.session.SuppressAutoRestart()
 			if err := h.session.RestartFor(RestartBySeek, target); err != nil {
@@ -1769,20 +1778,22 @@ func (h *Hub) KickClient(id string) bool {
 			break
 		}
 	}
-	var targets []*clientEntry
+	// Close while still holding h.mu so the closed-check and the close are
+	// atomic — two concurrent kicks overlapping the same identity would
+	// otherwise both pass the check and double-close (panic). close() never
+	// blocks, so holding the room lock across it is safe.
+	n := 0
 	for c := range h.clients {
 		if c.id == id || (email != "" && c.email == email) {
-			targets = append(targets, c)
+			n++
+			select {
+			case <-c.kill:
+				// already closed
+			default:
+				close(c.kill)
+			}
 		}
 	}
 	h.mu.Unlock()
-	for _, t := range targets {
-		select {
-		case <-t.kill:
-			// already closed
-		default:
-			close(t.kill)
-		}
-	}
-	return len(targets) > 0
+	return n > 0
 }

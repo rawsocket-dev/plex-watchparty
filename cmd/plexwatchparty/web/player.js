@@ -242,11 +242,22 @@ scrubHit.addEventListener('touchend', () => {
   commitScrubSeek();
 });
 
-// Wall-clock time (ms) of our last local play/pause/seek so we can
+// clockOffsetMs is our estimate of (this machine's clock − the server's
+// clock), taken from the serverNowMs the SSE hello carries. Every sync
+// target extrapolates from the server-stamped updatedAtMs, so without
+// this a viewer whose wall clock is N seconds off would sit exactly N
+// seconds out of sync forever (the drift corrector faithfully seeking to
+// the skewed target every tick). Ignores network latency — LAN RTT is
+// milliseconds, real skew is what matters. Refreshed on every reconnect.
+let clockOffsetMs = 0;
+function serverNow() { return Date.now() - clockOffsetMs; }
+
+// Server-clock time (ms) of our last local play/pause/seek so we can
 // ignore SSE state broadcasts that pre-date it. Without this, an SSE
 // message that was in-flight when the user dragged the scrub bar can
 // arrive a moment later carrying the OLD position and yank the player
-// back. 500 ms tolerance for client↔server clock skew.
+// back. Stamped via serverNow() so it compares cleanly against the
+// server-stamped updatedAtMs; 500 ms tolerance for estimate error.
 let lastLocalActionMs = 0;
 function commitScrubSeek() {
   const dur = knownDuration();
@@ -268,7 +279,7 @@ function commitScrubSeek() {
   // v.currentTime to a value outside v.seekable lets the browser
   // silently clamp locally; the reattach moves us to the real target
   // once the new playlist arrives.
-  lastLocalActionMs = Date.now();
+  lastLocalActionMs = serverNow();
   v.currentTime = target;
   post('seek', { positionSec: target });
 }
@@ -299,7 +310,7 @@ function commitKbSeek() {
   // SSE can't yank us back, seek locally (the browser clamps to seekable; a
   // forward seek past the transcoded edge is corrected by the reattach), and
   // let the server be the authority on whether a restart is needed.
-  lastLocalActionMs = Date.now();
+  lastLocalActionMs = serverNow();
   v.currentTime = target;
   post('seek', { positionSec: target });
 }
@@ -408,7 +419,7 @@ joinEl.addEventListener('click', () => {
   // just by taking their seat.
   const roomPlaying = !!(lastState && lastState.playing);
   if (isHost) {
-    lastLocalActionMs = Date.now();
+    lastLocalActionMs = serverNow();
     if (lastState && lastState.ratingKey && !roomPlaying) {
       post('play');
     }
@@ -593,7 +604,9 @@ let lastState = null;
 function targetFromState(s) {
   if (!s) return null;
   let t = s.positionSec;
-  if (s.playing) t += (Date.now() - s.updatedAtMs) / 1000;
+  // updatedAtMs is server-stamped — extrapolate on the server's clock
+  // (via the hello-estimated offset), not this machine's.
+  if (s.playing) t += (serverNow() - s.updatedAtMs) / 1000;
   return t;
 }
 
@@ -726,6 +739,13 @@ let clientId = null;
 openLiveEvents((msg) => {
   if (msg && typeof msg.clientId === 'string' && !msg.ratingKey && !('positionSec' in msg)) {
     clientId = msg.clientId;
+    if (typeof msg.serverNowMs === 'number' && msg.serverNowMs > 0) {
+      clockOffsetMs = Date.now() - msg.serverNowMs;
+      if (Math.abs(clockOffsetMs) > 1000) {
+        console.log('clock: local clock is', (clockOffsetMs / 1000).toFixed(2),
+                    's ahead of the server; sync math compensates');
+      }
+    }
     return;
   }
   applyState(msg, 'sse');

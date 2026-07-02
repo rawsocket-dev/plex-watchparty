@@ -171,12 +171,16 @@ func (c *SegmentCache) Put(key cacheKey, src io.Reader) (string, error) {
 		return "", err
 	}
 	finalPath := filepath.Join(movieDir, fmt.Sprintf("seg_%d_%d.ts", key.startMs, key.endMs))
-	tmpPath := finalPath + ".tmp"
 
-	f, err := os.Create(tmpPath)
+	// Unique temp name (not finalPath+".tmp"): two concurrent writers of
+	// the same key would interleave into a shared fixed-name temp file and
+	// rename corrupt bytes into the cache. The *.tmp suffix keeps
+	// LoadFromDisk's stale-write cleanup matching these files.
+	f, err := os.CreateTemp(movieDir, "put-*.tmp")
 	if err != nil {
 		return "", err
 	}
+	tmpPath := f.Name()
 	n, copyErr := io.Copy(f, src)
 	closeErr := f.Close()
 	if copyErr != nil {
@@ -193,17 +197,19 @@ func (c *SegmentCache) Put(key cacheKey, src io.Reader) (string, error) {
 	}
 
 	c.mu.Lock()
-	defer c.mu.Unlock()
 	if old, ok := c.entries[key]; ok {
 		c.lru.Remove(old.elem)
 		c.totalBytes -= old.bytes
 		delete(c.entries, key)
 	}
-	// Evict LRU entries until there's headroom for the new one.
+	// Evict LRU entries until there's headroom for the new one. The
+	// unlinks happen after the lock drops — a slow disk must not stall
+	// every reader (broadcast's RangesFor runs under Hub.mu → cache.mu).
+	var evicted []string
 	for c.totalBytes+n > c.maxBytes && c.lru.Len() > 0 {
 		oldest := c.lru.Back()
 		oe := oldest.Value.(*cacheEntry)
-		os.Remove(oe.path)
+		evicted = append(evicted, oe.path)
 		c.lru.Remove(oldest)
 		delete(c.entries, oe.key)
 		c.totalBytes -= oe.bytes
@@ -214,6 +220,10 @@ func (c *SegmentCache) Put(key cacheKey, src io.Reader) (string, error) {
 	c.entries[key] = e
 	c.totalBytes += n
 	c.invalidateRangesLocked(key.ratingKey)
+	c.mu.Unlock()
+	for _, p := range evicted {
+		os.Remove(p)
+	}
 	return finalPath, nil
 }
 
@@ -349,18 +359,18 @@ type CacheMovieStat struct {
 // titles surface first. Hits/Misses are lifetime counters since
 // process start, useful for confirming the cache is doing real work.
 type CacheStats struct {
-	Entries    int              `json:"entries"`
-	TotalBytes int64            `json:"totalBytes"`
-	MaxBytes   int64            `json:"maxBytes"`
-	Hits       int64            `json:"hits"`
-	Misses     int64            `json:"misses"`
+	Entries    int   `json:"entries"`
+	TotalBytes int64 `json:"totalBytes"`
+	MaxBytes   int64 `json:"maxBytes"`
+	Hits       int64 `json:"hits"`
+	Misses     int64 `json:"misses"`
 	// FreeBytes / DiskTotal report the underlying filesystem
 	// capacity at the cache dir. Helps catch "the host disk is full"
 	// before LRU eviction starts thrashing. Zero if the platform
 	// doesn't support statfs (i.e. Windows).
-	FreeBytes  int64            `json:"freeBytes"`
-	DiskTotal  int64            `json:"diskTotalBytes"`
-	PerMovie   []CacheMovieStat `json:"perMovie"`
+	FreeBytes int64            `json:"freeBytes"`
+	DiskTotal int64            `json:"diskTotalBytes"`
+	PerMovie  []CacheMovieStat `json:"perMovie"`
 }
 
 // RecordHit / RecordMiss are called by the /hls/seg handler. The
@@ -419,11 +429,15 @@ func (c *SegmentCache) Stats() CacheStats {
 // just refill the cache as segments are re-requested.
 func (c *SegmentCache) Clear() (entries int, bytes int64) {
 	c.mu.Lock()
-	defer c.mu.Unlock()
 	entries = len(c.entries)
 	bytes = c.totalBytes
+	// Swap the index out under the lock; unlink after releasing it. A
+	// full 20 GB clear is thousands of unlink syscalls — holding c.mu
+	// through them would stall broadcast (Hub.mu → cache.mu) and every
+	// segment request for seconds.
+	paths := make([]string, 0, len(c.entries))
 	for _, e := range c.entries {
-		_ = os.Remove(e.path)
+		paths = append(paths, e.path)
 	}
 	c.entries = make(map[cacheKey]*cacheEntry)
 	c.lru = list.New()
@@ -435,6 +449,10 @@ func (c *SegmentCache) Clear() (entries int, bytes int64) {
 	// history. (ClearMovie, a partial clear, intentionally leaves them.)
 	c.hits.Store(0)
 	c.misses.Store(0)
+	c.mu.Unlock()
+	for _, p := range paths {
+		_ = os.Remove(p)
+	}
 	return entries, bytes
 }
 
@@ -443,12 +461,12 @@ func (c *SegmentCache) Clear() (entries int, bytes int64) {
 // also rm'd if it's now empty.
 func (c *SegmentCache) ClearMovie(ratingKey string) (entries int, bytes int64) {
 	c.mu.Lock()
-	defer c.mu.Unlock()
+	var paths []string
 	for k, e := range c.entries {
 		if k.ratingKey != ratingKey {
 			continue
 		}
-		_ = os.Remove(e.path)
+		paths = append(paths, e.path)
 		c.lru.Remove(e.elem)
 		delete(c.entries, k)
 		c.totalBytes -= e.bytes
@@ -456,6 +474,11 @@ func (c *SegmentCache) ClearMovie(ratingKey string) (entries int, bytes int64) {
 		bytes += e.bytes
 	}
 	c.invalidateRangesLocked(ratingKey)
+	c.mu.Unlock()
+	// Unlink off the lock — see Clear.
+	for _, p := range paths {
+		_ = os.Remove(p)
+	}
 	if entries > 0 {
 		_ = os.Remove(filepath.Join(c.dir, ratingKey)) // best-effort, only succeeds if empty
 	}
@@ -472,13 +495,13 @@ func (c *SegmentCache) ClearMovie(ratingKey string) (entries int, bytes int64) {
 func (c *SegmentCache) Prune(olderThan time.Duration) (entries int, bytes int64) {
 	cutoff := time.Now().Add(-olderThan)
 	c.mu.Lock()
-	defer c.mu.Unlock()
 	affectedMovies := make(map[string]struct{})
+	var paths []string
 	for k, e := range c.entries {
 		if !e.mtime.Before(cutoff) {
 			continue
 		}
-		_ = os.Remove(e.path)
+		paths = append(paths, e.path)
 		c.lru.Remove(e.elem)
 		delete(c.entries, k)
 		c.totalBytes -= e.bytes
@@ -488,6 +511,11 @@ func (c *SegmentCache) Prune(olderThan time.Duration) (entries int, bytes int64)
 	}
 	for rk := range affectedMovies {
 		c.invalidateRangesLocked(rk)
+	}
+	c.mu.Unlock()
+	// Unlink off the lock — see Clear.
+	for _, p := range paths {
+		_ = os.Remove(p)
 	}
 	return entries, bytes
 }

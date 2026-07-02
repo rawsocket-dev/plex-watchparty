@@ -26,6 +26,8 @@ type AliasStore struct {
 	path string
 	mu   sync.RWMutex
 	m    map[string]string // lowercased email -> alias
+
+	writeMu sync.Mutex // serializes file rewrites (see persist)
 }
 
 // NewAliasStore constructs the store and loads any existing mappings.
@@ -109,9 +111,14 @@ func (s *AliasStore) List() []AliasEntry {
 
 // persist atomically rewrites aliases.json from the in-memory map.
 // Best-effort: a write failure is logged but the mapping still lives in
-// memory for the session.
+// memory for the session. writeMu serializes writers and the snapshot is
+// taken at write time (audit.go's pattern), so concurrent Set/Remove
+// can't interleave into a shared temp file or rename an older snapshot
+// over a newer one.
 func (s *AliasStore) persist() {
-	entries := s.List()
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	entries := s.List() // snapshot at write time
 	b, err := json.Marshal(entries)
 	if err != nil {
 		log.Printf("alias: marshal: %v", err)
@@ -121,14 +128,26 @@ func (s *AliasStore) persist() {
 		log.Printf("alias: mkdir: %v", err)
 		return
 	}
-	tmp := s.path + ".tmp"
-	if err := os.WriteFile(tmp, b, 0o644); err != nil {
-		log.Printf("alias: write %s: %v", tmp, err)
+	tmp, err := os.CreateTemp(filepath.Dir(s.path), ".aliases-*")
+	if err != nil {
+		log.Printf("alias: temp: %v", err)
 		return
 	}
-	if err := os.Rename(tmp, s.path); err != nil {
-		log.Printf("alias: rename %s -> %s: %v", tmp, s.path, err)
-		_ = os.Remove(tmp)
+	tmpName := tmp.Name()
+	if _, err := tmp.Write(b); err != nil {
+		tmp.Close()
+		_ = os.Remove(tmpName)
+		log.Printf("alias: write %s: %v", tmpName, err)
+		return
+	}
+	if err := tmp.Close(); err != nil {
+		_ = os.Remove(tmpName)
+		log.Printf("alias: close %s: %v", tmpName, err)
+		return
+	}
+	if err := os.Rename(tmpName, s.path); err != nil {
+		log.Printf("alias: rename %s -> %s: %v", tmpName, s.path, err)
+		_ = os.Remove(tmpName)
 	}
 }
 

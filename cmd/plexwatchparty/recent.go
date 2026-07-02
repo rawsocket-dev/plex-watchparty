@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 )
@@ -27,6 +28,8 @@ type RecentMovies struct {
 
 	mu      sync.Mutex
 	entries []RecentMovie
+
+	writeMu sync.Mutex // serializes file rewrites (see persist)
 }
 
 // recentCap is how many entries we keep. Five fits the waiting room
@@ -89,6 +92,19 @@ func (r *RecentMovies) Touch(ratingKey, title string, year int) {
 	if len(r.entries) > r.cap {
 		r.entries = r.entries[:r.cap]
 	}
+	r.mu.Unlock()
+	r.persist()
+}
+
+// persist atomically rewrites the JSON file. writeMu serializes writers
+// and the snapshot is taken AT WRITE TIME (audit.go's pattern), so the
+// last write to land always carries the newest committed list — two
+// concurrent Touches can't rename an older snapshot over a newer one or
+// interleave into a shared temp file.
+func (r *RecentMovies) persist() {
+	r.writeMu.Lock()
+	defer r.writeMu.Unlock()
+	r.mu.Lock()
 	snapshot := make([]RecentMovie, len(r.entries))
 	copy(snapshot, r.entries)
 	r.mu.Unlock()
@@ -98,17 +114,29 @@ func (r *RecentMovies) Touch(ratingKey, title string, year int) {
 		log.Printf("recent: marshal: %v", err)
 		return
 	}
-	// Atomic write: stage into a sibling .tmp file and rename. Without
+	// Atomic write: stage into a unique temp file and rename. Without
 	// this an interrupted write would leave a truncated JSON file on
 	// disk and the next Load would discard everything as malformed.
-	tmp := r.path + ".tmp"
-	if err := os.WriteFile(tmp, b, 0o644); err != nil {
-		log.Printf("recent: write %s: %v", tmp, err)
+	tmp, err := os.CreateTemp(filepath.Dir(r.path), ".recent-*")
+	if err != nil {
+		log.Printf("recent: temp: %v", err)
 		return
 	}
-	if err := os.Rename(tmp, r.path); err != nil {
-		log.Printf("recent: rename %s -> %s: %v", tmp, r.path, err)
-		_ = os.Remove(tmp)
+	tmpName := tmp.Name()
+	if _, err := tmp.Write(b); err != nil {
+		tmp.Close()
+		_ = os.Remove(tmpName)
+		log.Printf("recent: write %s: %v", tmpName, err)
+		return
+	}
+	if err := tmp.Close(); err != nil {
+		_ = os.Remove(tmpName)
+		log.Printf("recent: close %s: %v", tmpName, err)
+		return
+	}
+	if err := os.Rename(tmpName, r.path); err != nil {
+		log.Printf("recent: rename %s -> %s: %v", tmpName, r.path, err)
+		_ = os.Remove(tmpName)
 	}
 }
 

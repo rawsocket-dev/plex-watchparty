@@ -15,6 +15,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/sync/singleflight"
 )
 
 // Plex talks to a Plex Media Server using a server-side token.
@@ -27,12 +29,19 @@ type Plex struct {
 	// ListMovies cache: walking every movie section costs several seconds
 	// on a large library. The cache is held in memory for the TTL below,
 	// and (when cacheFile is non-empty) also persisted to disk so a
-	// container restart doesn't pay the cold-start cost.
+	// container restart doesn't pay the cold-start cost. listFlight
+	// collapses concurrent TTL-miss refreshes into one upstream walk.
 	moviesMu    sync.Mutex
 	moviesAt    time.Time
 	moviesVal   []Movie
 	moviesByKey map[string]Movie // O(1) ratingKey lookup, refreshed alongside moviesVal
 	cacheFile   string
+	listFlight  singleflight.Group
+	// imdbNoRating remembers titles whose metadata batch came back with
+	// no imdb:// entry, so TTL-expiry refreshes don't re-fetch the same
+	// unrated titles forever. Cleared by RefreshLibrary — an explicit
+	// admin refresh re-checks everything. Guarded by moviesMu.
+	imdbNoRating map[string]bool
 
 	// Health state. healthy is the latest known reachability; if any
 	// call into Plex returns a transport error we flip it false and
@@ -65,12 +74,13 @@ func NewPlex(baseURL, token, cacheFile string, audit *AuditLog) *Plex {
 	tr := http.DefaultTransport.(*http.Transport).Clone()
 	tr.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 	p := &Plex{
-		BaseURL:   strings.TrimRight(baseURL, "/"),
-		Token:     token,
-		http:      &http.Client{Timeout: 15 * time.Second, Transport: tr},
-		cacheFile: cacheFile,
-		healthy:   true, // optimistic; startup Ping in main flips this if Plex is down
-		audit:     audit,
+		BaseURL:      strings.TrimRight(baseURL, "/"),
+		Token:        token,
+		http:         &http.Client{Timeout: 15 * time.Second, Transport: tr},
+		cacheFile:    cacheFile,
+		healthy:      true, // optimistic; startup Ping in main flips this if Plex is down
+		audit:        audit,
+		imdbNoRating: make(map[string]bool),
 	}
 	p.loadCacheFromDisk()
 	return p
@@ -362,19 +372,59 @@ func (p *Plex) Stats() LibraryStats {
 func (p *Plex) RefreshLibrary() {
 	p.moviesMu.Lock()
 	p.moviesAt = time.Time{} // forces TTL check to miss on next ListMovies
+	// An explicit refresh also forgets which titles were unrated, so the
+	// next enrichment gives every scoreless title a fresh look.
+	p.imdbNoRating = make(map[string]bool)
 	p.moviesMu.Unlock()
 	log.Printf("library: cache invalidated; next ListMovies will refetch from Plex")
 }
 
 // ListMovies returns every item across all movie-type library sections.
-// Cached in-memory + on disk for `moviesCacheTTL`.
+// Cached in-memory + on disk for `moviesCacheTTL`. Concurrent TTL-miss
+// callers collapse into a single upstream refresh, and a refresh that
+// fails outright (Plex down) falls back to the previous cached list —
+// stale titles beat an empty library page. The fallback doesn't advance
+// moviesAt, so the admin panel's cache age keeps growing (a visible
+// signal) and the next call retries Plex.
 func (p *Plex) ListMovies() ([]Movie, error) {
-	p.moviesMu.Lock()
-	if p.moviesVal != nil && time.Since(p.moviesAt) < moviesCacheTTL {
-		out := p.moviesVal
-		p.moviesMu.Unlock()
-		return out, nil
+	if movies, ok := p.cachedMovies(); ok {
+		return movies, nil
 	}
+	v, err, _ := p.listFlight.Do("list", func() (any, error) {
+		// Re-check inside the flight: a caller that queued behind a
+		// just-completed refresh must not immediately refetch.
+		if movies, ok := p.cachedMovies(); ok {
+			return movies, nil
+		}
+		return p.fetchMovies()
+	})
+	if err != nil {
+		p.moviesMu.Lock()
+		stale := p.moviesVal
+		p.moviesMu.Unlock()
+		if stale != nil {
+			log.Printf("library: refresh failed (%v); serving stale cache of %d titles", err, len(stale))
+			return stale, nil
+		}
+		return nil, err
+	}
+	return v.([]Movie), nil
+}
+
+// cachedMovies returns the in-memory list when it's within TTL.
+func (p *Plex) cachedMovies() ([]Movie, bool) {
+	p.moviesMu.Lock()
+	defer p.moviesMu.Unlock()
+	if p.moviesVal != nil && time.Since(p.moviesAt) < moviesCacheTTL {
+		return p.moviesVal, true
+	}
+	return nil, false
+}
+
+// fetchMovies does the real library walk + IMDb enrichment and publishes
+// the result. Callers go through ListMovies' singleflight.
+func (p *Plex) fetchMovies() ([]Movie, error) {
+	p.moviesMu.Lock()
 	prev := p.moviesByKey // snapshot for IMDb carry-forward; read off-lock below
 	p.moviesMu.Unlock()
 
@@ -463,17 +513,25 @@ const imdbBatchSize = 200
 // audience and all — still loads). prev may be nil on a cold start.
 func (p *Plex) enrichIMDb(movies []Movie, prev map[string]Movie) {
 	var need []string
+	p.moviesMu.Lock()
 	for i := range movies {
 		if pm, ok := prev[movies[i].RatingKey]; ok && pm.IMDbRating > 0 {
 			movies[i].IMDbRating = pm.IMDbRating
 			continue
 		}
+		if p.imdbNoRating[movies[i].RatingKey] {
+			continue // known unrated; re-checked only via RefreshLibrary
+		}
 		need = append(need, movies[i].RatingKey)
 	}
+	p.moviesMu.Unlock()
 	if len(need) == 0 {
 		return
 	}
 	got := make(map[string]float64, len(need))
+	// Keys whose batch failed outright are NOT "known unrated" — the
+	// fetch never answered; leave them eligible for the next refresh.
+	failed := make(map[string]bool)
 	for start := 0; start < len(need); start += imdbBatchSize {
 		end := start + imdbBatchSize
 		if end > len(need) {
@@ -483,6 +541,9 @@ func (p *Plex) enrichIMDb(movies []Movie, prev map[string]Movie) {
 		var br ratingBatchResp
 		if err := p.get("/library/metadata/"+strings.Join(keys, ","), &br); err != nil {
 			log.Printf("library: IMDb enrich batch of %d failed: %v", len(keys), err)
+			for _, k := range keys {
+				failed[k] = true
+			}
 			continue
 		}
 		for _, m := range br.MediaContainer.Metadata {
@@ -496,6 +557,13 @@ func (p *Plex) enrichIMDb(movies []Movie, prev map[string]Movie) {
 			movies[i].IMDbRating = v
 		}
 	}
+	p.moviesMu.Lock()
+	for _, k := range need {
+		if _, ok := got[k]; !ok && !failed[k] {
+			p.imdbNoRating[k] = true
+		}
+	}
+	p.moviesMu.Unlock()
 }
 
 // MovieByKey returns the movie metadata for ratingKey from the in-memory
@@ -697,11 +765,19 @@ const posterTranscodeH = 600
 // stored); (2) the image is pulled through Plex's photo transcoder at card
 // size instead of full resolution.
 func (p *Plex) PosterStream(ratingKey string) (io.ReadCloser, string, error) {
-	thumb := ""
-	if m, ok := p.MovieByKey(ratingKey); ok {
-		thumb = m.Thumb
+	// Only serve titles the library cache knows. The poster endpoint is
+	// unauthenticated (Discord fetches embed images from the public
+	// internet), so an unknown key must not become a free metadata probe
+	// against Plex — refusing here keeps alphanumeric key scans from
+	// enumerating the server or hammering it with per-key fetches.
+	m, ok := p.MovieByKey(ratingKey)
+	if !ok {
+		return nil, "", errNoPoster
 	}
+	thumb := m.Thumb
 	if thumb == "" {
+		// Library caches persisted before thumbs were stored lack the
+		// path; a one-off metadata fetch fills it for this request.
 		var mr metadataResp
 		if err := p.get("/library/metadata/"+ratingKey, &mr); err != nil {
 			return nil, "", err

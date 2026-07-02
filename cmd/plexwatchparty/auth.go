@@ -203,19 +203,6 @@ func (a *Auth) Guard(next http.Handler) http.Handler {
 	})
 }
 
-// RequireHost wraps handlers that need host role (/control).
-func (a *Auth) RequireHost(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if a.Role(r) == RoleHost {
-			next.ServeHTTP(w, r)
-			return
-		}
-		log.Printf("auth: 403 host-only %s %s ip=%s role=%s",
-			r.Method, r.URL.Path, clientIP(r), a.Role(r))
-		http.Error(w, "host only", http.StatusForbidden)
-	})
-}
-
 // RequireAdmin wraps the /admin tree. Browser navigations get a 303 to
 // /login; /admin/api/* gets a 401 so the panel JS can detect expiry.
 func (a *Auth) RequireAdmin(next http.Handler) http.Handler {

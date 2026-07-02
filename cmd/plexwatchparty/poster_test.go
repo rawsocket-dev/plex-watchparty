@@ -27,7 +27,13 @@ func newPosterPlex(t *testing.T) *Plex {
 		}
 	}))
 	t.Cleanup(srv.Close)
-	return NewPlex(srv.URL, "tok", filepath.Join(t.TempDir(), "lib.json"), nil)
+	p := NewPlex(srv.URL, "tok", filepath.Join(t.TempDir(), "lib.json"), nil)
+	// 55 and 77 are library titles (empty Thumb → metadata fallback);
+	// 99 deliberately is NOT, exercising the unknown-key refusal.
+	p.moviesMu.Lock()
+	p.moviesByKey = buildMoviesIndex([]Movie{{RatingKey: "55"}, {RatingKey: "77"}})
+	p.moviesMu.Unlock()
+	return p
 }
 
 func TestPosterHandler(t *testing.T) {
@@ -70,11 +76,10 @@ func TestPosterHandler(t *testing.T) {
 		t.Errorf("no-thumb code = %d, want 404", w.Code)
 	}
 
-	// Upstream Plex error (unknown key → mock 404 on the metadata GET) → 404,
-	// exercising the non-errNoPoster error branch (log + NotFound).
+	// Key outside the library cache → 404 (refused before any Plex call).
 	w = httptest.NewRecorder()
 	h(w, httptest.NewRequest("GET", "/poster/99.jpg", nil))
 	if w.Code != http.StatusNotFound {
-		t.Errorf("plex-error code = %d, want 404", w.Code)
+		t.Errorf("unknown-key code = %d, want 404", w.Code)
 	}
 }
