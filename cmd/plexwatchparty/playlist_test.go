@@ -30,7 +30,7 @@ func testSegCodec(t *testing.T) *segCodec {
 }
 
 func TestRewritePlaylistComputesTimeRanges(t *testing.T) {
-	_, segs, err := rewritePlaylist(testSegCodec(t), []byte(samplePlexPlaylist), "https://plex.example/", 0, "rk1")
+	_, segs, err := rewritePlaylist(testSegCodec(t), []byte(samplePlexPlaylist), "https://plex.example/", 0, "rk1", "sess-test")
 	if err != nil {
 		t.Fatalf("rewritePlaylist: %v", err)
 	}
@@ -47,7 +47,7 @@ func TestRewritePlaylistComputesTimeRanges(t *testing.T) {
 }
 
 func TestRewritePlaylistRespectsSessionOffset(t *testing.T) {
-	_, segs, err := rewritePlaylist(testSegCodec(t), []byte(samplePlexPlaylist), "https://plex.example/", 600000, "rk1")
+	_, segs, err := rewritePlaylist(testSegCodec(t), []byte(samplePlexPlaylist), "https://plex.example/", 600000, "rk1", "sess-test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +58,7 @@ func TestRewritePlaylistRespectsSessionOffset(t *testing.T) {
 }
 
 func TestRewritePlaylistRewritesURLs(t *testing.T) {
-	out, _, err := rewritePlaylist(testSegCodec(t), []byte(samplePlexPlaylist), "https://plex.example/", 0, "rk1")
+	out, _, err := rewritePlaylist(testSegCodec(t), []byte(samplePlexPlaylist), "https://plex.example/", 0, "rk1", "sess-test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,7 +100,7 @@ func TestRewritePlaylistHidesPlexToken(t *testing.T) {
 	codec := testSegCodec(t)
 	const token = "SECRETPLEXTOKEN123"
 	pl := "#EXTM3U\n#EXTINF:4.0,\nhttps://plex.example/seg-0.ts?X-Plex-Token=" + token + "\n"
-	out, _, err := rewritePlaylist(codec, []byte(pl), "https://plex.example/", 0, "rk1")
+	out, _, err := rewritePlaylist(codec, []byte(pl), "https://plex.example/", 0, "rk1", "sess-test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -163,5 +163,39 @@ func TestSegCodecRejectsForeignKey(t *testing.T) {
 	enc := a.encode(segCtx{PlexURL: "https://plex/x.ts?X-Plex-Token=t", Rating: "rk1"})
 	if _, err := b.decode(enc); err == nil {
 		t.Fatal("a context minted under one key was decodable/forgeable under another")
+	}
+}
+
+// Every rewritten segment context must carry the id of the Plex session
+// whose playlist minted it, so the segment proxy can tell an in-flight
+// request from a SUPERSEDED session apart from a current-session failure
+// — the former must not trigger a recovery restart (the churn where one
+// offset seek cost ~3 Plex restarts).
+func TestRewritePlaylistStampsSessionID(t *testing.T) {
+	codec := testSegCodec(t)
+	body, segs, err := rewritePlaylist(codec, []byte(samplePlexPlaylist), "https://plex.example/", 0, "rk1", "watchparty-abc123")
+	if err != nil {
+		t.Fatalf("rewritePlaylist: %v", err)
+	}
+	if len(segs) != 3 {
+		t.Fatalf("len(segs) = %d, want 3", len(segs))
+	}
+	// Decode the first rewritten URL's context and check the stamp.
+	var enc string
+	for _, line := range strings.Split(string(body), "\n") {
+		if strings.HasPrefix(line, "/hls/seg/") {
+			enc = strings.TrimSuffix(strings.TrimPrefix(line, "/hls/seg/"), ".ts")
+			break
+		}
+	}
+	if enc == "" {
+		t.Fatal("no rewritten segment URL found")
+	}
+	ctx, err := codec.decode(enc)
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if ctx.SessionID != "watchparty-abc123" {
+		t.Errorf("ctx.SessionID = %q, want the minting session id", ctx.SessionID)
 	}
 }

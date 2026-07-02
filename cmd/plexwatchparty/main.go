@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -54,6 +55,10 @@ func env(key, def string) string {
 	return def
 }
 
+// errStaleSegment marks a request minted from a superseded Plex session.
+// The handler maps it to 404 and keeps it out of the auto-restart streak.
+var errStaleSegment = errors.New("segment request from a superseded session")
+
 // fetchOrRecoverSegment is the cold-miss path: try Plex → on failure
 // try the overlap-cache fallback → on failure try server-side
 // recovery → on failure return the original Plex error. Wrapped in
@@ -75,49 +80,64 @@ func fetchOrRecoverSegment(
 	segCache *SegmentCache,
 	hub *Hub,
 ) ([]byte, error) {
-	// Plex first.
-	if body, err := plexSession.FetchSegment(ctx.PlexURL); err == nil {
-		defer body.Close()
-		data, rerr := io.ReadAll(body)
-		if rerr != nil {
-			log.Printf("seg: read from plex aborted: %v", rerr)
-			return nil, fmt.Errorf("plex read: %w", rerr)
-		}
-		if _, perr := segCache.Put(key, bytes.NewReader(data)); perr != nil {
-			log.Printf("seg: cache write failed: %v (segment still served)", perr)
-		}
-		return data, nil
-	} else {
-		// Plex 4xx/5xx. Try cheaper recoveries before kicking off a
-		// full server-side Restart.
-		plexErr := err
-		// Overlap-cache fallback: Plex sometimes 404s a segment it
-		// already produced, or segment boundaries drift by a few ms
-		// across sessions so the exact (startMs, endMs) key misses
-		// while a near-identical segment is on disk.
-		if fallback, fs, fe, ok := segCache.FindOverlapping(ctx.Rating, ctx.StartMs, ctx.EndMs); ok {
-			log.Printf("seg: plex failed (%v); serving overlapping cache entry [%d,%d] for request [%d,%d]",
-				plexErr, fs, fe, ctx.StartMs, ctx.EndMs)
-			if data, ferr := os.ReadFile(fallback); ferr == nil {
-				return data, nil
-			} else {
-				log.Printf("seg: overlap file read failed: %v", ferr)
+	// A request minted from a SUPERSEDED session — the host seeked or the
+	// session restarted while it was in flight — is not worth chasing:
+	// its upstream URL belongs to a dead transcode (guaranteed 404, plus
+	// a pointless retry-sleep), and "recovering" it would restart Plex at
+	// a stale position, killing the live session the client is already
+	// reattaching to. One offset seek used to cost ~3 restarts this way.
+	// The overlap cache below still serves it when we hold the bytes
+	// (cached ranges are absolute movie times, valid across sessions).
+	stale := ctx.SessionID == "" || ctx.SessionID != plexSession.SessionID()
+	var plexErr error
+	if !stale {
+		// Plex first.
+		if body, err := plexSession.FetchSegment(ctx.PlexURL); err == nil {
+			defer body.Close()
+			data, rerr := io.ReadAll(body)
+			if rerr != nil {
+				log.Printf("seg: read from plex aborted: %v", rerr)
+				return nil, fmt.Errorf("plex read: %w", rerr)
 			}
-		}
-		log.Printf("seg: fetch from plex failed: %v", plexErr)
-		// Server-side recovery: we control the stream, Plex 404'd a
-		// segment we need, restart the transcode at this segment's
-		// time and serve a substitute from the new session.
-		if data, rerr := hub.RecoverSegmentForRange(ctx.StartMs, ctx.EndMs); rerr == nil {
 			if _, perr := segCache.Put(key, bytes.NewReader(data)); perr != nil {
-				log.Printf("recover: cache write failed: %v (segment still served)", perr)
+				log.Printf("seg: cache write failed: %v (segment still served)", perr)
 			}
 			return data, nil
 		} else {
-			log.Printf("seg: server-side recovery failed: %v", rerr)
+			plexErr = err
 		}
-		return nil, plexErr
 	}
+	// Overlap-cache fallback: Plex sometimes 404s a segment it already
+	// produced, segment boundaries drift by a few ms across sessions so
+	// the exact (startMs, endMs) key misses while a near-identical
+	// segment is on disk — and stale-session requests can often be
+	// answered from here without touching Plex at all.
+	if fallback, fs, fe, ok := segCache.FindOverlapping(ctx.Rating, ctx.StartMs, ctx.EndMs); ok {
+		log.Printf("seg: serving overlapping cache entry [%d,%d] for request [%d,%d] (stale=%v err=%v)",
+			fs, fe, ctx.StartMs, ctx.EndMs, stale, plexErr)
+		if data, ferr := os.ReadFile(fallback); ferr == nil {
+			return data, nil
+		} else {
+			log.Printf("seg: overlap file read failed: %v", ferr)
+		}
+	}
+	if stale {
+		log.Printf("seg: %v (ctx session %q); not recovering", errStaleSegment, ctx.SessionID)
+		return nil, errStaleSegment
+	}
+	log.Printf("seg: fetch from plex failed: %v", plexErr)
+	// Server-side recovery: we control the stream, Plex 404'd a
+	// segment we need, restart the transcode at this segment's
+	// time and serve a substitute from the new session.
+	if data, rerr := hub.RecoverSegmentForRange(ctx.StartMs, ctx.EndMs); rerr == nil {
+		if _, perr := segCache.Put(key, bytes.NewReader(data)); perr != nil {
+			log.Printf("recover: cache write failed: %v (segment still served)", perr)
+		}
+		return data, nil
+	} else {
+		log.Printf("seg: server-side recovery failed: %v", rerr)
+	}
+	return nil, plexErr
 }
 
 // segHandler serves /hls/seg/<encoded>.ts: decode the segment context,
@@ -172,11 +192,21 @@ func segHandler(codec *segCodec, segCache *SegmentCache, plexSession *PlexSessio
 		// Cache miss: singleflight'd Plex fetch + recovery cascade.
 		// Multiple viewers cold-missing the same segment collapse to
 		// one upstream request; followers reuse the leader's bytes.
-		flightKey := fmt.Sprintf("%s:%d:%d", ctx.Rating, ctx.StartMs, ctx.EndMs)
+		// The upstream URL is part of the key so a stale-session
+		// request and a current-session request for the same time
+		// range never share a flight (or each other's failures).
+		flightKey := fmt.Sprintf("%s:%d:%d:%s", ctx.Rating, ctx.StartMs, ctx.EndMs, ctx.PlexURL)
 		v, ferr, _ := segFlight.Do(flightKey, func() (interface{}, error) {
 			return fetchOrRecoverSegment(ctx, key, plexSession, segCache, hub)
 		})
 		if ferr != nil {
+			if errors.Is(ferr, errStaleSegment) {
+				// Not a live-session failure: the client is already
+				// reattaching to the new playlist. 404 without feeding
+				// the auto-restart streak.
+				http.NotFound(cw, r)
+				return
+			}
 			log.Printf("seg: cold-miss path failed: %v", ferr)
 			// Recovery itself failed. Track the streak; the existing
 			// safety net handles "Plex is fundamentally wedged" by
@@ -541,7 +571,7 @@ func main() {
 			http.Error(w, "playlist fetch: "+err.Error(), http.StatusBadGateway)
 			return
 		}
-		rewritten, segs, err := rewritePlaylist(codec, raw, baseURL, plexSession.OffsetMs(), ratingKey)
+		rewritten, segs, err := rewritePlaylist(codec, raw, baseURL, plexSession.OffsetMs(), ratingKey, plexSession.SessionID())
 		if err != nil {
 			log.Printf("playlist: parse failed: %v", err)
 			http.Error(w, "playlist parse: "+err.Error(), http.StatusBadGateway)

@@ -85,19 +85,30 @@ func (f *segTestFixture) get(t *testing.T, ctx segCtx) *httptest.ResponseRecorde
 	return w
 }
 
-// An upstream failure must NOT go out with the immutable cache header —
-// explicit freshness makes even a 502 cacheable, and a browser that pins
-// the failure keeps replaying it to hls.js's retries for a day.
+// Failure responses must NOT go out with the immutable cache header —
+// explicit freshness makes even a 502/404 cacheable, and a browser that
+// pins the failure keeps replaying it to hls.js's retries for a day.
 func TestSegHandlerErrorNotCacheable(t *testing.T) {
 	f := newSegTestFixture(t)
-	// PlexURL points at the mock's 404 default; no cache entry; no active
-	// session, so server-side recovery fails fast too.
-	w := f.get(t, segCtx{PlexURL: f.mock.URL + "/no-such-segment.ts", StartMs: 0, EndMs: 6000, Rating: "rk1"})
+	f.post(t, `{"action":"load","ratingKey":"rk1"}`)
+	sess := f.hub.session.SessionID()
+	// Plex goes away entirely: the current-session fetch AND the
+	// server-side recovery both fail -> 502.
+	f.mock.Close()
+	w := f.get(t, segCtx{PlexURL: f.mock.URL + "/seg.ts", SessionID: sess, StartMs: 0, EndMs: 6000, Rating: "rk1"})
 	if w.Code != http.StatusBadGateway {
 		t.Fatalf("status = %d, want 502", w.Code)
 	}
 	if cc := w.Header().Get("Cache-Control"); strings.Contains(cc, "immutable") || strings.Contains(cc, "max-age") {
-		t.Errorf("error response carries cacheable Cache-Control %q; must not be cacheable", cc)
+		t.Errorf("502 carries cacheable Cache-Control %q; must not be cacheable", cc)
+	}
+	// The stale-session 404 must be uncacheable too.
+	w = f.get(t, segCtx{PlexURL: f.mock.URL + "/seg.ts", SessionID: "watchparty-superseded", StartMs: 0, EndMs: 6000, Rating: "rk1"})
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("stale status = %d, want 404", w.Code)
+	}
+	if cc := w.Header().Get("Cache-Control"); strings.Contains(cc, "immutable") || strings.Contains(cc, "max-age") {
+		t.Errorf("stale 404 carries cacheable Cache-Control %q; must not be cacheable", cc)
 	}
 }
 
@@ -125,6 +136,7 @@ func TestSegHandlerCacheHitServesImmutable(t *testing.T) {
 // (previously: a 404 stamped immutable-cacheable).
 func TestSegHandlerEvictedFileFallsThroughToFetch(t *testing.T) {
 	f := newSegTestFixture(t)
+	f.post(t, `{"action":"load","ratingKey":"rk1"}`)
 	key := cacheKey{ratingKey: "rk1", startMs: 0, endMs: 6000}
 	path, err := f.cache.Put(key, strings.NewReader("stale"))
 	if err != nil {
@@ -134,11 +146,77 @@ func TestSegHandlerEvictedFileFallsThroughToFetch(t *testing.T) {
 		t.Fatalf("remove: %v", err)
 	}
 	// The upstream URL serves real bytes via the mock's playlist path.
-	w := f.get(t, segCtx{PlexURL: f.mock.URL + "/video/:/transcode/universal/start.m3u8", StartMs: 0, EndMs: 6000, Rating: "rk1"})
+	w := f.get(t, segCtx{PlexURL: f.mock.URL + "/video/:/transcode/universal/start.m3u8", SessionID: f.hub.session.SessionID(), StartMs: 0, EndMs: 6000, Rating: "rk1"})
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200 (fall through to Plex fetch)", w.Code)
 	}
 	if !strings.Contains(w.Body.String(), "#EXTM3U") {
 		t.Errorf("body = %q, want upstream bytes", w.Body.String())
+	}
+}
+
+// A segment request minted from a SUPERSEDED session must not trigger a
+// recovery restart (it would kill the live session — the churn where one
+// offset seek cost ~3 Plex restarts) and must not count toward the
+// auto-restart failure streak. It 404s; the client is reattaching anyway.
+func TestSegHandlerStaleSessionNoRecoveryRestart(t *testing.T) {
+	f := newSegTestFixture(t)
+	f.post(t, `{"action":"load","ratingKey":"rk1"}`)
+	tok := f.hub.Snapshot().SessionToken
+
+	for i, rng := range [][2]int64{{1000, 2000}, {2000, 3000}, {3000, 4000}} {
+		w := f.get(t, segCtx{
+			PlexURL: f.mock.URL + "/no-such-segment.ts", SessionID: "watchparty-superseded",
+			StartMs: rng[0], EndMs: rng[1], Rating: "rk1",
+		})
+		if w.Code != http.StatusNotFound {
+			t.Errorf("stale req %d: status = %d, want 404", i, w.Code)
+		}
+	}
+	if got := f.hub.Snapshot().SessionToken; got != tok {
+		t.Errorf("stale requests restarted the session: token %d -> %d", tok, got)
+	}
+	if n := f.hub.session.LifecycleStats().RestartsByRecover; n != 0 {
+		t.Errorf("restartsByRecover = %d, want 0 (stale requests must not recover)", n)
+	}
+	f.hub.session.failMu.Lock()
+	fails := f.hub.session.consecutiveSegFails
+	f.hub.session.failMu.Unlock()
+	if fails != 0 {
+		t.Errorf("consecutiveSegFails = %d, want 0 (stale failures must not feed the auto-restart streak)", fails)
+	}
+}
+
+// A stale-session request whose range IS in the segment cache still gets
+// served — cached ranges are absolute movie times, valid across sessions.
+func TestSegHandlerStaleSessionServedFromOverlapCache(t *testing.T) {
+	f := newSegTestFixture(t)
+	f.post(t, `{"action":"load","ratingKey":"rk1"}`)
+	if _, err := f.cache.Put(cacheKey{ratingKey: "rk1", startMs: 0, endMs: 6000}, strings.NewReader("cached-bytes")); err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+	w := f.get(t, segCtx{
+		PlexURL: f.mock.URL + "/no-such-segment.ts", SessionID: "watchparty-superseded",
+		StartMs: 1000, EndMs: 2000, Rating: "rk1",
+	})
+	if w.Code != http.StatusOK || w.Body.String() != "cached-bytes" {
+		t.Errorf("stale+cached: status=%d body=%q, want 200 with cached bytes", w.Code, w.Body.String())
+	}
+}
+
+// A CURRENT-session 404 must still go through server-side recovery —
+// that's the real "Plex evicted/hasn't produced a segment" rescue.
+func TestSegHandlerCurrentSessionStillRecovers(t *testing.T) {
+	f := newSegTestFixture(t)
+	f.post(t, `{"action":"load","ratingKey":"rk1"}`)
+	w := f.get(t, segCtx{
+		PlexURL: f.mock.URL + "/no-such-segment.ts", SessionID: f.hub.session.SessionID(),
+		StartMs: 0, EndMs: 6000, Rating: "rk1",
+	})
+	if w.Code != http.StatusOK || w.Body.String() != "SEGDATA" {
+		t.Errorf("current-session recovery: status=%d body=%q, want 200 SEGDATA", w.Code, w.Body.String())
+	}
+	if n := f.hub.session.LifecycleStats().RestartsByRecover; n != 1 {
+		t.Errorf("restartsByRecover = %d, want 1 (recovery must still run for the live session)", n)
 	}
 }

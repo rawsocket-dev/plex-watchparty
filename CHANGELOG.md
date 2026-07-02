@@ -4,6 +4,12 @@ Notable, user-facing changes to plex-watchparty. Newest first.
 No version numbers — the app ships continuously as a container.
 
 ## 2026-07-02
+- Fixed: a seek no longer triggers a burst of redundant Plex session
+  restarts. In-flight segment requests from the just-replaced transcode
+  session used to be mistaken for live failures and "recovered" by
+  restarting Plex at their stale positions (~3 restarts per seek); segment
+  URLs now carry their session identity and superseded ones are simply
+  answered from cache or dropped while the player reattaches.
 - Fixed: library poster art now shows without the Discord webhook configured.
   The `/poster` route was only mounted when `DISCORD_WEBHOOK_URL` was set, so
   plain deployments silently got gradient-only cards.

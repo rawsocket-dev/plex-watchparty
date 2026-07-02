@@ -445,6 +445,15 @@ func (ps *PlexSession) UpdateEdge(edgeMs int64) {
 	}
 }
 
+// SessionID reports the current Plex transcode session id, or "" if no
+// session is active. Used to stamp rewritten segment contexts so the
+// proxy can recognize requests from superseded sessions.
+func (ps *PlexSession) SessionID() string {
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+	return ps.sessionID
+}
+
 // RatingKey reports the active session's movie, or "" if none.
 func (ps *PlexSession) RatingKey() string {
 	ps.mu.Lock()

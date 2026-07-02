@@ -22,6 +22,14 @@ type segCtx struct {
 	StartMs int64  `json:"s"` // absolute movie time at segment start
 	EndMs   int64  `json:"e"` // absolute movie time at segment end
 	Rating  string `json:"k"` // ratingKey of the movie
+	// SessionID is the Plex transcode session whose playlist minted this
+	// context. The segment proxy compares it against the CURRENT session:
+	// an in-flight request from a superseded session (host seeked, session
+	// restarted) must not trigger a recovery restart or count toward the
+	// auto-restart failure streak — chasing it would kill the live session
+	// (one offset seek used to cost ~3 restarts). "" (pre-upgrade URLs)
+	// is treated as superseded.
+	SessionID string `json:"i,omitempty"`
 }
 
 // segCodec encrypts the per-segment context into the opaque blob that
@@ -106,10 +114,12 @@ type playlistSeg struct {
 // segCtx.PlexURL is always absolute. sessionOffsetMs is the absolute
 // movie time at which Plex's session started, so the returned StartMs
 // values are absolute movie times suitable for cache indexing.
-func rewritePlaylist(codec *segCodec, data []byte, baseURL string, sessionOffsetMs int64, ratingKey string) ([]byte, []playlistSeg, error) {
+// sessionID stamps each context with the minting session (see segCtx).
+func rewritePlaylist(codec *segCodec, data []byte, baseURL string, sessionOffsetMs int64, ratingKey, sessionID string) ([]byte, []playlistSeg, error) {
 	return walkPlaylist(data, baseURL, sessionOffsetMs, func(seg playlistSeg) string {
 		return "/hls/seg/" + codec.encode(segCtx{
 			PlexURL: seg.OrigURL, StartMs: seg.StartMs, EndMs: seg.EndMs, Rating: ratingKey,
+			SessionID: sessionID,
 		}) + ".ts"
 	})
 }
