@@ -224,7 +224,10 @@ header {
   font-variant-numeric: tabular-nums;
 }
 
-/* Header logout — icon-only exit button. */
+/* Header icon buttons — admin panel (admins only) + logout. Clustered
+   in one flex cell so the header grid stays four columns whether or
+   not the admin link is shown. */
+.hdr-actions { display: flex; gap: .5rem; }
 .ibtn {
   width: 38px; height: 38px; padding: 0;
   display: inline-flex; align-items: center; justify-content: center;

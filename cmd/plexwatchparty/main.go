@@ -436,6 +436,11 @@ func main() {
 			return
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		// The page must always be revalidated: its /static/ references
+		// carry per-build content hashes, and a heuristically cached
+		// copy of the HTML would keep pointing at the previous build's
+		// assets after a deploy.
+		w.Header().Set("Cache-Control", "no-store")
 		w.Write(indexHTML)
 	})
 
@@ -457,9 +462,11 @@ func main() {
 		w.Write(playerHTML)
 	})
 
-	// Static assets are content-addressed via their embedded bytes —
-	// versions only change at build time, so a far-future immutable
-	// cache header is safe and avoids re-fetches on every page load.
+	// Static assets are referenced from the pages as /static/name?v=
+	// <content hash> (stamped at init in web.go), so a changed asset
+	// gets a changed URL and the far-future immutable cache header is
+	// safe: it avoids re-fetches on every page load without ever
+	// pinning a previous build's CSS/JS against a new page.
 	protected.HandleFunc("/static/common.js", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
 		w.Header().Set("Cache-Control", "public, max-age=86400, immutable")

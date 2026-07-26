@@ -608,6 +608,8 @@ function applyWhoami(d) {
   renderWho(isHost ? 'host' : 'viewer', d && d.name);
   document.body.classList.toggle('guest', !isHost);
   document.getElementById('guest').classList.toggle('show', !isHost);
+  const al = document.getElementById('admin-link');
+  if (al) al.hidden = !(d && d.isAdmin);
 }
 
 async function loadWhoami() {

@@ -3,6 +3,15 @@
 Notable, user-facing changes to plex-watchparty. Newest first.
 No version numbers — the app ships continuously as a container.
 
+## 2026-07-26
+- Fixed: After a deploy, browsers could keep the previous build's CSS and
+  JavaScript for up to a day (the new page rendered unstyled and dead — e.g.
+  the Movies/TV tabs appearing as bare, inert buttons). Static asset URLs now
+  carry a per-build content hash, so every deploy takes effect on the next
+  ordinary page load — no hard reload needed.
+- Added: Admins get a maintenance-panel link in the library header, matching
+  the one already in the player toolbar.
+
 ## 2026-07-25
 - Added: TV libraries alongside Movies. Browse shows, seasons, and episodes,
   search the show grid, and load any library episode through the synchronized
