@@ -7,6 +7,10 @@ No version numbers — the app ships continuously as a container.
 - Added: The library remembers whether you were browsing Movies or TV (per
   browser), so returning to the lobby — e.g. after a TV episode — reopens
   the section you left, instead of always resetting to Movies.
+- Added: Within TV, the library also remembers the show and season you had
+  open — coming back from an episode lands in that season's episode list,
+  with the TV › show › season breadcrumbs as the way back to the browse
+  grid. A show that has since left the library falls back to the TV grid.
 - Changed: The Movies/TV toggle now sits directly under the **Library**
   heading at any window width; on very wide screens it used to drift
   toward the middle of the page.

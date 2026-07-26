@@ -17,7 +17,28 @@ const tvDetailEl = document.getElementById('tv-detail');
 let allMovies = [];
 let allShows = [];
 let activeTab = 'movies';
-const TAB_STORAGE_KEY = 'wp_library_tab'; // remembered Movies/TV section
+
+// The library remembers WHERE you were browsing (per browser): the tab,
+// and within TV the show and season you had open, so coming back to the
+// lobby after an episode reopens the same episode list. Every navigation
+// function records its own location, so the stored value always matches
+// what's on screen; the crumbs (TV › show › season) remain the way back
+// up to the browse grid.
+const LOC_STORAGE_KEY = 'wp_library_loc';
+
+function saveLocation(loc) {
+  try { localStorage.setItem(LOC_STORAGE_KEY, JSON.stringify(loc)); } catch (_) {}
+}
+
+function savedLocation() {
+  try {
+    const raw = localStorage.getItem(LOC_STORAGE_KEY);
+    if (raw) return JSON.parse(raw);
+    const legacy = localStorage.getItem('wp_library_tab'); // pre-drilldown builds stored just the tab
+    if (legacy) return { tab: legacy };
+  } catch (_) {}
+  return null;
+}
 let activeShow = null;
 let tvNavigationGeneration = 0;
 
@@ -436,13 +457,21 @@ async function load() {
     allMovies.sort((a, b) => sortKey(a.title).localeCompare(sortKey(b.title)));
     allShows.sort((a, b) => sortKey(a.title).localeCompare(sortKey(b.title)));
     statusEl.remove();
-    // Reopen the section the browser was last in (set on tab click) —
-    // e.g. back to TV after watching an episode. Movies stays the
-    // default when nothing is stored or the TV library is empty.
-    let saved = null;
-    try { saved = localStorage.getItem(TAB_STORAGE_KEY); } catch (_) {}
-    if (saved === 'tv' && allShows.length) selectTab('tv');
-    else applyFilter();
+    // Reopen where this browser was last browsing — e.g. straight back
+    // into the season's episode list after watching a TV episode.
+    // Movies stays the default when nothing is stored or the TV library
+    // is empty; a show that has since left the library falls back to
+    // the TV grid. Read the location BEFORE navigating: selectTab's
+    // showTVHome overwrites the stored value.
+    const loc = savedLocation();
+    if (loc && loc.tab === 'tv' && allShows.length) {
+      const show = loc.show && allShows.find(s => s.ratingKey === loc.show.ratingKey);
+      selectTab('tv');
+      if (show && loc.season && loc.season.ratingKey) openSeason(show, loc.season);
+      else if (show) openShow(show);
+    } else {
+      applyFilter();
+    }
   } catch (e) {
     statusEl.textContent = 'Couldn’t load the library. Try again in a moment.';
     console.error(e);
@@ -472,6 +501,7 @@ function heroURL(item) {
 async function openShow(show) {
   const generation = ++tvNavigationGeneration;
   activeShow = show;
+  saveLocation({ tab: 'tv', show: { ratingKey: show.ratingKey, title: show.title, year: show.year } });
   groupsEl.hidden = true;
   tvDetailEl.hidden = false;
   searchEl.disabled = true;
@@ -517,6 +547,17 @@ function formatEpisodeMeta(ep) {
 
 async function openSeason(show, season) {
   const generation = ++tvNavigationGeneration;
+  // Claim the detail view ourselves rather than relying on openShow
+  // having run first: the on-load restore jumps straight here.
+  activeShow = show;
+  groupsEl.hidden = true;
+  tvDetailEl.hidden = false;
+  searchEl.disabled = true;
+  saveLocation({
+    tab: 'tv',
+    show: { ratingKey: show.ratingKey, title: show.title, year: show.year },
+    season: { ratingKey: season.ratingKey, title: season.title, index: season.index },
+  });
   countEl.textContent = 'loading episodes…';
   tvDetailEl.innerHTML = '<div class="tv-hero" style="background-image:' + heroURL(season.ratingKey ? season : show) +
     '"><h1>' + escapeHTML(show.title) + '</h1></div><div class="empty">Loading episodes…</div>';
@@ -574,6 +615,7 @@ function showTVHome() {
   tvDetailEl.hidden = true;
   groupsEl.hidden = false;
   searchEl.disabled = false;
+  saveLocation({ tab: activeTab });
   applyFilter();
 }
 
@@ -595,11 +637,8 @@ function selectTab(tab) {
 tabsEl.addEventListener('click', (e) => {
   const btn = e.target.closest('[data-tab]');
   if (!btn) return;
+  // selectTab → showTVHome records the new location.
   selectTab(btn.dataset.tab);
-  // Remember the section per browser so coming back to the lobby (e.g.
-  // after a TV episode) reopens where you were. Storage can be
-  // unavailable (private mode) — the toggle must still work.
-  try { localStorage.setItem(TAB_STORAGE_KEY, btn.dataset.tab); } catch (_) {}
 });
 
 function renderWho(role, name) {
