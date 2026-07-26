@@ -77,15 +77,21 @@ const (
 // playback change. The Hub builds one and hands it to Notifier.Enqueue.
 // Only movie start and end are notified; pause/resume are intentionally not.
 type notifyEvent struct {
-	Kind        notifyKind
-	Title       string
-	Year        int
-	RatingKey   string
-	Actor       string  // display name, or a synthetic label ("idle — everyone left", "admin")
-	PositionSec float64 // stop only
-	RuntimeSec  float64 // start only
-	ResumeSec   float64 // start only; 0 = not a resume
-	Quality     string  // start only; "" = omit
+	Kind          notifyKind
+	Title         string
+	Year          int
+	MediaType     string
+	SeriesTitle   string
+	SeasonNumber  int
+	EpisodeNumber int
+	ArtworkKey    string
+	NextEpisode   *NextEpisodeSummary
+	RatingKey     string
+	Actor         string  // display name, or a synthetic label ("idle — everyone left", "admin")
+	PositionSec   float64 // stop only
+	RuntimeSec    float64 // start only
+	ResumeSec     float64 // start only; 0 = not a resume
+	Quality       string  // start only; "" = omit
 	// Enrichment (start only) — drives the rich "Now Playing" embed.
 	Tagline        string
 	Summary        string
@@ -187,6 +193,9 @@ func linksField(ev notifyEvent) string {
 	if u := imdbURL(ev.IMDbID); u != "" {
 		links = append(links, "[IMDb]("+u+")")
 	}
+	if ev.MediaType == "episode" {
+		return strings.Join(links, " · ")
+	}
 	links = append(links, "[Rotten Tomatoes]("+rtSearchURL(ev.Title, ev.Year)+")")
 	if u := tmdbURL(ev.TMDBID); u != "" {
 		links = append(links, "[TMDB]("+u+")")
@@ -212,12 +221,13 @@ func truncateText(s string, max int) string {
 // buildPayload turns a notifyEvent into the Discord webhook JSON. Pure and
 // deterministic — all delivery concerns live in the worker.
 func buildPayload(ev notifyEvent, baseURL string) discordPayload {
-	movie := ev.Title
-	if ev.Year > 0 {
-		movie = fmt.Sprintf("%s (%d)", ev.Title, ev.Year)
-	}
+	movie := mediaLabel(ev.Title, ev.Year, ev.MediaType, ev.SeriesTitle, ev.SeasonNumber, ev.EpisodeNumber)
 	e := discordEmbed{}
-	poster := posterURL(baseURL, ev.RatingKey)
+	posterKey := ev.ArtworkKey
+	if posterKey == "" {
+		posterKey = ev.RatingKey
+	}
+	poster := posterURL(baseURL, posterKey)
 	addField := func(name, value string, inline bool) {
 		if value != "" {
 			e.Fields = append(e.Fields, discordField{Name: name, Value: value, Inline: inline})
@@ -250,6 +260,12 @@ func buildPayload(ev notifyEvent, baseURL string) discordPayload {
 		addField("Rating", ratingLine(ev), true)
 		addField("Quality", ev.Quality, true)
 		addField("Genres", strings.Join(ev.Genres, " · "), false)
+		if ev.NextEpisode != nil {
+			addField("Up Next", mediaLabel(
+				ev.NextEpisode.Title, 0, "episode", ev.NextEpisode.SeriesTitle,
+				ev.NextEpisode.SeasonNumber, ev.NextEpisode.EpisodeNumber,
+			), false)
+		}
 		addField("Links", linksField(ev), false)
 		addField("Started by", ev.Actor, false)
 		if ev.ResumeSec > 0 {
@@ -257,6 +273,9 @@ func buildPayload(ev notifyEvent, baseURL string) discordPayload {
 		}
 	case notifyStop:
 		e.Title = "⏹ Movie Ended"
+		if ev.MediaType == "episode" {
+			e.Title = "⏹ Episode Ended"
+		}
 		e.Description = movie
 		e.Color = colorGrey
 		if poster != "" {

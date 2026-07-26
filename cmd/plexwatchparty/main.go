@@ -499,6 +499,64 @@ func main() {
 		}
 		writeJSON(w, movies)
 	})
+	protected.HandleFunc("/api/library", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "GET only", http.StatusMethodNotAllowed)
+			return
+		}
+		library, err := plex.ListLibrary()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadGateway)
+			return
+		}
+		writeJSON(w, library)
+	})
+	protected.HandleFunc("/api/tv/shows/", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || !strings.HasSuffix(r.URL.Path, "/seasons") {
+			http.NotFound(w, r)
+			return
+		}
+		key := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/api/tv/shows/"), "/seasons")
+		if !validRatingKey(key) {
+			http.Error(w, "invalid show ratingKey", http.StatusBadRequest)
+			return
+		}
+		if _, err := plex.ListLibrary(); err != nil {
+			http.Error(w, err.Error(), http.StatusBadGateway)
+			return
+		}
+		if !plex.HasShow(key) {
+			http.NotFound(w, r)
+			return
+		}
+		seasons, err := plex.ListSeasons(key)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadGateway)
+			return
+		}
+		writeJSON(w, seasons)
+	})
+	protected.HandleFunc("/api/tv/seasons/", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || !strings.HasSuffix(r.URL.Path, "/episodes") {
+			http.NotFound(w, r)
+			return
+		}
+		key := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/api/tv/seasons/"), "/episodes")
+		if !validRatingKey(key) {
+			http.Error(w, "invalid season ratingKey", http.StatusBadRequest)
+			return
+		}
+		if !plex.HasSeason(key) {
+			http.NotFound(w, r)
+			return
+		}
+		episodes, err := plex.ListEpisodes(key)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadGateway)
+			return
+		}
+		writeJSON(w, episodes)
+	})
 
 	protected.HandleFunc("/events", func(w http.ResponseWriter, r *http.Request) {
 		hub.HandleEvents(w, r, auth.Role(r) == RoleHost, auth.Email(r))

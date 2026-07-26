@@ -3,6 +3,36 @@
 Notable, user-facing changes to plex-watchparty. Newest first.
 No version numbers — the app ships continuously as a container.
 
+## 2026-07-25
+- Added: TV libraries alongside Movies. Browse shows, seasons, and episodes,
+  search the show grid, and load any library episode through the synchronized
+  HLS player.
+- Added: A host-only **Next Episode** control. Advancement is always explicit,
+  crosses regular-season boundaries, skips empty regular seasons, and keeps
+  season 0 specials isolated from the regular sequence.
+- Added: Episode context throughout live/resume/recent state, the waiting room,
+  admin session summary, audit events, and Discord embeds. Episode embeds omit
+  movie-specific Rotten Tomatoes and TMDB links.
+- Changed: The persisted library cache now retains shows and lazy-loaded
+  season/episode hierarchy data while remaining compatible with movie-only
+  cache, state, and recent JSON from earlier versions.
+- Fixed: Cached TV hierarchies now refresh after 30 minutes and on an admin
+  library refresh, while retaining stale seasons/episodes as an offline
+  fallback when Plex is unavailable.
+- Fixed: Periodic player-state updates can no longer re-enable **Next Episode**
+  while a successor is still being prepared; the server also rejects
+  concurrent next requests from multiple host tabs.
+- Fixed: Concurrent show/season browsing can no longer corrupt
+  `library-cache.json`, and TV hierarchy APIs reject keys outside the known
+  show/season catalog.
+- Fixed: Re-selecting the current episode now retries a failed successor
+  lookup, so a brief Plex hierarchy error no longer hides **Next Episode**
+  for the rest of playback.
+- Changed: Specials appear after numbered seasons, matching Plex's library
+  ordering. Specials remain isolated from regular-season progression.
+- Fixed: Rapid TV navigation can no longer let a slower, stale show or season
+  response overwrite the detail view selected afterward.
+
 ## 2026-07-02
 - Fixed: a seek no longer triggers a burst of redundant Plex session
   restarts. In-flight segment requests from the just-replaced transcode

@@ -280,10 +280,10 @@
   <h1>Hang tight — the host is picking</h1>
 
   <p class="tagline tagline-viewer">
-    Nothing's playing yet. The second a movie starts, you'll be pulled straight into the room — no refresh needed.
+    Nothing's playing yet. The second a title starts, you'll be pulled straight into the room — no refresh needed.
   </p>
   <p class="tagline tagline-host">
-    No source loaded. Head back to the library and select tonight's feature.
+    No source loaded. Head back to the library and select a movie or episode.
   </p>
 
   <div class="signal">
@@ -362,9 +362,16 @@
     if (sec < 86400) return Math.floor(sec/3600) + ' h ago';
     return Math.floor(sec/86400) + ' d ago';
   }
+  function mediaTitle(m) {
+    if (m && m.mediaType === 'episode') {
+      return (m.seriesTitle || 'TV') + ' · S' + String(m.seasonNumber || 0).padStart(2,'0') +
+        'E' + String(m.episodeNumber || 0).padStart(2,'0') + ' · ' + (m.title || m.ratingKey);
+    }
+    return m && m.year ? m.title + ' (' + m.year + ')' : ((m && (m.title || m.ratingKey)) || '—');
+  }
   function paintResumeHint(hint) {
     resumeHint = hint;
-    rbTitle.textContent    = hint.title || hint.ratingKey;
+    rbTitle.textContent    = mediaTitle(hint);
     let pos = 'paused at ' + fmtHMS(hint.positionSec);
     if (hint.durationSec > 0) pos += ' of ' + fmtHMS(hint.durationSec);
     rbPosition.textContent = pos;
@@ -431,9 +438,9 @@
       const reel = document.getElementById('reel');
       const ul   = document.getElementById('reel-list');
       ul.innerHTML = list.map(m => {
-        const yr = m.year ? ' · ' + m.year : '';
+        const yr = m.mediaType === 'episode' ? '' : (m.year ? ' · ' + m.year : '');
         return '<button type="button" class="reel-item" data-key="' + escapeHTML(m.ratingKey) + '" data-title="' + escapeHTML(m.title) + '">' +
-                 '<span class="ttl">' + escapeHTML(m.title) + '</span>' +
+                 '<span class="ttl">' + escapeHTML(m.mediaType === 'episode' ? mediaTitle(m) : m.title) + '</span>' +
                  '<span class="yr">last routed' + yr + '</span>' +
                '</button>';
       }).join('');

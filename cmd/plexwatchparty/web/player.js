@@ -4,6 +4,8 @@ const syncEl  = document.getElementById('sync');
 const joinEl  = document.getElementById('join');
 const bwEl    = document.getElementById('bw');
 const qualityEl = document.getElementById('quality');
+const nextEpisodeEl = document.getElementById('next-episode');
+let nextInFlight = null; // {sourceKey,targetKey}; survives periodic SSE ticks
 // #wrap is the fullscreen target and carries the .playing / .fill / .fs
 // state classes the top-bar status lights key off. Declared up here with
 // the other element refs so applyState (and any early caller) can touch
@@ -22,6 +24,7 @@ function applyWhoami(d) {
   isHost = !!d.isActiveHost;
   myName = d.name || '';
   document.body.classList.toggle('viewer', !isHost);
+  if (nextEpisodeEl) nextEpisodeEl.hidden = !(isHost && lastState && lastState.nextEpisode);
   const al = document.getElementById('admin-link');
   if (al) al.hidden = !d.isAdmin;
 }
@@ -652,8 +655,28 @@ function applyState(s, reason) {
   }
   // Append the release year in parens when we have it (matches how the
   // library + waiting room label movies). Omitted when the year is unknown.
-  titleEl.textContent = s.year ? s.title + ' (' + s.year + ')' : s.title;
+  titleEl.textContent = s.mediaType === 'episode'
+    ? (s.seriesTitle || 'TV') + ' · S' + String(s.seasonNumber || 0).padStart(2, '0') +
+      'E' + String(s.episodeNumber || 0).padStart(2, '0') + ' · ' + s.title
+    : (s.year ? s.title + ' (' + s.year + ')' : s.title);
   titleEl.classList.remove('idle');
+  if (nextEpisodeEl) {
+    if (nextInFlight && s.ratingKey !== nextInFlight.sourceKey) {
+      nextInFlight = null;
+    }
+    const next = s.nextEpisode;
+    nextEpisodeEl.hidden = !next || !isHost;
+    nextEpisodeEl.disabled = !!nextInFlight;
+    nextEpisodeEl.textContent = nextInFlight
+      ? 'Cueing next…'
+      : next
+      ? 'Next · S' + String(next.seasonNumber || 0).padStart(2, '0') +
+        'E' + String(next.episodeNumber || 0).padStart(2, '0') + ' →'
+      : 'Next Episode →';
+    nextEpisodeEl.title = next
+      ? (next.seriesTitle || s.seriesTitle || 'TV') + ' · ' + next.title
+      : '';
+  }
   renderQuality(s.quality);
   if (typeof s.durationSec === 'number' && s.durationSec > 0) {
     serverDuration = s.durationSec;
@@ -927,6 +950,30 @@ setInterval(() => {
 // natural playback drift.
 document.getElementById('play').onclick  = () => { if (isHost) post('play'); };
 document.getElementById('pause').onclick = () => { if (isHost) post('pause'); };
+if (nextEpisodeEl) {
+  nextEpisodeEl.onclick = async () => {
+    if (!isHost || nextEpisodeEl.disabled || !lastState || !lastState.nextEpisode) return;
+    nextInFlight = {
+      sourceKey: lastState.ratingKey,
+      targetKey: lastState.nextEpisode.ratingKey,
+    };
+    nextEpisodeEl.disabled = true;
+    const old = nextEpisodeEl.textContent;
+    nextEpisodeEl.textContent = 'Cueing next…';
+    try {
+      const r = await fetch('/control', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({action:'next', ratingKey: nextInFlight.sourceKey}),
+      });
+      if (!r.ok) throw new Error(await r.text());
+    } catch (e) {
+      nextInFlight = null;
+      nextEpisodeEl.disabled = false;
+      nextEpisodeEl.textContent = old;
+      console.error('next episode:', e);
+    }
+  };
+}
 // 'play' echoes are NOT suppressed during reattaching. The
 // reattaching flag exists to swallow the synchronous v.pause() that
 // hls.destroy() fires; nothing in the attach path emits a synthetic

@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -31,12 +32,22 @@ type Plex struct {
 	// and (when cacheFile is non-empty) also persisted to disk so a
 	// container restart doesn't pay the cold-start cost. listFlight
 	// collapses concurrent TTL-miss refreshes into one upstream walk.
-	moviesMu    sync.Mutex
-	moviesAt    time.Time
-	moviesVal   []Movie
-	moviesByKey map[string]Movie // O(1) ratingKey lookup, refreshed alongside moviesVal
-	cacheFile   string
-	listFlight  singleflight.Group
+	moviesMu      sync.Mutex
+	moviesAt      time.Time
+	moviesVal     []Movie
+	moviesByKey   map[string]Movie // O(1) ratingKey lookup, refreshed alongside moviesVal
+	showsVal      []Show
+	showsByKey    map[string]Show
+	showsLoaded   bool
+	seasonsVal    map[string][]Season  // show ratingKey -> seasons
+	episodesVal   map[string][]Episode // season ratingKey -> episodes
+	seasonsAt     map[string]time.Time
+	episodesAt    map[string]time.Time
+	seasonsByKey  map[string]Season
+	episodesByKey map[string]Episode
+	cacheFile     string
+	cacheWriteMu  sync.Mutex
+	listFlight    singleflight.Group
 	// imdbNoRating remembers titles whose metadata batch came back with
 	// no imdb:// entry, so TTL-expiry refreshes don't re-fetch the same
 	// unrated titles forever. Cleared by RefreshLibrary — an explicit
@@ -61,6 +72,8 @@ type Plex struct {
 // never sees a Plex round-trip after the first call; short enough that
 // newly-added content shows up within the same evening.
 const moviesCacheTTL = 30 * time.Minute
+const hierarchyCacheTTL = moviesCacheTTL
+const libraryCacheTempPattern = ".library-tmp-*"
 
 func NewPlex(baseURL, token, cacheFile string, audit *AuditLog) *Plex {
 	// Plex Media Server's TLS certificate is only valid for hostnames
@@ -81,6 +94,8 @@ func NewPlex(baseURL, token, cacheFile string, audit *AuditLog) *Plex {
 		healthy:      true, // optimistic; startup Ping in main flips this if Plex is down
 		audit:        audit,
 		imdbNoRating: make(map[string]bool),
+		seasonsAt:    make(map[string]time.Time),
+		episodesAt:   make(map[string]time.Time),
 	}
 	p.loadCacheFromDisk()
 	return p
@@ -173,6 +188,45 @@ type Movie struct {
 	Thumb string `json:"thumb,omitempty"`
 }
 
+// Show, Season, and Episode are the media-neutral catalog records sent to the
+// browser. Hierarchy results are cached on demand; all fields are optional on
+// disk so older movie-only library caches remain readable.
+type Show struct {
+	RatingKey string `json:"ratingKey"`
+	Title     string `json:"title"`
+	Year      int    `json:"year,omitempty"`
+	Thumb     string `json:"thumb,omitempty"`
+	Art       string `json:"art,omitempty"`
+}
+
+type Season struct {
+	RatingKey       string `json:"ratingKey"`
+	ParentRatingKey string `json:"parentRatingKey,omitempty"`
+	Title           string `json:"title"`
+	Index           int    `json:"index"`
+	Thumb           string `json:"thumb,omitempty"`
+	Art             string `json:"art,omitempty"`
+}
+
+type Episode struct {
+	RatingKey             string `json:"ratingKey"`
+	ParentRatingKey       string `json:"parentRatingKey,omitempty"`
+	GrandparentRatingKey  string `json:"grandparentRatingKey,omitempty"`
+	Title                 string `json:"title"`
+	SeriesTitle           string `json:"seriesTitle,omitempty"`
+	SeasonNumber          int    `json:"seasonNumber"`
+	EpisodeNumber         int    `json:"episodeNumber"`
+	Duration              int64  `json:"duration,omitempty"` // milliseconds
+	OriginallyAvailableAt string `json:"originallyAvailableAt,omitempty"`
+	Thumb                 string `json:"thumb,omitempty"`
+	Art                   string `json:"art,omitempty"`
+}
+
+type MediaLibrary struct {
+	Movies []Movie `json:"movies"`
+	Shows  []Show  `json:"shows"`
+}
+
 // StreamInfo describes a movie's source metadata in enough detail to log
 // what's about to play. Playback itself goes through Plex's Universal
 // Transcoder via PlexSession — we don't touch the source URL ourselves.
@@ -190,14 +244,25 @@ type StreamInfo struct {
 // Discord "Now Playing" embed: tagline/plot, content + audience ratings,
 // genres, and the external IDs we turn into IMDb / TMDB links.
 type MovieMeta struct {
-	Tagline        string
-	Summary        string
-	ContentRating  string  // "PG", "R", ...
-	CriticRating   float64 // Plex "rating" (0–10)
-	AudienceRating float64 // Plex "audienceRating" (0–10)
-	Genres         []string
-	IMDbID         string // e.g. "tt0089886" ("" if Plex has none)
-	TMDBID         string // e.g. "14370" ("" if Plex has none)
+	MediaType            string
+	RatingKey            string
+	Title                string
+	Year                 int
+	Thumb                string
+	Art                  string
+	SeriesTitle          string
+	SeasonNumber         int
+	EpisodeNumber        int
+	ParentRatingKey      string
+	GrandparentRatingKey string
+	Tagline              string
+	Summary              string
+	ContentRating        string  // "PG", "R", ...
+	CriticRating         float64 // Plex "rating" (0–10)
+	AudienceRating       float64 // Plex "audienceRating" (0–10)
+	Genres               []string
+	IMDbID               string // e.g. "tt0089886" ("" if Plex has none)
+	TMDBID               string // e.g. "14370" ("" if Plex has none)
 }
 
 // ServerIdentity is the subset of Plex's root response we care about
@@ -264,10 +329,12 @@ type sectionsResp struct {
 type libraryResp struct {
 	MediaContainer struct {
 		Metadata []struct {
+			Type           string  `json:"type"`
 			RatingKey      string  `json:"ratingKey"`
 			Title          string  `json:"title"`
 			Year           int     `json:"year"`
 			Thumb          string  `json:"thumb"`
+			Art            string  `json:"art"`
 			Rating         float64 `json:"rating"`
 			AudienceRating float64 `json:"audienceRating"`
 			// The listing endpoint sends only scalar rating/audienceRating
@@ -283,13 +350,26 @@ type libraryResp struct {
 
 // cachedLibrary is the on-disk shape of the library cache.
 type cachedLibrary struct {
-	At     time.Time `json:"at"`
-	Movies []Movie   `json:"movies"`
+	Version    int                  `json:"version,omitempty"`
+	At         time.Time            `json:"at"`
+	Movies     []Movie              `json:"movies"`
+	Shows      []Show               `json:"shows,omitempty"`
+	Seasons    map[string][]Season  `json:"seasons,omitempty"`
+	Episodes   map[string][]Episode `json:"episodes,omitempty"`
+	SeasonsAt  map[string]time.Time `json:"seasonsAt,omitempty"`
+	EpisodesAt map[string]time.Time `json:"episodesAt,omitempty"`
 }
 
 func (p *Plex) loadCacheFromDisk() {
 	if p.cacheFile == "" {
 		return
+	}
+	// A process can die after CreateTemp and before Rename. Those files are
+	// never useful on restart, and without a sweep they accumulate forever.
+	for _, tmpName := range cacheTempFiles(p.cacheFile) {
+		if err := os.Remove(tmpName); err != nil && !errors.Is(err, os.ErrNotExist) {
+			log.Printf("library cache: remove stale temp %s: %v", tmpName, err)
+		}
 	}
 	data, err := os.ReadFile(p.cacheFile)
 	if err != nil {
@@ -302,20 +382,82 @@ func (p *Plex) loadCacheFromDisk() {
 	}
 	p.moviesMu.Lock()
 	p.moviesVal = entry.Movies
+	p.showsVal = entry.Shows
+	p.showsLoaded = entry.Version >= 2
 	p.moviesAt = entry.At
 	p.moviesByKey = buildMoviesIndex(entry.Movies)
+	p.showsByKey = buildShowsIndex(entry.Shows)
+	p.seasonsVal = entry.Seasons
+	p.episodesVal = entry.Episodes
+	legacySeasonTimes := entry.SeasonsAt == nil
+	legacyEpisodeTimes := entry.EpisodesAt == nil
+	p.seasonsAt = entry.SeasonsAt
+	p.episodesAt = entry.EpisodesAt
+	if p.seasonsAt == nil {
+		p.seasonsAt = make(map[string]time.Time)
+	}
+	if p.episodesAt == nil {
+		p.episodesAt = make(map[string]time.Time)
+	}
+	// Caches written by the first TV-capable release did not carry
+	// per-hierarchy timestamps. Treat their values as fresh as of the
+	// catalog save time, preserving restart/offline behavior while still
+	// allowing them to expire normally.
+	for key := range p.seasonsVal {
+		if legacySeasonTimes {
+			p.seasonsAt[key] = entry.At
+		}
+	}
+	for key := range p.episodesVal {
+		if legacyEpisodeTimes {
+			p.episodesAt[key] = entry.At
+		}
+	}
+	p.rebuildHierarchyIndexesLocked()
 	p.moviesMu.Unlock()
-	log.Printf("library cache: loaded %d titles from %s (saved %s)",
-		len(entry.Movies), p.cacheFile,
+	log.Printf("library cache: loaded %d movies and %d shows from %s (saved %s)",
+		len(entry.Movies), len(entry.Shows), p.cacheFile,
 		time.Since(entry.At).Round(time.Second))
+}
+
+func cacheTempFiles(cacheFile string) []string {
+	matches, err := filepath.Glob(filepath.Join(filepath.Dir(cacheFile), libraryCacheTempPattern))
+	if err != nil {
+		return nil
+	}
+	out := matches[:0]
+	for _, match := range matches {
+		// A custom cache filename may itself begin with ".library-".
+		if filepath.Clean(match) != filepath.Clean(cacheFile) {
+			out = append(out, match)
+		}
+	}
+	return out
 }
 
 func (p *Plex) saveCacheToDisk() {
 	if p.cacheFile == "" {
 		return
 	}
+	p.cacheWriteMu.Lock()
+	defer p.cacheWriteMu.Unlock()
 	p.moviesMu.Lock()
-	entry := cachedLibrary{At: p.moviesAt, Movies: p.moviesVal}
+	seasons := make(map[string][]Season, len(p.seasonsVal))
+	for key, values := range p.seasonsVal {
+		seasons[key] = append([]Season(nil), values...)
+	}
+	episodes := make(map[string][]Episode, len(p.episodesVal))
+	for key, values := range p.episodesVal {
+		episodes[key] = append([]Episode(nil), values...)
+	}
+	entry := cachedLibrary{
+		At: p.moviesAt, Movies: append([]Movie(nil), p.moviesVal...), Shows: append([]Show(nil), p.showsVal...),
+		Seasons: seasons, Episodes: episodes,
+		SeasonsAt: cloneTimes(p.seasonsAt), EpisodesAt: cloneTimes(p.episodesAt),
+	}
+	if p.showsLoaded {
+		entry.Version = 2
+	}
 	p.moviesMu.Unlock()
 	data, err := json.Marshal(entry)
 	if err != nil {
@@ -325,14 +467,41 @@ func (p *Plex) saveCacheToDisk() {
 		log.Printf("library cache: mkdir: %v", err)
 		return
 	}
-	tmp := p.cacheFile + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
-		log.Printf("library cache: write %s: %v", tmp, err)
+	tmp, err := os.CreateTemp(filepath.Dir(p.cacheFile), libraryCacheTempPattern)
+	if err != nil {
+		log.Printf("library cache: temp: %v", err)
 		return
 	}
-	if err := os.Rename(tmp, p.cacheFile); err != nil {
+	tmpName := tmp.Name()
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		_ = os.Remove(tmpName)
+		log.Printf("library cache: write %s: %v", tmpName, err)
+		return
+	}
+	if err := tmp.Chmod(0o644); err != nil {
+		tmp.Close()
+		_ = os.Remove(tmpName)
+		log.Printf("library cache: chmod %s: %v", tmpName, err)
+		return
+	}
+	if err := tmp.Close(); err != nil {
+		_ = os.Remove(tmpName)
+		log.Printf("library cache: close %s: %v", tmpName, err)
+		return
+	}
+	if err := os.Rename(tmpName, p.cacheFile); err != nil {
+		_ = os.Remove(tmpName)
 		log.Printf("library cache: rename: %v", err)
 	}
+}
+
+func cloneTimes(src map[string]time.Time) map[string]time.Time {
+	dst := make(map[string]time.Time, len(src))
+	for key, at := range src {
+		dst[key] = at
+	}
+	return dst
 }
 
 // LibraryStats is the snapshot of the in-memory library cache used by
@@ -349,7 +518,7 @@ type LibraryStats struct {
 // health. Used by /admin/api/stats.
 func (p *Plex) Stats() LibraryStats {
 	p.moviesMu.Lock()
-	titles := len(p.moviesVal)
+	titles := len(p.moviesVal) + len(p.showsVal)
 	at := p.moviesAt
 	p.moviesMu.Unlock()
 	age := 0.0
@@ -372,11 +541,21 @@ func (p *Plex) Stats() LibraryStats {
 func (p *Plex) RefreshLibrary() {
 	p.moviesMu.Lock()
 	p.moviesAt = time.Time{} // forces TTL check to miss on next ListMovies
+	for key := range p.seasonsVal {
+		p.seasonsAt[key] = time.Time{}
+	}
+	for key := range p.episodesVal {
+		p.episodesAt[key] = time.Time{}
+	}
 	// An explicit refresh also forgets which titles were unrated, so the
 	// next enrichment gives every scoreless title a fresh look.
 	p.imdbNoRating = make(map[string]bool)
 	p.moviesMu.Unlock()
-	log.Printf("library: cache invalidated; next ListMovies will refetch from Plex")
+	// Persist the invalidated timestamps so a restart cannot accidentally
+	// make stale hierarchy data fresh again. Values stay in the cache and
+	// remain available as fallback if Plex is down.
+	p.saveCacheToDisk()
+	log.Printf("library: catalog and TV hierarchy caches invalidated; next request will refetch from Plex")
 }
 
 // ListMovies returns every item across all movie-type library sections.
@@ -390,20 +569,32 @@ func (p *Plex) ListMovies() ([]Movie, error) {
 	if movies, ok := p.cachedMovies(); ok {
 		return movies, nil
 	}
-	v, err, _ := p.listFlight.Do("list", func() (any, error) {
-		// Re-check inside the flight: a caller that queued behind a
-		// just-completed refresh must not immediately refetch.
+	p.moviesMu.Lock()
+	haveFullCatalog := p.showsLoaded
+	p.moviesMu.Unlock()
+	if haveFullCatalog {
+		lib, err := p.ListLibrary()
+		return lib.Movies, err
+	}
+	v, err, _ := p.listFlight.Do("movies", func() (any, error) {
 		if movies, ok := p.cachedMovies(); ok {
 			return movies, nil
+		}
+		p.moviesMu.Lock()
+		haveFullCatalog := p.showsLoaded
+		p.moviesMu.Unlock()
+		if haveFullCatalog {
+			lib, err := p.ListLibrary()
+			return lib.Movies, err
 		}
 		return p.fetchMovies()
 	})
 	if err != nil {
 		p.moviesMu.Lock()
-		stale := p.moviesVal
+		stale := append([]Movie(nil), p.moviesVal...)
+		haveStale := p.moviesVal != nil
 		p.moviesMu.Unlock()
-		if stale != nil {
-			log.Printf("library: refresh failed (%v); serving stale cache of %d titles", err, len(stale))
+		if haveStale {
 			return stale, nil
 		}
 		return nil, err
@@ -411,7 +602,53 @@ func (p *Plex) ListMovies() ([]Movie, error) {
 	return v.([]Movie), nil
 }
 
-// cachedMovies returns the in-memory list when it's within TTL.
+// ListLibrary returns the cached top-level movie and TV-show catalog.
+func (p *Plex) ListLibrary() (MediaLibrary, error) {
+	if lib, ok := p.cachedLibrary(); ok {
+		return normalizeLibrary(lib), nil
+	}
+	v, err, _ := p.listFlight.Do("list", func() (any, error) {
+		// Re-check inside the flight: a caller that queued behind a
+		// just-completed refresh must not immediately refetch.
+		if lib, ok := p.cachedLibrary(); ok {
+			return lib, nil
+		}
+		return p.fetchLibrary()
+	})
+	if err != nil {
+		p.moviesMu.Lock()
+		stale := MediaLibrary{Movies: p.moviesVal, Shows: p.showsVal}
+		haveStale := p.moviesVal != nil || p.showsVal != nil
+		p.moviesMu.Unlock()
+		if haveStale {
+			log.Printf("library: refresh failed (%v); serving stale cache of %d movies and %d shows",
+				err, len(stale.Movies), len(stale.Shows))
+			return normalizeLibrary(stale), nil
+		}
+		return MediaLibrary{}, err
+	}
+	return normalizeLibrary(v.(MediaLibrary)), nil
+}
+
+func normalizeLibrary(lib MediaLibrary) MediaLibrary {
+	if lib.Movies == nil {
+		lib.Movies = []Movie{}
+	}
+	if lib.Shows == nil {
+		lib.Shows = []Show{}
+	}
+	return lib
+}
+
+func (p *Plex) cachedLibrary() (MediaLibrary, bool) {
+	p.moviesMu.Lock()
+	defer p.moviesMu.Unlock()
+	if p.showsLoaded && time.Since(p.moviesAt) < moviesCacheTTL {
+		return MediaLibrary{Movies: p.moviesVal, Shows: p.showsVal}, true
+	}
+	return MediaLibrary{}, false
+}
+
 func (p *Plex) cachedMovies() ([]Movie, bool) {
 	p.moviesMu.Lock()
 	defer p.moviesMu.Unlock()
@@ -425,14 +662,14 @@ func (p *Plex) cachedMovies() ([]Movie, bool) {
 // the result. Callers go through ListMovies' singleflight.
 func (p *Plex) fetchMovies() ([]Movie, error) {
 	p.moviesMu.Lock()
-	prev := p.moviesByKey // snapshot for IMDb carry-forward; read off-lock below
+	prev := p.moviesByKey
 	p.moviesMu.Unlock()
-
 	var sr sectionsResp
 	if err := p.get("/library/sections", &sr); err != nil {
 		return nil, err
 	}
-	var out []Movie
+	out := make([]Movie, 0)
+	seen := make(map[string]bool)
 	for _, d := range sr.MediaContainer.Directory {
 		if d.Type != "movie" {
 			continue
@@ -442,14 +679,62 @@ func (p *Plex) fetchMovies() ([]Movie, error) {
 			return nil, err
 		}
 		for _, m := range lr.MediaContainer.Metadata {
+			if m.RatingKey == "" || seen[m.RatingKey] {
+				continue
+			}
+			seen[m.RatingKey] = true
 			out = append(out, Movie{
-				RatingKey:      m.RatingKey,
-				Title:          m.Title,
-				Year:           m.Year,
-				Rating:         m.Rating,
-				AudienceRating: m.AudienceRating,
-				Thumb:          m.Thumb,
+				RatingKey: m.RatingKey, Title: m.Title, Year: m.Year,
+				Rating: m.Rating, AudienceRating: m.AudienceRating, Thumb: m.Thumb,
 			})
+		}
+	}
+	p.enrichIMDb(out, prev)
+	p.moviesMu.Lock()
+	p.moviesVal = out
+	p.moviesAt = time.Now()
+	p.moviesByKey = buildMoviesIndex(out)
+	p.moviesMu.Unlock()
+	p.saveCacheToDisk()
+	return out, nil
+}
+
+func (p *Plex) fetchLibrary() (MediaLibrary, error) {
+	p.moviesMu.Lock()
+	prev := p.moviesByKey // snapshot for IMDb carry-forward; read off-lock below
+	p.moviesMu.Unlock()
+
+	var sr sectionsResp
+	if err := p.get("/library/sections", &sr); err != nil {
+		return MediaLibrary{}, err
+	}
+	out := make([]Movie, 0)
+	shows := make([]Show, 0)
+	seenMovies := make(map[string]bool)
+	seenShows := make(map[string]bool)
+	for _, d := range sr.MediaContainer.Directory {
+		if d.Type != "movie" && d.Type != "show" {
+			continue
+		}
+		var lr libraryResp
+		if err := p.get("/library/sections/"+d.Key+"/all", &lr); err != nil {
+			return MediaLibrary{}, err
+		}
+		for _, m := range lr.MediaContainer.Metadata {
+			if d.Type == "show" {
+				if m.RatingKey != "" && !seenShows[m.RatingKey] {
+					seenShows[m.RatingKey] = true
+					shows = append(shows, Show{RatingKey: m.RatingKey, Title: m.Title, Year: m.Year, Thumb: m.Thumb, Art: m.Art})
+				}
+				continue
+			}
+			if m.RatingKey != "" && !seenMovies[m.RatingKey] {
+				seenMovies[m.RatingKey] = true
+				out = append(out, Movie{
+					RatingKey: m.RatingKey, Title: m.Title, Year: m.Year,
+					Rating: m.Rating, AudienceRating: m.AudienceRating, Thumb: m.Thumb,
+				})
+			}
 		}
 	}
 
@@ -459,11 +744,54 @@ func (p *Plex) fetchMovies() ([]Movie, error) {
 
 	p.moviesMu.Lock()
 	p.moviesVal = out
+	p.showsVal = shows
+	p.showsLoaded = true
 	p.moviesAt = time.Now()
 	p.moviesByKey = buildMoviesIndex(out)
+	p.showsByKey = buildShowsIndex(shows)
+	p.pruneHierarchyLocked(p.showsByKey)
 	p.moviesMu.Unlock()
 	p.saveCacheToDisk()
-	return out, nil
+	return MediaLibrary{Movies: out, Shows: shows}, nil
+}
+
+// pruneHierarchyLocked drops cached descendants of shows that disappeared
+// from a successful top-level catalog refresh. Unknown legacy entries are
+// retained conservatively; only hierarchy whose owning show can be identified
+// and is absent from the new catalog is removed.
+func (p *Plex) pruneHierarchyLocked(knownShows map[string]Show) {
+	seasonOwners := make(map[string]string)
+	for showKey, seasons := range p.seasonsVal {
+		for _, season := range seasons {
+			owner := season.ParentRatingKey
+			if owner == "" {
+				owner = showKey
+			}
+			seasonOwners[season.RatingKey] = owner
+		}
+		if _, ok := knownShows[showKey]; !ok {
+			delete(p.seasonsVal, showKey)
+			delete(p.seasonsAt, showKey)
+		}
+	}
+	for seasonKey, episodes := range p.episodesVal {
+		owner := seasonOwners[seasonKey]
+		if owner == "" {
+			for _, episode := range episodes {
+				if episode.GrandparentRatingKey != "" {
+					owner = episode.GrandparentRatingKey
+					break
+				}
+			}
+		}
+		if owner != "" {
+			if _, ok := knownShows[owner]; !ok {
+				delete(p.episodesVal, seasonKey)
+				delete(p.episodesAt, seasonKey)
+			}
+		}
+	}
+	p.rebuildHierarchyIndexesLocked()
 }
 
 // plexRating is one entry of a movie's capital "Rating" array, e.g.
@@ -584,16 +912,292 @@ func buildMoviesIndex(movies []Movie) map[string]Movie {
 	return idx
 }
 
+func buildShowsIndex(shows []Show) map[string]Show {
+	idx := make(map[string]Show, len(shows))
+	for _, show := range shows {
+		idx[show.RatingKey] = show
+	}
+	return idx
+}
+
+type childrenResp struct {
+	MediaContainer struct {
+		Metadata []struct {
+			Type                  string `json:"type"`
+			RatingKey             string `json:"ratingKey"`
+			ParentRatingKey       string `json:"parentRatingKey"`
+			GrandparentRatingKey  string `json:"grandparentRatingKey"`
+			Title                 string `json:"title"`
+			GrandparentTitle      string `json:"grandparentTitle"`
+			Index                 int    `json:"index"`
+			ParentIndex           int    `json:"parentIndex"`
+			Duration              int64  `json:"duration"`
+			OriginallyAvailableAt string `json:"originallyAvailableAt"`
+			Thumb                 string `json:"thumb"`
+			Art                   string `json:"art"`
+		} `json:"Metadata"`
+	} `json:"MediaContainer"`
+}
+
+// ListSeasons and ListEpisodes lazily walk the Plex hierarchy. A successful
+// result is persisted for restart/offline fallback; concurrent requests for
+// the same parent collapse into one upstream call.
+func (p *Plex) ListSeasons(showKey string) ([]Season, error) {
+	p.moviesMu.Lock()
+	if seasons, ok := p.seasonsVal[showKey]; ok && cacheTimeFresh(p.seasonsAt[showKey], hierarchyCacheTTL) {
+		out := append([]Season(nil), seasons...)
+		p.moviesMu.Unlock()
+		return out, nil
+	}
+	p.moviesMu.Unlock()
+	v, err, _ := p.listFlight.Do("seasons:"+showKey, func() (any, error) {
+		p.moviesMu.Lock()
+		if seasons, ok := p.seasonsVal[showKey]; ok && cacheTimeFresh(p.seasonsAt[showKey], hierarchyCacheTTL) {
+			out := append([]Season(nil), seasons...)
+			p.moviesMu.Unlock()
+			return out, nil
+		}
+		p.moviesMu.Unlock()
+		var cr childrenResp
+		if err := p.get("/library/metadata/"+showKey+"/children", &cr); err != nil {
+			return nil, err
+		}
+		seasons := make([]Season, 0, len(cr.MediaContainer.Metadata))
+		for _, m := range cr.MediaContainer.Metadata {
+			if m.Type != "" && m.Type != "season" {
+				continue
+			}
+			seasons = append(seasons, Season{
+				RatingKey: m.RatingKey, ParentRatingKey: showKey, Title: m.Title,
+				Index: m.Index, Thumb: m.Thumb, Art: m.Art,
+			})
+		}
+		sort.SliceStable(seasons, func(i, j int) bool {
+			// Match Plex's browsing convention: regular seasons first and
+			// Specials (index 0) last. NextEpisode treats specials separately,
+			// so this display ordering does not affect playback progression.
+			if seasons[i].Index == 0 && seasons[j].Index != 0 {
+				return false
+			}
+			if seasons[j].Index == 0 && seasons[i].Index != 0 {
+				return true
+			}
+			if seasons[i].Index != seasons[j].Index {
+				return seasons[i].Index < seasons[j].Index
+			}
+			return seasons[i].Title < seasons[j].Title
+		})
+		p.moviesMu.Lock()
+		if p.seasonsVal == nil {
+			p.seasonsVal = make(map[string][]Season)
+		}
+		if p.seasonsAt == nil {
+			p.seasonsAt = make(map[string]time.Time)
+		}
+		p.seasonsVal[showKey] = seasons
+		p.seasonsAt[showKey] = time.Now()
+		p.rebuildHierarchyIndexesLocked()
+		p.moviesMu.Unlock()
+		p.saveCacheToDisk()
+		return append([]Season(nil), seasons...), nil
+	})
+	if err != nil {
+		p.moviesMu.Lock()
+		stale, ok := p.seasonsVal[showKey]
+		out := append([]Season(nil), stale...)
+		p.moviesMu.Unlock()
+		if ok {
+			return out, nil
+		}
+		return nil, err
+	}
+	return v.([]Season), nil
+}
+
+func (p *Plex) ListEpisodes(seasonKey string) ([]Episode, error) {
+	p.moviesMu.Lock()
+	if episodes, ok := p.episodesVal[seasonKey]; ok && cacheTimeFresh(p.episodesAt[seasonKey], hierarchyCacheTTL) {
+		out := append([]Episode(nil), episodes...)
+		p.moviesMu.Unlock()
+		return out, nil
+	}
+	season := p.seasonsByKey[seasonKey]
+	show := p.showsByKey[season.ParentRatingKey]
+	p.moviesMu.Unlock()
+	v, err, _ := p.listFlight.Do("episodes:"+seasonKey, func() (any, error) {
+		p.moviesMu.Lock()
+		if episodes, ok := p.episodesVal[seasonKey]; ok && cacheTimeFresh(p.episodesAt[seasonKey], hierarchyCacheTTL) {
+			out := append([]Episode(nil), episodes...)
+			p.moviesMu.Unlock()
+			return out, nil
+		}
+		p.moviesMu.Unlock()
+		var cr childrenResp
+		if err := p.get("/library/metadata/"+seasonKey+"/children", &cr); err != nil {
+			return nil, err
+		}
+		episodes := make([]Episode, 0, len(cr.MediaContainer.Metadata))
+		for _, m := range cr.MediaContainer.Metadata {
+			if m.Type != "" && m.Type != "episode" {
+				continue
+			}
+			showKey := m.GrandparentRatingKey
+			if showKey == "" {
+				showKey = season.ParentRatingKey
+			}
+			seriesTitle := m.GrandparentTitle
+			if seriesTitle == "" {
+				seriesTitle = show.Title
+			}
+			seasonNumber := m.ParentIndex
+			if m.ParentIndex == 0 && season.Index != 0 {
+				seasonNumber = season.Index
+			}
+			episodes = append(episodes, Episode{
+				RatingKey: m.RatingKey, ParentRatingKey: seasonKey,
+				GrandparentRatingKey: showKey, Title: m.Title, SeriesTitle: seriesTitle,
+				SeasonNumber: seasonNumber, EpisodeNumber: m.Index, Duration: m.Duration,
+				OriginallyAvailableAt: m.OriginallyAvailableAt, Thumb: m.Thumb, Art: m.Art,
+			})
+		}
+		sort.SliceStable(episodes, func(i, j int) bool {
+			if episodes[i].EpisodeNumber != episodes[j].EpisodeNumber {
+				return episodes[i].EpisodeNumber < episodes[j].EpisodeNumber
+			}
+			return episodes[i].Title < episodes[j].Title
+		})
+		p.moviesMu.Lock()
+		if p.episodesVal == nil {
+			p.episodesVal = make(map[string][]Episode)
+		}
+		if p.episodesAt == nil {
+			p.episodesAt = make(map[string]time.Time)
+		}
+		p.episodesVal[seasonKey] = episodes
+		p.episodesAt[seasonKey] = time.Now()
+		p.rebuildHierarchyIndexesLocked()
+		p.moviesMu.Unlock()
+		p.saveCacheToDisk()
+		return append([]Episode(nil), episodes...), nil
+	})
+	if err != nil {
+		p.moviesMu.Lock()
+		stale, ok := p.episodesVal[seasonKey]
+		out := append([]Episode(nil), stale...)
+		p.moviesMu.Unlock()
+		if ok {
+			return out, nil
+		}
+		return nil, err
+	}
+	return v.([]Episode), nil
+}
+
+func cacheTimeFresh(at time.Time, ttl time.Duration) bool {
+	return !at.IsZero() && time.Since(at) < ttl
+}
+
+func (p *Plex) HasShow(ratingKey string) bool {
+	p.moviesMu.Lock()
+	defer p.moviesMu.Unlock()
+	_, ok := p.showsByKey[ratingKey]
+	return ok
+}
+
+func (p *Plex) HasSeason(ratingKey string) bool {
+	p.moviesMu.Lock()
+	defer p.moviesMu.Unlock()
+	season, ok := p.seasonsByKey[ratingKey]
+	if !ok {
+		return false
+	}
+	_, showKnown := p.showsByKey[season.ParentRatingKey]
+	return showKnown
+}
+
+func (p *Plex) rebuildHierarchyIndexesLocked() {
+	p.seasonsByKey = make(map[string]Season)
+	for _, seasons := range p.seasonsVal {
+		for _, season := range seasons {
+			p.seasonsByKey[season.RatingKey] = season
+		}
+	}
+	p.episodesByKey = make(map[string]Episode)
+	for _, episodes := range p.episodesVal {
+		for _, episode := range episodes {
+			p.episodesByKey[episode.RatingKey] = episode
+		}
+	}
+}
+
+func (p *Plex) EpisodeByKey(ratingKey string) (Episode, bool) {
+	p.moviesMu.Lock()
+	defer p.moviesMu.Unlock()
+	episode, ok := p.episodesByKey[ratingKey]
+	return episode, ok
+}
+
+// NextEpisode follows regular seasons in numeric order. Specials (season 0)
+// only advance within specials and never enter the regular-season chain.
+func (p *Plex) NextEpisode(current Episode) (*Episode, error) {
+	if current.ParentRatingKey == "" {
+		return nil, fmt.Errorf("episode %s has no parent season", current.RatingKey)
+	}
+	episodes, err := p.ListEpisodes(current.ParentRatingKey)
+	if err != nil {
+		return nil, err
+	}
+	for _, episode := range episodes {
+		if episode.EpisodeNumber > current.EpisodeNumber {
+			next := episode
+			return &next, nil
+		}
+	}
+	if current.SeasonNumber == 0 {
+		return nil, nil
+	}
+	if current.GrandparentRatingKey == "" {
+		return nil, fmt.Errorf("episode %s has no parent show", current.RatingKey)
+	}
+	seasons, err := p.ListSeasons(current.GrandparentRatingKey)
+	if err != nil {
+		return nil, err
+	}
+	for _, season := range seasons {
+		if season.Index <= current.SeasonNumber || season.Index == 0 {
+			continue
+		}
+		nextEpisodes, err := p.ListEpisodes(season.RatingKey)
+		if err != nil {
+			return nil, err
+		}
+		if len(nextEpisodes) > 0 {
+			next := nextEpisodes[0]
+			return &next, nil
+		}
+	}
+	return nil, nil
+}
+
 type metadataResp struct {
 	MediaContainer struct {
 		Metadata []struct {
-			Title          string  `json:"title"`
-			Thumb          string  `json:"thumb"`
-			Tagline        string  `json:"tagline"`
-			Summary        string  `json:"summary"`
-			ContentRating  string  `json:"contentRating"`
-			Rating         float64 `json:"rating"`
-			AudienceRating float64 `json:"audienceRating"`
+			Type                 string  `json:"type"`
+			RatingKey            string  `json:"ratingKey"`
+			Title                string  `json:"title"`
+			Year                 int     `json:"year"`
+			Thumb                string  `json:"thumb"`
+			Art                  string  `json:"art"`
+			ParentRatingKey      string  `json:"parentRatingKey"`
+			GrandparentRatingKey string  `json:"grandparentRatingKey"`
+			GrandparentTitle     string  `json:"grandparentTitle"`
+			Index                int     `json:"index"`
+			ParentIndex          int     `json:"parentIndex"`
+			Tagline              string  `json:"tagline"`
+			Summary              string  `json:"summary"`
+			ContentRating        string  `json:"contentRating"`
+			Rating               float64 `json:"rating"`
+			AudienceRating       float64 `json:"audienceRating"`
 			// Plex returns BOTH a scalar "guid"/"rating" and a capital-letter
 			// "Guid"/"Rating" array for the same concepts. Go's json matching
 			// is case-insensitive, so without these exact-case absorber fields
@@ -648,11 +1252,13 @@ func (p *Plex) Resolve(ratingKey string) (*StreamInfo, *MovieMeta, error) {
 		return nil, nil, err
 	}
 	if len(mr.MediaContainer.Metadata) == 0 ||
-		len(mr.MediaContainer.Metadata[0].Media) == 0 ||
-		len(mr.MediaContainer.Metadata[0].Media[0].Part) == 0 {
+		len(mr.MediaContainer.Metadata[0].Media) == 0 {
 		return nil, nil, fmt.Errorf("no playable part for ratingKey %s", ratingKey)
 	}
 	metadata := mr.MediaContainer.Metadata[0]
+	if metadata.Type != "" && metadata.Type != "movie" && metadata.Type != "episode" {
+		return nil, nil, fmt.Errorf("ratingKey %s is %s, not playable movie or episode", ratingKey, metadata.Type)
+	}
 
 	// Pick the best Media variant for browser playback. Plex movies
 	// often have multiple Media entries: the original Blu-ray remux
@@ -661,17 +1267,20 @@ func (p *Plex) Resolve(ratingKey string) (*StreamInfo, *MovieMeta, error) {
 	// optimized version is dramatically friendlier to MSE / hls.js /
 	// VideoToolbox — fewer decoder errors, smaller buffers, broader
 	// browser compat. Always prefer it when present.
-	mediaIdx := 0
-	chosenReason := "default (only variant)"
-	if len(metadata.Media) > 1 {
-		chosenReason = "default (no optimized variant)"
-		for i, m := range metadata.Media {
-			if m.OptimizedForStreaming == 1 && len(m.Part) > 0 {
-				mediaIdx = i
-				chosenReason = "optimizedForStreaming=1"
-				break
-			}
+	mediaIdx := -1
+	chosenReason := "first playable variant"
+	for i, m := range metadata.Media {
+		if len(m.Part) > 0 && mediaIdx == -1 {
+			mediaIdx = i
 		}
+		if m.OptimizedForStreaming == 1 && len(m.Part) > 0 {
+			mediaIdx = i
+			chosenReason = "optimizedForStreaming=1"
+			break
+		}
+	}
+	if mediaIdx == -1 {
+		return nil, nil, fmt.Errorf("no playable part for ratingKey %s", ratingKey)
 	}
 	media := metadata.Media[mediaIdx]
 	if len(media.Part) == 0 {
@@ -719,11 +1328,28 @@ func (p *Plex) Resolve(ratingKey string) (*StreamInfo, *MovieMeta, error) {
 	}
 
 	meta := &MovieMeta{
-		Tagline:        metadata.Tagline,
-		Summary:        metadata.Summary,
-		ContentRating:  metadata.ContentRating,
-		CriticRating:   metadata.Rating,
-		AudienceRating: metadata.AudienceRating,
+		MediaType:            metadata.Type,
+		RatingKey:            metadata.RatingKey,
+		Title:                metadata.Title,
+		Year:                 metadata.Year,
+		Thumb:                metadata.Thumb,
+		Art:                  metadata.Art,
+		SeriesTitle:          metadata.GrandparentTitle,
+		SeasonNumber:         metadata.ParentIndex,
+		EpisodeNumber:        metadata.Index,
+		ParentRatingKey:      metadata.ParentRatingKey,
+		GrandparentRatingKey: metadata.GrandparentRatingKey,
+		Tagline:              metadata.Tagline,
+		Summary:              metadata.Summary,
+		ContentRating:        metadata.ContentRating,
+		CriticRating:         metadata.Rating,
+		AudienceRating:       metadata.AudienceRating,
+	}
+	if meta.MediaType == "" {
+		meta.MediaType = "movie" // legacy Plex/fixtures omitted type
+	}
+	if meta.RatingKey == "" {
+		meta.RatingKey = ratingKey
 	}
 	for _, g := range metadata.Genre {
 		if g.Tag != "" {
@@ -745,7 +1371,7 @@ func (p *Plex) Resolve(ratingKey string) (*StreamInfo, *MovieMeta, error) {
 }
 
 // errNoPoster signals the movie has no thumb art (handler maps it to 404).
-var errNoPoster = errors.New("no poster art for movie")
+var errNoPoster = errors.New("no poster art for media")
 
 // posterTranscodeW/H are the box Plex scales the poster into. 400×600 (2:3)
 // covers the library grid's ~150–250px columns at 2x/retina, so the result
@@ -770,11 +1396,21 @@ func (p *Plex) PosterStream(ratingKey string) (io.ReadCloser, string, error) {
 	// internet), so an unknown key must not become a free metadata probe
 	// against Plex — refusing here keeps alphanumeric key scans from
 	// enumerating the server or hammering it with per-key fetches.
-	m, ok := p.MovieByKey(ratingKey)
-	if !ok {
+	p.moviesMu.Lock()
+	thumb := ""
+	if m, ok := p.moviesByKey[ratingKey]; ok {
+		thumb = m.Thumb
+	} else if show, ok := p.showsByKey[ratingKey]; ok {
+		thumb = show.Thumb
+	} else if season, ok := p.seasonsByKey[ratingKey]; ok {
+		thumb = season.Thumb
+	} else if episode, ok := p.episodesByKey[ratingKey]; ok {
+		thumb = episode.Thumb
+	} else {
+		p.moviesMu.Unlock()
 		return nil, "", errNoPoster
 	}
-	thumb := m.Thumb
+	p.moviesMu.Unlock()
 	if thumb == "" {
 		// Library caches persisted before thumbs were stored lack the
 		// path; a one-off metadata fetch fills it for this request.

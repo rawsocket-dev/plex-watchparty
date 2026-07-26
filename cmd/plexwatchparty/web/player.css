@@ -441,7 +441,9 @@ body.viewer .role-cell .r-viewer { display: inline; }
 
 /* Viewer mode hides host-only controls. Fullscreen/zoom/exit are
    per-client and always available. */
-body.viewer #play, body.viewer #pause { display: none; }
+body.viewer #play, body.viewer #pause, body.viewer #next-episode { display: none; }
+#next-episode[hidden] { display: none; }
+#next-episode { color: var(--lilac); white-space: nowrap; }
 body.viewer #scrub-hit { cursor: default; }
 body.viewer #scrub-hit:hover #scrub-track { height: 5px; }
 body.viewer #scrub-thumb { opacity: .65; }

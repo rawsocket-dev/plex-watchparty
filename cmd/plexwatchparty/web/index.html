@@ -36,6 +36,11 @@
   <a class="ibtn" id="logout-link" href="/logout" title="Sign out"><svg class="ico"><use href="#i-exit"/></svg></a>
 </header>
 
+<nav id="media-tabs" aria-label="Media type">
+  <button type="button" class="active" data-tab="movies" aria-selected="true">Movies</button>
+  <button type="button" data-tab="tv" aria-selected="false">TV</button>
+</nav>
+
 <div id="guest">
   <div class="card">
     <span class="label">Viewer</span>
@@ -68,6 +73,7 @@
 </div>
 
 <div id="groups"></div>
+<div id="tv-detail" hidden></div>
 <footer>· intermission · grab a drink ·</footer>
 
 <!-- Resume / Start over dialog. Hidden by default; opened when the

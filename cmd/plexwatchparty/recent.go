@@ -13,10 +13,16 @@ import (
 // waiting room. Captured at /control load time, just enough metadata
 // to render a card and round-trip a re-load.
 type RecentMovie struct {
-	RatingKey    string `json:"ratingKey"`
-	Title        string `json:"title"`
-	Year         int    `json:"year"`
-	LastPlayedAt int64  `json:"lastPlayedAt"` // unix seconds
+	RatingKey     string              `json:"ratingKey"`
+	Title         string              `json:"title"`
+	Year          int                 `json:"year"`
+	MediaType     string              `json:"mediaType,omitempty"`
+	SeriesTitle   string              `json:"seriesTitle,omitempty"`
+	SeasonNumber  int                 `json:"seasonNumber,omitempty"`
+	EpisodeNumber int                 `json:"episodeNumber,omitempty"`
+	ArtworkKey    string              `json:"artworkKey,omitempty"`
+	NextEpisode   *NextEpisodeSummary `json:"nextEpisode,omitempty"`
+	LastPlayedAt  int64               `json:"lastPlayedAt"` // unix seconds
 }
 
 // RecentMovies is a tiny LRU-ish list of recently-played movies,
@@ -67,6 +73,13 @@ func (r *RecentMovies) Load() {
 // inserted at the front and the list is truncated to cap. Persists
 // to disk best-effort; a write failure is logged but not fatal.
 func (r *RecentMovies) Touch(ratingKey, title string, year int) {
+	r.TouchMedia(RecentMovie{RatingKey: ratingKey, Title: title, Year: year})
+}
+
+// TouchMedia is the media-neutral form of Touch. Touch remains as a
+// compatibility wrapper for existing movie callers and persisted data.
+func (r *RecentMovies) TouchMedia(entry RecentMovie) {
+	ratingKey := entry.RatingKey
 	if ratingKey == "" {
 		return
 	}
@@ -75,12 +88,7 @@ func (r *RecentMovies) Touch(ratingKey, title string, year int) {
 	// — the prior pattern (kept := r.entries[:0]) was correct only
 	// because of the surrounding lock, and the foot-gun isn't worth
 	// the saved allocation on a list that maxes out at recentCap.
-	entry := RecentMovie{
-		RatingKey:    ratingKey,
-		Title:        title,
-		Year:         year,
-		LastPlayedAt: time.Now().Unix(),
-	}
+	entry.LastPlayedAt = time.Now().Unix()
 	updated := make([]RecentMovie, 0, len(r.entries)+1)
 	updated = append(updated, entry)
 	for _, e := range r.entries {

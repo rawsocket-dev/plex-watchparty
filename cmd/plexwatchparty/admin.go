@@ -176,16 +176,17 @@ func registerAdminRoutes(
 		// Kick a fetch synchronously so the response carries the
 		// fresh title count; if Plex is slow, the request hangs for
 		// that fetch (admin-only, infrequent — OK).
-		movies, err := plex.ListMovies()
+		library, err := plex.ListLibrary()
 		if err != nil {
 			log.Printf("admin: %s library refresh failed: %v", auth.Email(r), err)
 			http.Error(w, "refresh failed: "+err.Error(), http.StatusBadGateway)
 			return
 		}
-		log.Printf("admin: %s refreshed library (%d titles)", auth.Email(r), len(movies))
+		titles := len(library.Movies) + len(library.Shows)
+		log.Printf("admin: %s refreshed library (%d titles)", auth.Email(r), titles)
 		audit.Record(AuditEvent{Type: "admin", Email: auth.Email(r), Role: "admin", IP: clientIP(r),
-			Detail: fmt.Sprintf("refreshed library (%d titles)", len(movies))})
-		writeJSON(w, map[string]any{"titles": len(movies)})
+			Detail: fmt.Sprintf("refreshed library (%d titles)", titles)})
+		writeJSON(w, map[string]any{"titles": titles})
 	})))
 
 	mux.Handle("/admin/api/session/restart", gated(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -288,12 +289,18 @@ type AdminSnapshot struct {
 // admin panel (read from the Hub's view, not PlexSession directly,
 // so it includes title + duration).
 type SessionSummary struct {
-	RatingKey    string  `json:"ratingKey"`
-	Title        string  `json:"title"`
-	Playing      bool    `json:"playing"`
-	PositionSec  float64 `json:"positionSec"`
-	DurationSec  float64 `json:"durationSec"`
-	SessionToken int64   `json:"sessionToken"`
+	RatingKey     string              `json:"ratingKey"`
+	Title         string              `json:"title"`
+	MediaType     string              `json:"mediaType,omitempty"`
+	SeriesTitle   string              `json:"seriesTitle,omitempty"`
+	SeasonNumber  int                 `json:"seasonNumber,omitempty"`
+	EpisodeNumber int                 `json:"episodeNumber,omitempty"`
+	ArtworkKey    string              `json:"artworkKey,omitempty"`
+	NextEpisode   *NextEpisodeSummary `json:"nextEpisode,omitempty"`
+	Playing       bool                `json:"playing"`
+	PositionSec   float64             `json:"positionSec"`
+	DurationSec   float64             `json:"durationSec"`
+	SessionToken  int64               `json:"sessionToken"`
 }
 
 func adminSnapshot(plex *Plex, cache *SegmentCache, sess *PlexSession, hub *Hub, bw *bwTracker) AdminSnapshot {
@@ -303,12 +310,18 @@ func adminSnapshot(plex *Plex, cache *SegmentCache, sess *PlexSession, hub *Hub,
 		Cache:   cache.Stats(),
 		Library: plex.Stats(),
 		Session: SessionSummary{
-			RatingKey:    state.RatingKey,
-			Title:        state.Title,
-			Playing:      state.Playing,
-			PositionSec:  state.PositionSec,
-			DurationSec:  state.DurationSec,
-			SessionToken: state.SessionToken,
+			RatingKey:     state.RatingKey,
+			Title:         state.Title,
+			MediaType:     state.MediaType,
+			SeriesTitle:   state.SeriesTitle,
+			SeasonNumber:  state.SeasonNumber,
+			EpisodeNumber: state.EpisodeNumber,
+			ArtworkKey:    state.ArtworkKey,
+			NextEpisode:   state.NextEpisode,
+			Playing:       state.Playing,
+			PositionSec:   state.PositionSec,
+			DurationSec:   state.DurationSec,
+			SessionToken:  state.SessionToken,
 		},
 		Lifecycle: sess.LifecycleStats(),
 		Viewers:   hub.AdminRoster(bw),

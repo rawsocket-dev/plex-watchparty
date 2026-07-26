@@ -14,11 +14,18 @@ import (
 // room and library use it to offer "Resume X at Y?" after a
 // container restart or idle shutdown.
 type ResumeHint struct {
-	RatingKey   string  `json:"ratingKey"`
-	Title       string  `json:"title"`
-	PositionSec float64 `json:"positionSec"`
-	DurationSec float64 `json:"durationSec"`
-	SavedAtUnix int64   `json:"savedAtUnix"`
+	RatingKey     string              `json:"ratingKey"`
+	Title         string              `json:"title"`
+	Year          int                 `json:"year,omitempty"`
+	MediaType     string              `json:"mediaType,omitempty"`
+	SeriesTitle   string              `json:"seriesTitle,omitempty"`
+	SeasonNumber  int                 `json:"seasonNumber,omitempty"`
+	EpisodeNumber int                 `json:"episodeNumber,omitempty"`
+	ArtworkKey    string              `json:"artworkKey,omitempty"`
+	NextEpisode   *NextEpisodeSummary `json:"nextEpisode,omitempty"`
+	PositionSec   float64             `json:"positionSec"`
+	DurationSec   float64             `json:"durationSec"`
+	SavedAtUnix   int64               `json:"savedAtUnix"`
 }
 
 // StateStore persists / loads the watchparty's last-known playback

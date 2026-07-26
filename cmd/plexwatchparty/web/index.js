@@ -11,8 +11,14 @@ const statusEl = document.getElementById('status');
 const groupsEl = document.getElementById('groups');
 const searchEl = document.getElementById('search');
 const countEl  = document.getElementById('count');
+const tabsEl   = document.getElementById('media-tabs');
+const tvDetailEl = document.getElementById('tv-detail');
 
 let allMovies = [];
+let allShows = [];
+let activeTab = 'movies';
+let activeShow = null;
+let tvNavigationGeneration = 0;
 
 // "The Matrix" → "Matrix" so it groups under M, not T.
 function sortKey(title) {
@@ -77,7 +83,7 @@ function resumeHintDismissed(hint) {
 }
 function showResumeBanner(hint) {
   resumeHint = hint;
-  resumeBannerTitle.textContent    = hint.title || hint.ratingKey;
+  resumeBannerTitle.textContent    = mediaTitle(hint);
   resumeBannerPosition.textContent = 'paused at ' + fmtHMS(hint.positionSec);
   if (hint.durationSec > 0) {
     resumeBannerPosition.textContent += ' of ' + fmtHMS(hint.durationSec);
@@ -168,6 +174,15 @@ async function sendLoad(b, m, opts) {
   }
 }
 
+function mediaTitle(m) {
+  if (m && m.mediaType === 'episode') {
+    return (m.seriesTitle || 'TV') + ' · S' +
+      String(m.seasonNumber || 0).padStart(2, '0') + 'E' +
+      String(m.episodeNumber || 0).padStart(2, '0') + ' · ' + (m.title || m.ratingKey);
+  }
+  return m && m.year ? m.title + ' (' + m.year + ')' : ((m && (m.title || m.ratingKey)) || '—');
+}
+
 // Resume / Start over modal wiring. Reused across all film buttons —
 // we just stash the originating button + movie on the modal element
 // and read them back when one of the actions fires.
@@ -181,7 +196,7 @@ let resumeCtx = null; // { button, movie, positionSec }
 function openResumeModal(ctx) {
   resumeCtx = ctx;
   resumeSubtitle.innerHTML =
-    '<span class="movie-title">' + escapeHTML(ctx.movie.title) + '</span>' +
+    '<span class="movie-title">' + escapeHTML(mediaTitle(ctx.movie)) + '</span>' +
     ' paused at <span class="at-time">' + fmtTime(ctx.positionSec) + '</span>';
   resumeOverlay.classList.remove('hidden');
   // Defer focus so the click that opened the modal doesn't immediately
@@ -349,7 +364,9 @@ window.addEventListener('scroll', () => {
   });
 }, { passive: true });
 
-function render(movies) {
+function render(movies, maker, noun) {
+  maker = maker || makeButton;
+  noun = noun || 'title';
   groupsEl.innerHTML = '';
   if (movies.length === 0) {
     groupsEl.innerHTML = '<div class="empty">Nothing matches that search.</div>';
@@ -379,14 +396,14 @@ function render(movies) {
     mark.className = 'letter-mark';
     mark.innerHTML =
       '<span class="glyph">' + letter + '</span>' +
-      '<span class="meta">' + films.length + ' title' + (films.length === 1 ? '' : 's') + '</span>';
+      '<span class="meta">' + films.length + ' ' + noun + (films.length === 1 ? '' : 's') + '</span>';
     section.appendChild(mark);
 
     const ul = document.createElement('ul');
     ul.className = 'films';
     for (const m of films) {
       const li = document.createElement('li');
-      li.appendChild(makeButton(m));
+      li.appendChild(maker(m));
       ul.appendChild(li);
     }
     section.appendChild(ul);
@@ -400,29 +417,177 @@ function render(movies) {
 function applyFilter() {
   const t0 = performance.now();
   const q = searchEl.value.trim().toLocaleLowerCase();
-  const list = q
-    ? allMovies.filter(m => m.title.toLocaleLowerCase().includes(q))
-    : allMovies;
-  render(list);
-  countEl.textContent = list.length + ' / ' + allMovies.length + ' titles';
+  const source = activeTab === 'tv' ? allShows : allMovies;
+  const list = q ? source.filter(m => m.title.toLocaleLowerCase().includes(q)) : source;
+  render(list, activeTab === 'tv' ? makeShowButton : makeButton, activeTab === 'tv' ? 'show' : 'title');
+  countEl.textContent = list.length + ' / ' + source.length + (activeTab === 'tv' ? ' shows' : ' titles');
   console.log('search filter+render:', (performance.now() - t0).toFixed(1), 'ms',
               '·', list.length, 'of', allMovies.length);
 }
 
 async function load() {
   try {
-    const r = await fetch('/api/movies');
+    const r = await fetch('/api/library');
     if (!r.ok) throw new Error(await r.text());
-    allMovies = await r.json();
+    const library = await r.json();
+    allMovies = library.movies || [];
+    allShows = library.shows || [];
     allMovies.sort((a, b) => sortKey(a.title).localeCompare(sortKey(b.title)));
+    allShows.sort((a, b) => sortKey(a.title).localeCompare(sortKey(b.title)));
     statusEl.remove();
-    countEl.textContent = allMovies.length + ' titles';
-    render(allMovies);
+    applyFilter();
   } catch (e) {
     statusEl.textContent = 'Couldn’t load the library. Try again in a moment.';
     console.error(e);
   }
 }
+
+function makeShowButton(show) {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'film';
+  const hue = hueFor(show.ratingKey || show.title);
+  const posterAttr = show.ratingKey ? ' data-poster="/poster/' + encodeURIComponent(show.ratingKey) + '.jpg"' : '';
+  b.innerHTML = '<span class="poster"' + posterAttr +
+    ' style="background-image:linear-gradient(155deg,oklch(0.44 0.15 ' + hue +
+    '),oklch(0.2 0.1 ' + hue + '))"></span><span class="title">' +
+    escapeHTML(show.title) + '</span>' +
+    (show.year ? '<span class="meta"><span class="year">' + show.year + '</span></span>' : '');
+  b.onclick = () => openShow(show);
+  return b;
+}
+
+function heroURL(item) {
+  return item && item.ratingKey ? "linear-gradient(rgba(8,8,11,.15),rgba(8,8,11,.88)),url('/poster/" +
+    encodeURIComponent(item.ratingKey) + ".jpg')" : '';
+}
+
+async function openShow(show) {
+  const generation = ++tvNavigationGeneration;
+  activeShow = show;
+  groupsEl.hidden = true;
+  tvDetailEl.hidden = false;
+  searchEl.disabled = true;
+  countEl.textContent = 'loading seasons…';
+  tvDetailEl.innerHTML = '<div class="tv-hero" style="background-image:' + heroURL(show) +
+    '"><h1>' + escapeHTML(show.title) + '</h1></div><div class="empty">Loading seasons…</div>';
+  try {
+    const r = await fetch('/api/tv/shows/' + encodeURIComponent(show.ratingKey) + '/seasons');
+    if (!r.ok) throw new Error(await r.text());
+    const seasons = await r.json();
+    if (generation !== tvNavigationGeneration) return;
+    countEl.textContent = seasons.length + ' season' + (seasons.length === 1 ? '' : 's');
+    tvDetailEl.innerHTML = '<div class="tv-hero" style="background-image:' + heroURL(show) +
+      '"><h1>' + escapeHTML(show.title) + '</h1></div>' +
+      '<div class="crumbs"><button type="button" data-tv-home>TV</button><span>›</span><span>' +
+      escapeHTML(show.title) + '</span></div><div class="season-list"></div>';
+    tvDetailEl.querySelector('[data-tv-home]').onclick = showTVHome;
+    const list = tvDetailEl.querySelector('.season-list');
+    if (!seasons.length) list.innerHTML = '<div class="empty">No seasons found.</div>';
+    seasons.forEach(season => {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'season-card';
+      b.innerHTML = '<span class="season-no">' + (season.index === 0 ? 'Specials' : 'Season ' + season.index) +
+        '</span><span class="title">' + escapeHTML(season.title || ('Season ' + season.index)) + '</span>';
+      b.onclick = () => openSeason(show, season);
+      list.appendChild(b);
+    });
+  } catch (e) {
+    if (generation !== tvNavigationGeneration) return;
+    countEl.textContent = '0 seasons';
+    tvDetailEl.innerHTML = '<div class="tv-hero" style="background-image:' + heroURL(show) +
+      '"><h1>' + escapeHTML(show.title) + '</h1></div><div class="empty">Couldn’t load seasons.</div>';
+    console.error(e);
+  }
+}
+
+function formatEpisodeMeta(ep) {
+  const parts = [];
+  if (ep.duration > 0) parts.push(fmtTime(ep.duration / 1000));
+  if (ep.originallyAvailableAt) parts.push(ep.originallyAvailableAt);
+  return parts.join(' · ');
+}
+
+async function openSeason(show, season) {
+  const generation = ++tvNavigationGeneration;
+  countEl.textContent = 'loading episodes…';
+  tvDetailEl.innerHTML = '<div class="tv-hero" style="background-image:' + heroURL(season.ratingKey ? season : show) +
+    '"><h1>' + escapeHTML(show.title) + '</h1></div><div class="empty">Loading episodes…</div>';
+  try {
+    const r = await fetch('/api/tv/seasons/' + encodeURIComponent(season.ratingKey) + '/episodes');
+    if (!r.ok) throw new Error(await r.text());
+    const episodes = await r.json();
+    if (generation !== tvNavigationGeneration) return;
+    countEl.textContent = episodes.length + ' episode' + (episodes.length === 1 ? '' : 's');
+    tvDetailEl.innerHTML = '<div class="tv-hero" style="background-image:' + heroURL(season.ratingKey ? season : show) +
+      '"><h1>' + escapeHTML(show.title) + '</h1></div><div class="crumbs">' +
+      '<button type="button" data-tv-home>TV</button><span>›</span><button type="button" data-show>' +
+      escapeHTML(show.title) + '</button><span>›</span><span>' +
+      escapeHTML(season.title || (season.index === 0 ? 'Specials' : 'Season ' + season.index)) +
+      '</span></div><div class="episode-list"></div>';
+    tvDetailEl.querySelector('[data-tv-home]').onclick = showTVHome;
+    tvDetailEl.querySelector('[data-show]').onclick = () => openShow(show);
+    const list = tvDetailEl.querySelector('.episode-list');
+    if (!episodes.length) list.innerHTML = '<div class="empty">No episodes found.</div>';
+    episodes.forEach(ep => {
+      ep.mediaType = 'episode';
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'episode-row';
+      b.innerHTML = '<span class="ep-code">S' + String(ep.seasonNumber).padStart(2,'0') +
+        'E' + String(ep.episodeNumber).padStart(2,'0') + '</span><span class="title">' +
+        escapeHTML(ep.title) + '</span><span class="ep-meta">' + escapeHTML(formatEpisodeMeta(ep)) + '</span>';
+      b.onclick = async () => {
+        if (!isHost) return;
+        try {
+          const sr = await fetch('/api/state', {cache:'no-store'});
+          if (sr.ok) {
+            const st = await sr.json();
+            if (st.ratingKey === ep.ratingKey && st.positionSec > 1) {
+              openResumeModal({button:b, movie:ep, positionSec:st.positionSec});
+              return;
+            }
+          }
+        } catch (_) {}
+        sendLoad(b, ep);
+      };
+      list.appendChild(b);
+    });
+  } catch (e) {
+    if (generation !== tvNavigationGeneration) return;
+    countEl.textContent = '0 episodes';
+    tvDetailEl.innerHTML = '<div class="tv-hero" style="background-image:' + heroURL(season.ratingKey ? season : show) +
+      '"><h1>' + escapeHTML(show.title) + '</h1></div><div class="empty">Couldn’t load episodes.</div>';
+    console.error(e);
+  }
+}
+
+function showTVHome() {
+  tvNavigationGeneration++;
+  activeShow = null;
+  tvDetailEl.hidden = true;
+  groupsEl.hidden = false;
+  searchEl.disabled = false;
+  applyFilter();
+}
+
+tabsEl.addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-tab]');
+  if (!btn) return;
+  activeTab = btn.dataset.tab;
+  tabsEl.querySelectorAll('[data-tab]').forEach(x => {
+    const active = x === btn;
+    x.classList.toggle('active', active);
+    x.setAttribute('aria-selected', active ? 'true' : 'false');
+  });
+  searchEl.value = '';
+  searchEl.placeholder = activeTab === 'tv' ? 'search shows' : 'search titles';
+  if (activeTab === 'tv') showTVHome();
+  else {
+    tvNavigationGeneration++;
+    activeShow = null; tvDetailEl.hidden = true; groupsEl.hidden = false;
+    searchEl.disabled = false; applyFilter();
+  }
+});
 
 function renderWho(role, name) {
   const el = document.getElementById('who');

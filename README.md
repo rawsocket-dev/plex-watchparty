@@ -3,7 +3,7 @@
 [![CI](https://github.com/rawsocket-dev/plex-watchparty/actions/workflows/ci.yml/badge.svg)](https://github.com/rawsocket-dev/plex-watchparty/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Restream a single movie from Plex and watch it **in sync** with friends who
+Restream a movie or TV episode from Plex and watch it **in sync** with friends who
 **sign in with Google** (an email allowlist controls who gets in) — no Plex account needed.
 
 The Plex token never leaves the server. The watchparty proxy acts as a thin
@@ -45,7 +45,7 @@ cache, library health, audit log, and display aliases.
 ## How it works
 
 The watchparty server acts as a thin proxy + cache over Plex's Universal
-Transcoder HLS output. When the host picks a movie, watchparty asks Plex to
+Transcoder HLS output. When the host picks a movie or episode, watchparty asks Plex to
 start a transcode session at the requested offset. Plex produces HLS segments;
 watchparty fetches the playlist on demand, rewrites segment URLs to route
 through us, and caches fetched segments to disk so backward seek into a
@@ -59,7 +59,15 @@ Friends watching together stay in sync via Server-Sent Events: the host's play
 / pause / seek actions are broadcast to all viewers, who track the host's
 authoritative position with sub-second tolerance.
 
-Playback state (last movie + position) is persisted to disk, so after a
+The library has separate **Movies** and **TV** views. TV navigation walks from
+shows to seasons to episodes and caches hierarchy results on demand. Episodes
+never auto-advance: the active host must click **Next Episode**. That action can
+cross regular-season boundaries (and skip empty seasons), while season 0
+specials only advance within specials. Selection and continuation use the
+watchparty catalog and persisted state; Plex On Deck and view offsets are not
+read.
+
+Playback state (last title + position) is persisted to disk, so after a
 container restart or idle shutdown the library and waiting room offer to
 **resume where you left off**, and the **active host** is restored so the
 same person keeps the remote (their browser reconnects and reclaims it).
@@ -72,14 +80,14 @@ survive on disk.
 **Code structure** — the Go sources are one `package main` under `cmd/plexwatchparty/`:
 
 - `main.go` — HTTP routing, env parsing, wiring
-- `plex.go` — Plex API: list movies, start transcodes, health-state machine
+- `plex.go` — Plex API: movie/TV catalog and hierarchy, metadata, health-state machine
 - `plex_session.go` — one active Plex transcode session
 - `playlist.go` — HLS playlist rewriter + segment-context encoding
 - `cache.go` — LRU disk cache for HLS segments (survives restarts)
 - `sync.go` — authoritative playback state, SSE broadcast, host control endpoint
-- `state.go` — persisted resume hint (last movie + position)
+- `state.go` — persisted resume hint (last movie/episode + position)
 - `host.go` — persisted active host (restored across restarts)
-- `recent.go` — persisted recently-played list
+- `recent.go` — persisted recently-played movie/episode list
 - `bandwidth.go` — per-IP rolling-window bandwidth tracker
 - `auth.go` — Google OAuth gate, HMAC session cookies, role gating
 - `oauth.go` — Google sign-in flow
@@ -117,7 +125,7 @@ docker compose up -d
 docker compose up --build
 ```
 
-Then open `http://<your-host>:8080`, sign in with Google, and pick a movie.
+Then open `http://<your-host>:8080`, sign in with Google, and pick a movie or episode.
 
 All configuration lives in `.env` — the compose file consumes it via
 `env_file`, so adding or changing a setting is just a line in `.env` (no

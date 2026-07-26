@@ -17,8 +17,14 @@ import (
 // State is the single source of truth for the watch party. Position is only
 // authoritative at UpdatedAtMs; while Playing, clients extrapolate from there.
 type State struct {
-	RatingKey string `json:"ratingKey"`
-	Title     string `json:"title"`
+	RatingKey     string              `json:"ratingKey"`
+	Title         string              `json:"title"`
+	MediaType     string              `json:"mediaType,omitempty"`
+	SeriesTitle   string              `json:"seriesTitle,omitempty"`
+	SeasonNumber  int                 `json:"seasonNumber,omitempty"`
+	EpisodeNumber int                 `json:"episodeNumber,omitempty"`
+	ArtworkKey    string              `json:"artworkKey,omitempty"`
+	NextEpisode   *NextEpisodeSummary `json:"nextEpisode,omitempty"`
 	// Year is the movie's release year (Plex metadata). The player shows
 	// it in parens after the title; omitted from the wire when unknown.
 	Year int `json:"year,omitempty"`
@@ -58,6 +64,87 @@ type State struct {
 	// off?" affordance after a container restart or idle shutdown.
 	// Populated by snapshot() / broadcast() from Hub.lastKnown.
 	Resume *ResumeHint `json:"resume,omitempty"`
+}
+
+type NextEpisodeSummary struct {
+	RatingKey     string `json:"ratingKey"`
+	Title         string `json:"title"`
+	SeriesTitle   string `json:"seriesTitle,omitempty"`
+	SeasonNumber  int    `json:"seasonNumber"`
+	EpisodeNumber int    `json:"episodeNumber"`
+	ArtworkKey    string `json:"artworkKey,omitempty"`
+}
+
+func episodeCode(season, episode int) string {
+	return fmt.Sprintf("S%02dE%02d", season, episode)
+}
+
+func mediaLabel(title string, year int, mediaType, seriesTitle string, season, episode int) string {
+	if mediaType == "episode" {
+		if seriesTitle == "" {
+			seriesTitle = "TV"
+		}
+		return fmt.Sprintf("%s · %s · %s", seriesTitle, episodeCode(season, episode), title)
+	}
+	if year > 0 {
+		return fmt.Sprintf("%s (%d)", title, year)
+	}
+	return title
+}
+
+func stateMediaLabel(s State) string {
+	return mediaLabel(s.Title, s.Year, s.MediaType, s.SeriesTitle, s.SeasonNumber, s.EpisodeNumber)
+}
+
+// episodeAndNext builds the hierarchy identity used by playback state and
+// looks up its successor. Resolve supplies the authoritative parent fields;
+// an already-browsed hierarchy can fill omissions from older Plex responses.
+func (h *Hub) episodeAndNext(meta *MovieMeta) (Episode, *NextEpisodeSummary) {
+	current := Episode{
+		RatingKey: meta.RatingKey, ParentRatingKey: meta.ParentRatingKey,
+		GrandparentRatingKey: meta.GrandparentRatingKey, Title: meta.Title,
+		SeriesTitle: meta.SeriesTitle, SeasonNumber: meta.SeasonNumber, EpisodeNumber: meta.EpisodeNumber,
+		Thumb: meta.Thumb, Art: meta.Art,
+	}
+	if cached, ok := h.plex.EpisodeByKey(meta.RatingKey); ok {
+		if current.ParentRatingKey == "" {
+			current.ParentRatingKey = cached.ParentRatingKey
+		}
+		if current.GrandparentRatingKey == "" {
+			current.GrandparentRatingKey = cached.GrandparentRatingKey
+		}
+		if current.SeriesTitle == "" {
+			current.SeriesTitle = cached.SeriesTitle
+		}
+		if current.SeasonNumber == 0 && cached.SeasonNumber != 0 {
+			current.SeasonNumber = cached.SeasonNumber
+		}
+		if current.EpisodeNumber == 0 {
+			current.EpisodeNumber = cached.EpisodeNumber
+		}
+		if current.Thumb == "" {
+			current.Thumb = cached.Thumb
+		}
+		if current.Art == "" {
+			current.Art = cached.Art
+		}
+	}
+	next, err := h.plex.NextEpisode(current)
+	if err != nil {
+		log.Printf("next episode: lookup for %s failed: %v", meta.RatingKey, err)
+		return current, nil
+	}
+	if next == nil {
+		return current, nil
+	}
+	summary := &NextEpisodeSummary{
+		RatingKey: next.RatingKey, Title: next.Title, SeriesTitle: next.SeriesTitle,
+		SeasonNumber: next.SeasonNumber, EpisodeNumber: next.EpisodeNumber,
+	}
+	if next.Thumb != "" || next.Art != "" {
+		summary.ArtworkKey = next.RatingKey
+	}
+	return current, summary
 }
 
 // ViewerInfo is the per-connection identity surfaced to clients in
@@ -165,6 +252,12 @@ type Hub struct {
 
 	mu    sync.Mutex
 	state State
+	// nextInFlight serializes explicit episode advancement. The browser also
+	// holds its button disabled across SSE ticks, but this server-side guard
+	// prevents two tabs for the active host from starting the same successor
+	// concurrently.
+	nextMu       sync.Mutex
+	nextInFlight bool
 	// lastKnown is the persisted resume hint. Populated from disk at
 	// startup; refreshed on every broadcast that has a live RatingKey
 	// (so it's always current). Surfaced as State.Resume whenever
@@ -776,6 +869,8 @@ func (h *Hub) idleShutdown(forRatingKey string) {
 		Kind: notifyStop, Title: h.state.Title, Year: h.state.Year,
 		RatingKey: h.state.RatingKey, Actor: "idle — everyone left",
 		PositionSec: h.snapshot().PositionSec,
+		MediaType:   h.state.MediaType, SeriesTitle: h.state.SeriesTitle,
+		SeasonNumber: h.state.SeasonNumber, EpisodeNumber: h.state.EpisodeNumber,
 	})
 	h.session.Stop()
 	h.state = State{UpdatedAtMs: nowMs()}
@@ -998,10 +1093,17 @@ func (h *Hub) broadcast() {
 		// extrapolated PositionSec, so a crash here loses at most
 		// the last broadcast tick (~3 s) of advance.
 		hint := ResumeHint{
-			RatingKey:   s.RatingKey,
-			Title:       s.Title,
-			PositionSec: s.PositionSec,
-			DurationSec: s.DurationSec,
+			RatingKey:     s.RatingKey,
+			Title:         s.Title,
+			Year:          s.Year,
+			MediaType:     s.MediaType,
+			SeriesTitle:   s.SeriesTitle,
+			SeasonNumber:  s.SeasonNumber,
+			EpisodeNumber: s.EpisodeNumber,
+			ArtworkKey:    s.ArtworkKey,
+			NextEpisode:   s.NextEpisode,
+			PositionSec:   s.PositionSec,
+			DurationSec:   s.DurationSec,
 		}
 		h.lastKnown = &hint
 		if h.store != nil {
@@ -1303,6 +1405,43 @@ func (h *Hub) HandleControl(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	explicitNext := req.Action == "next"
+	if explicitNext {
+		h.nextMu.Lock()
+		if h.nextInFlight {
+			h.nextMu.Unlock()
+			http.Error(w, "next episode already in progress", http.StatusConflict)
+			return
+		}
+		h.nextInFlight = true
+		h.nextMu.Unlock()
+		defer func() {
+			h.nextMu.Lock()
+			h.nextInFlight = false
+			h.nextMu.Unlock()
+		}()
+		h.mu.Lock()
+		sourceKey := h.state.RatingKey
+		next := h.state.NextEpisode
+		h.mu.Unlock()
+		// Browsers include the episode they believe is current. A stale
+		// second tab must not turn one intentional click into two sequential
+		// advances after the first request has already completed.
+		if req.RatingKey != "" && req.RatingKey != sourceKey {
+			http.Error(w, "current episode changed", http.StatusConflict)
+			return
+		}
+		if next == nil || next.RatingKey == "" {
+			http.Error(w, "no next episode", http.StatusConflict)
+			return
+		}
+		req.Action = "load"
+		req.RatingKey = next.RatingKey
+		req.PositionSec = 0
+		req.Restart = false
+		req.Autoplay = true
+	}
+
 	if req.Action == "load" {
 		// req.RatingKey is host-supplied and is concatenated into the Plex
 		// API URL path by plex.Resolve; reject anything that isn't a plain
@@ -1313,17 +1452,39 @@ func (h *Hub) HandleControl(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		t0 := time.Now()
-		// If the same movie is already loaded and Plex still has a live
+		// If the same media item is already loaded and Plex still has a live
 		// session for it, skip the Stop+Start dance entirely. Plex's
 		// universal-transcoder /stop is unreliable: it often returns
 		// 200 without actually freeing the slot, and the next /start
 		// then 400s with a bare HTML body. Reusing the existing session
 		// avoids that whole class of failure when the user clicks the
-		// same movie twice (back + forward, refresh, etc.). The
+		// same item twice (back + forward, refresh, etc.). The
 		// library prompts "Resume / Start over" for this case; Start
 		// over sends restart=true to force the full path.
 		if h.session.RatingKey() == req.RatingKey && !req.Restart {
-			log.Printf("load %q: same movie already loaded, reusing session", req.RatingKey)
+			log.Printf("load %q: same media already loaded, reusing session", req.RatingKey)
+			// A first hierarchy lookup can fail during an otherwise-successful
+			// episode load. Re-clicking that episode is a natural retry point:
+			// resolve + hierarchy work stays outside Hub.mu and the live
+			// transcode session is left untouched.
+			h.mu.Lock()
+			retryNext := h.state.RatingKey == req.RatingKey &&
+				h.state.MediaType == "episode" && h.state.NextEpisode == nil
+			h.mu.Unlock()
+			if retryNext {
+				if _, meta, err := h.plex.Resolve(req.RatingKey); err != nil {
+					log.Printf("next episode: retry resolve for %s failed: %v", req.RatingKey, err)
+				} else {
+					_, nextSummary := h.episodeAndNext(meta)
+					if nextSummary != nil {
+						h.mu.Lock()
+						if h.state.RatingKey == req.RatingKey && h.state.NextEpisode == nil {
+							h.state.NextEpisode = nextSummary
+						}
+						h.mu.Unlock()
+					}
+				}
+			}
 			h.mu.Lock()
 			cur := h.state
 			h.broadcast()
@@ -1333,7 +1494,7 @@ func (h *Hub) HandleControl(w http.ResponseWriter, r *http.Request) {
 				"reused":      true,
 				"durationSec": cur.DurationSec,
 			})
-			// Reuse (refresh / re-click of the current movie) is intentionally
+			// Reuse (refresh / re-click of the current item) is intentionally
 			// not audited — it's not a new session start. auditDetail stays "".
 			return
 		}
@@ -1348,15 +1509,45 @@ func (h *Hub) HandleControl(w http.ResponseWriter, r *http.Request) {
 		resolveMs := time.Since(t0).Milliseconds()
 
 		tList := time.Now()
-		// Ensure the library cache is warm so MovieByKey can resolve
-		// the title without a Plex round-trip. ListMovies is cheap on
-		// a warm cache; on cold start it populates the index for us.
-		_, _ = h.plex.ListMovies()
-		title := req.RatingKey
-		year := 0
-		if m, ok := h.plex.MovieByKey(req.RatingKey); ok {
-			title = m.Title
-			year = m.Year
+		title := meta.Title
+		year := meta.Year
+		mediaType := meta.MediaType
+		seriesTitle := meta.SeriesTitle
+		seasonNumber := meta.SeasonNumber
+		episodeNumber := meta.EpisodeNumber
+		artworkKey := ""
+		if meta.Thumb != "" || meta.Art != "" {
+			artworkKey = req.RatingKey
+		}
+		// Older Plex versions and legacy fixtures can omit movie title/year
+		// from the metadata endpoint. The top-level cache is only a fallback;
+		// episode identity always comes from resolved parent/grandparent data.
+		if title == "" || (mediaType == "movie" && year == 0) {
+			_, _ = h.plex.ListLibrary()
+			if m, ok := h.plex.MovieByKey(req.RatingKey); ok {
+				if title == "" {
+					title = m.Title
+				}
+				if year == 0 {
+					year = m.Year
+				}
+				if artworkKey == "" && m.Thumb != "" {
+					artworkKey = req.RatingKey
+				}
+			}
+		}
+		if title == "" {
+			title = req.RatingKey
+		}
+
+		var nextSummary *NextEpisodeSummary
+		if mediaType == "episode" {
+			current, summary := h.episodeAndNext(meta)
+			seriesTitle, seasonNumber, episodeNumber = current.SeriesTitle, current.SeasonNumber, current.EpisodeNumber
+			nextSummary = summary
+			if artworkKey == "" && (current.Thumb != "" || current.Art != "") {
+				artworkKey = req.RatingKey
+			}
 		}
 		listMs := time.Since(tList).Milliseconds()
 
@@ -1397,24 +1588,38 @@ func (h *Hub) HandleControl(w http.ResponseWriter, r *http.Request) {
 
 		h.mu.Lock()
 		h.state = State{
-			RatingKey:    req.RatingKey,
-			Title:        title,
-			Year:         year,
-			Quality:      qualityLine(*si),
-			Playing:      req.Autoplay,
-			PositionSec:  offsetSec,
-			DurationSec:  float64(si.Duration) / 1000.0,
-			SessionToken: h.session.SessionToken(),
-			UpdatedAtMs:  nowMs(),
+			RatingKey:     req.RatingKey,
+			Title:         title,
+			Year:          year,
+			MediaType:     mediaType,
+			SeriesTitle:   seriesTitle,
+			SeasonNumber:  seasonNumber,
+			EpisodeNumber: episodeNumber,
+			ArtworkKey:    artworkKey,
+			NextEpisode:   nextSummary,
+			Quality:       qualityLine(*si),
+			Playing:       req.Autoplay,
+			PositionSec:   offsetSec,
+			DurationSec:   float64(si.Duration) / 1000.0,
+			SessionToken:  h.session.SessionToken(),
+			UpdatedAtMs:   nowMs(),
 		}
 		hostName := h.nameForEmailLocked(actor)
 		h.broadcast()
 		h.mu.Unlock()
-		auditDetail = fmt.Sprintf("started %q at %s", title, fmtClock(offsetSec))
+		label := mediaLabel(title, year, mediaType, seriesTitle, seasonNumber, episodeNumber)
+		if explicitNext {
+			auditDetail = fmt.Sprintf("advanced to %q at %s", label, fmtClock(offsetSec))
+		} else {
+			auditDetail = fmt.Sprintf("started %q at %s", label, fmtClock(offsetSec))
+		}
 		startEv := notifyEvent{
 			Kind: notifyStart, Title: title, Year: year, RatingKey: req.RatingKey,
 			Actor: hostName, RuntimeSec: float64(si.Duration) / 1000.0,
 			ResumeSec: offsetSec, Quality: qualityLine(*si),
+			MediaType: mediaType, SeriesTitle: seriesTitle,
+			SeasonNumber: seasonNumber, EpisodeNumber: episodeNumber,
+			ArtworkKey: artworkKey, NextEpisode: nextSummary,
 		}
 		if meta != nil {
 			startEv.Tagline = meta.Tagline
@@ -1433,7 +1638,12 @@ func (h *Hub) HandleControl(w http.ResponseWriter, r *http.Request) {
 		// Plex's transcoder otherwise.
 		go h.reportTimelineNow()
 		if h.recent != nil {
-			h.recent.Touch(req.RatingKey, title, year)
+			h.recent.TouchMedia(RecentMovie{
+				RatingKey: req.RatingKey, Title: title, Year: year,
+				MediaType: mediaType, SeriesTitle: seriesTitle,
+				SeasonNumber: seasonNumber, EpisodeNumber: episodeNumber,
+				ArtworkKey: artworkKey, NextEpisode: nextSummary,
+			})
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -1461,19 +1671,26 @@ func (h *Hub) HandleControl(w http.ResponseWriter, r *http.Request) {
 		rk := h.state.RatingKey
 		stoppedTitle := h.state.Title
 		stoppedYear := h.state.Year
+		stoppedMediaType := h.state.MediaType
+		stoppedSeriesTitle := h.state.SeriesTitle
+		stoppedSeasonNumber := h.state.SeasonNumber
+		stoppedEpisodeNumber := h.state.EpisodeNumber
 		posSec := h.snapshot().PositionSec
 		posMs := int64(posSec * 1000)
 		durMs := int64(h.state.DurationSec * 1000)
 		hostName := h.nameForEmailLocked(actor)
 		h.mu.Unlock()
 		if rk != "" {
-			auditDetail = fmt.Sprintf("stopped %q", stoppedTitle)
+			auditDetail = fmt.Sprintf("stopped %q",
+				mediaLabel(stoppedTitle, stoppedYear, stoppedMediaType, stoppedSeriesTitle, stoppedSeasonNumber, stoppedEpisodeNumber))
 			if err := h.session.ReportTimeline("stopped", rk, posMs, durMs); err != nil {
 				log.Printf("timeline: stop report failed: %v", err)
 			}
 			h.notify.Enqueue(notifyEvent{
 				Kind: notifyStop, Title: stoppedTitle, Year: stoppedYear,
 				RatingKey: rk, Actor: hostName, PositionSec: posSec,
+				MediaType: stoppedMediaType, SeriesTitle: stoppedSeriesTitle,
+				SeasonNumber: stoppedSeasonNumber, EpisodeNumber: stoppedEpisodeNumber,
 			})
 		}
 		h.session.Stop()
@@ -1503,11 +1720,11 @@ func (h *Hub) HandleControl(w http.ResponseWriter, r *http.Request) {
 	case "play":
 		cur.Playing = true
 		log.Printf("state: play  ip=%s title=%q at=%.2f", clientIP(r), cur.Title, cur.PositionSec)
-		auditDetail = fmt.Sprintf("resumed %q at %s", cur.Title, fmtClock(cur.PositionSec))
+		auditDetail = fmt.Sprintf("resumed %q at %s", stateMediaLabel(cur), fmtClock(cur.PositionSec))
 	case "pause":
 		cur.Playing = false
 		log.Printf("state: pause ip=%s title=%q at=%.2f", clientIP(r), cur.Title, cur.PositionSec)
-		auditDetail = fmt.Sprintf("paused %q at %s", cur.Title, fmtClock(cur.PositionSec))
+		auditDetail = fmt.Sprintf("paused %q at %s", stateMediaLabel(cur), fmtClock(cur.PositionSec))
 	case "seek":
 		log.Printf("state: seek  ip=%s title=%q from=%.2f to=%.2f",
 			clientIP(r), cur.Title, cur.PositionSec, req.PositionSec)
@@ -1553,7 +1770,7 @@ func (h *Hub) HandleControl(w http.ResponseWriter, r *http.Request) {
 			cur.SessionToken = h.session.SessionToken()
 		}
 		cur.PositionSec = target
-		auditDetail = fmt.Sprintf("seeked %q to %s", cur.Title, fmtClock(target))
+		auditDetail = fmt.Sprintf("seeked %q to %s", stateMediaLabel(cur), fmtClock(target))
 	}
 	cur.UpdatedAtMs = nowMs()
 	h.state = cur
@@ -1577,6 +1794,10 @@ func (h *Hub) SendEveryoneToLobby() {
 	durMs := int64(h.state.DurationSec * 1000)
 	title := h.state.Title
 	year := h.state.Year
+	mediaType := h.state.MediaType
+	seriesTitle := h.state.SeriesTitle
+	seasonNumber := h.state.SeasonNumber
+	episodeNumber := h.state.EpisodeNumber
 	h.mu.Unlock()
 	if rk != "" {
 		if err := h.session.ReportTimeline("stopped", rk, posMs, durMs); err != nil {
@@ -1585,6 +1806,8 @@ func (h *Hub) SendEveryoneToLobby() {
 		h.notify.Enqueue(notifyEvent{
 			Kind: notifyStop, Title: title, Year: year, RatingKey: rk,
 			Actor: "admin", PositionSec: posSec,
+			MediaType: mediaType, SeriesTitle: seriesTitle,
+			SeasonNumber: seasonNumber, EpisodeNumber: episodeNumber,
 		})
 	}
 	h.session.Stop()

@@ -119,7 +119,10 @@ function renderBandwidth(samples) {
 }
 
 function renderSession(s, lifecycle) {
-  $('sess-title').textContent = s.title || '— idle —';
+  $('sess-title').textContent = s.mediaType === 'episode'
+    ? (s.seriesTitle || 'TV') + ' · S' + String(s.seasonNumber || 0).padStart(2, '0') +
+      'E' + String(s.episodeNumber || 0).padStart(2, '0') + ' · ' + s.title
+    : (s.title || '— idle —');
   $('sess-key').textContent = s.ratingKey || '—';
   if (s.ratingKey) {
     $('sess-pos').textContent = fmtTimecode(s.positionSec) + ' / ' + fmtTimecode(s.durationSec);
