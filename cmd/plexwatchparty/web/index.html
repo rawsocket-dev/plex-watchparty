@@ -77,7 +77,11 @@
   </div>
 </div>
 
-<div id="groups"></div>
+<!-- One grid per tab. The inactive one stays in the DOM offstage
+     (content-visibility) so switching back never re-lays-out the
+     thousands of movie cards — see stageGrids() in index.js. -->
+<div id="groups-movies"></div>
+<div id="groups-tv" class="offstage"></div>
 <div id="tv-detail" hidden></div>
 <footer>· intermission · grab a drink ·</footer>
 

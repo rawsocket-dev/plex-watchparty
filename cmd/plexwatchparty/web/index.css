@@ -438,6 +438,21 @@ footer a {
 }
 footer a:hover { color: var(--lilac); }
 
+/* The inactive tab's grid parks offstage with content-visibility, which
+   keeps the subtree's computed layout alive (display:none / [hidden]
+   would throw it away — re-showing ~5000 movie cards then costs ~1s of
+   frozen main thread; this way it repaints in ~0.1s). Skipped content is
+   also unfocusable and invisible to find-in-page, like display:none.
+   Browsers without content-visibility (Safari <18, Firefox <125) fall
+   back to display:none — slow to re-show, but never two stacked grids. */
+#groups-movies.offstage, #groups-tv.offstage { display: none; }
+@supports (content-visibility: hidden) {
+  #groups-movies.offstage, #groups-tv.offstage {
+    display: block;
+    content-visibility: hidden;
+  }
+}
+
 /* Staggered reveal on initial paint. */
 .letter-group {
   opacity: 0; transform: translateY(8px);

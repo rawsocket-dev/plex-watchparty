@@ -8,11 +8,27 @@ window.addEventListener('pageshow', (e) => {
 });
 
 const statusEl = document.getElementById('status');
-const groupsEl = document.getElementById('groups');
+const movieGroupsEl = document.getElementById('groups-movies');
+const tvGroupsEl    = document.getElementById('groups-tv');
 const searchEl = document.getElementById('search');
 const countEl  = document.getElementById('count');
 const tabsEl   = document.getElementById('media-tabs');
 const tvDetailEl = document.getElementById('tv-detail');
+
+// Each tab renders into its own grid; the inactive one stays in the DOM
+// offstage (content-visibility: hidden) so its layout survives the trip.
+function gridFor(tab) { return tab === 'tv' ? tvGroupsEl : movieGroupsEl; }
+
+// Which grid is on stage. Offstage means content-visibility: hidden — NOT
+// display:none / the hidden attribute, which discard the subtree's layout:
+// re-showing a 5000-card movie grid after those costs ~1s of frozen UI
+// re-laying-out every card, while content-visibility keeps the boxes and
+// repaints in ~0.1s (measured). During a TV drill-down both grids are off.
+function stageGrids() {
+  const inDetail = !tvDetailEl.hidden;
+  movieGroupsEl.classList.toggle('offstage', inDetail || activeTab !== 'movies');
+  tvGroupsEl.classList.toggle('offstage', inDetail || activeTab !== 'tv');
+}
 
 let allMovies = [];
 let allShows = [];
@@ -343,7 +359,7 @@ const posterObserver = ('IntersectionObserver' in window)
     }, { rootMargin: '200% 0px' }) // at rest keep ~2 screens of posters loaded
   : null;
 function observePosters() {
-  const lazy = groupsEl.querySelectorAll('.poster[data-poster]');
+  const lazy = gridFor(activeTab).querySelectorAll('.poster[data-poster]');
   if (!posterObserver) { // no IntersectionObserver support → just load them all
     lazy.forEach(loadPosterNow);
     return;
@@ -359,11 +375,13 @@ function observePosters() {
 // time the network gets — capped so a fling-to-the-bottom doesn't request the
 // whole library at once.
 function preloadAhead(lookaheadPx) {
+  const grid = gridFor(activeTab);
+  if (grid.classList.contains('offstage')) return; // browsing a TV drill-down
   const vh = window.innerHeight;
   const limit = vh + lookaheadPx;
   // querySelectorAll returns only the still-unloaded posters, in document
   // (vertical) order, so we can stop at the first one past the window.
-  for (const el of groupsEl.querySelectorAll('.poster[data-poster]')) {
+  for (const el of grid.querySelectorAll('.poster[data-poster]')) {
     const top = el.getBoundingClientRect().top;
     if (top > limit) break;           // everything after is further down
     if (top > -vh) loadPosterNow(el); // within reach (skip ones already scrolled well past)
@@ -389,9 +407,10 @@ window.addEventListener('scroll', () => {
 function render(movies, maker, noun) {
   maker = maker || makeButton;
   noun = noun || 'title';
-  groupsEl.innerHTML = '';
+  const grid = gridFor(activeTab);
+  grid.innerHTML = '';
   if (movies.length === 0) {
-    groupsEl.innerHTML = '<div class="empty">Nothing matches that search.</div>';
+    grid.innerHTML = '<div class="empty">Nothing matches that search.</div>';
     return;
   }
 
@@ -429,19 +448,29 @@ function render(movies, maker, noun) {
       ul.appendChild(li);
     }
     section.appendChild(ul);
-    groupsEl.appendChild(section);
+    grid.appendChild(section);
   });
 
   // Watch the freshly-rendered cards; only on-screen posters fetch their art.
   observePosters();
 }
 
+// The search query each grid currently displays, so returning to a tab can
+// keep its preserved grid instead of rebuilding it (the whole point of the
+// offstage mechanism — a rebuild is the ~1s cost we're avoiding).
+const renderedQuery = { movies: null, tv: null };
+
 function applyFilter() {
   const t0 = performance.now();
   const q = searchEl.value.trim().toLocaleLowerCase();
   const source = activeTab === 'tv' ? allShows : allMovies;
   const list = q ? source.filter(m => m.title.toLocaleLowerCase().includes(q)) : source;
-  render(list, activeTab === 'tv' ? makeShowButton : makeButton, activeTab === 'tv' ? 'show' : 'title');
+  if (renderedQuery[activeTab] === q) {
+    observePosters(); // grid untouched — just re-arm its lazy poster loading
+  } else {
+    render(list, activeTab === 'tv' ? makeShowButton : makeButton, activeTab === 'tv' ? 'show' : 'title');
+    renderedQuery[activeTab] = q;
+  }
   countEl.textContent = list.length + ' / ' + source.length + (activeTab === 'tv' ? ' shows' : ' titles');
   console.log('search filter+render:', (performance.now() - t0).toFixed(1), 'ms',
               '·', list.length, 'of', allMovies.length);
@@ -502,8 +531,8 @@ async function openShow(show) {
   const generation = ++tvNavigationGeneration;
   activeShow = show;
   saveLocation({ tab: 'tv', show: { ratingKey: show.ratingKey, title: show.title, year: show.year } });
-  groupsEl.hidden = true;
   tvDetailEl.hidden = false;
+  stageGrids();
   searchEl.disabled = true;
   countEl.textContent = 'loading seasons…';
   tvDetailEl.innerHTML = '<div class="tv-hero" style="background-image:' + heroURL(show) +
@@ -550,8 +579,8 @@ async function openSeason(show, season) {
   // Claim the detail view ourselves rather than relying on openShow
   // having run first: the on-load restore jumps straight here.
   activeShow = show;
-  groupsEl.hidden = true;
   tvDetailEl.hidden = false;
+  stageGrids();
   searchEl.disabled = true;
   saveLocation({
     tab: 'tv',
@@ -613,7 +642,7 @@ function showTVHome() {
   tvNavigationGeneration++;
   activeShow = null;
   tvDetailEl.hidden = true;
-  groupsEl.hidden = false;
+  stageGrids();
   searchEl.disabled = false;
   saveLocation({ tab: activeTab });
   applyFilter();

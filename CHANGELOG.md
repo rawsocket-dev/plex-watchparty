@@ -4,6 +4,11 @@ Notable, user-facing changes to plex-watchparty. Newest first.
 No version numbers — the app ships continuously as a container.
 
 ## 2026-07-26
+- Fixed: Switching the library from TV back to Movies froze the page for
+  about a second and replayed the fade-in dimmed while the browser rebuilt
+  every movie card. Each section's grid now stays parked offstage while
+  you're in the other one, so flipping between Movies and TV is instant in
+  both directions.
 - Added: The library remembers whether you were browsing Movies or TV (per
   browser), so returning to the lobby — e.g. after a TV episode — reopens
   the section you left, instead of always resetting to Movies.
