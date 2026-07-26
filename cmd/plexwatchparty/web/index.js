@@ -17,6 +17,7 @@ const tvDetailEl = document.getElementById('tv-detail');
 let allMovies = [];
 let allShows = [];
 let activeTab = 'movies';
+const TAB_STORAGE_KEY = 'wp_library_tab'; // remembered Movies/TV section
 let activeShow = null;
 let tvNavigationGeneration = 0;
 
@@ -435,7 +436,13 @@ async function load() {
     allMovies.sort((a, b) => sortKey(a.title).localeCompare(sortKey(b.title)));
     allShows.sort((a, b) => sortKey(a.title).localeCompare(sortKey(b.title)));
     statusEl.remove();
-    applyFilter();
+    // Reopen the section the browser was last in (set on tab click) —
+    // e.g. back to TV after watching an episode. Movies stays the
+    // default when nothing is stored or the TV library is empty.
+    let saved = null;
+    try { saved = localStorage.getItem(TAB_STORAGE_KEY); } catch (_) {}
+    if (saved === 'tv' && allShows.length) selectTab('tv');
+    else applyFilter();
   } catch (e) {
     statusEl.textContent = 'Couldn’t load the library. Try again in a moment.';
     console.error(e);
@@ -570,23 +577,29 @@ function showTVHome() {
   applyFilter();
 }
 
-tabsEl.addEventListener('click', (e) => {
-  const btn = e.target.closest('[data-tab]');
-  if (!btn) return;
-  activeTab = btn.dataset.tab;
+// selectTab switches the library between Movies and TV: flips the pill
+// states, resets any TV drill-down, and re-renders the grid. Shared by
+// the tab click handler and the on-load restore of the remembered tab.
+function selectTab(tab) {
+  activeTab = tab;
   tabsEl.querySelectorAll('[data-tab]').forEach(x => {
-    const active = x === btn;
+    const active = x.dataset.tab === tab;
     x.classList.toggle('active', active);
     x.setAttribute('aria-selected', active ? 'true' : 'false');
   });
   searchEl.value = '';
-  searchEl.placeholder = activeTab === 'tv' ? 'search shows' : 'search titles';
-  if (activeTab === 'tv') showTVHome();
-  else {
-    tvNavigationGeneration++;
-    activeShow = null; tvDetailEl.hidden = true; groupsEl.hidden = false;
-    searchEl.disabled = false; applyFilter();
-  }
+  searchEl.placeholder = tab === 'tv' ? 'search shows' : 'search titles';
+  showTVHome();
+}
+
+tabsEl.addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-tab]');
+  if (!btn) return;
+  selectTab(btn.dataset.tab);
+  // Remember the section per browser so coming back to the lobby (e.g.
+  // after a TV episode) reopens where you were. Storage can be
+  // unavailable (private mode) — the toggle must still work.
+  try { localStorage.setItem(TAB_STORAGE_KEY, btn.dataset.tab); } catch (_) {}
 });
 
 function renderWho(role, name) {
