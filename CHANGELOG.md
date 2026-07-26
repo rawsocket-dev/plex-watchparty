@@ -4,6 +4,9 @@ Notable, user-facing changes to plex-watchparty. Newest first.
 No version numbers — the app ships continuously as a container.
 
 ## 2026-07-26
+- Changed: The Movies/TV toggle now sits directly under the **Library**
+  heading at any window width; on very wide screens it used to drift
+  toward the middle of the page.
 - Fixed: After a deploy, browsers could keep the previous build's CSS and
   JavaScript for up to a day (the new page rendered unstyled and dead — e.g.
   the Movies/TV tabs appearing as bare, inert buttons). Static asset URLs now

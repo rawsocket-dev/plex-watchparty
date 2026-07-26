@@ -44,9 +44,11 @@ header {
 #media-tabs {
   display: flex;
   gap: .45rem;
+  /* Same horizontal clamp as the header and the letter groups, and no
+     max-width centering: the toggle sits directly under the "Library"
+     brand at any viewport width instead of drifting toward the middle
+     of a wide screen. */
   padding: 1.25rem clamp(1.25rem, 4vw, 3rem) 0;
-  max-width: 1400px;
-  margin: 0 auto;
 }
 #media-tabs button, .crumbs button {
   border: 1px solid var(--rule-hi);
