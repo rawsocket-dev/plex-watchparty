@@ -516,7 +516,7 @@ async function openShow(show) {
     countEl.textContent = seasons.length + ' season' + (seasons.length === 1 ? '' : 's');
     tvDetailEl.innerHTML = '<div class="tv-hero" style="background-image:' + heroURL(show) +
       '"><h1>' + escapeHTML(show.title) + '</h1></div>' +
-      '<div class="crumbs"><button type="button" data-tv-home>TV</button><span>›</span><span>' +
+      '<div class="crumbs"><button type="button" data-tv-home>‹ All Shows</button><span>›</span><span>' +
       escapeHTML(show.title) + '</span></div><div class="season-list"></div>';
     tvDetailEl.querySelector('[data-tv-home]').onclick = showTVHome;
     const list = tvDetailEl.querySelector('.season-list');
@@ -569,7 +569,7 @@ async function openSeason(show, season) {
     countEl.textContent = episodes.length + ' episode' + (episodes.length === 1 ? '' : 's');
     tvDetailEl.innerHTML = '<div class="tv-hero" style="background-image:' + heroURL(season.ratingKey ? season : show) +
       '"><h1>' + escapeHTML(show.title) + '</h1></div><div class="crumbs">' +
-      '<button type="button" data-tv-home>TV</button><span>›</span><button type="button" data-show>' +
+      '<button type="button" data-tv-home>‹ All Shows</button><span>›</span><button type="button" data-show>' +
       escapeHTML(show.title) + '</button><span>›</span><span>' +
       escapeHTML(season.title || (season.index === 0 ? 'Specials' : 'Season ' + season.index)) +
       '</span></div><div class="episode-list"></div>';
@@ -639,6 +639,20 @@ tabsEl.addEventListener('click', (e) => {
   if (!btn) return;
   // selectTab → showTVHome records the new location.
   selectTab(btn.dataset.tab);
+});
+
+// The "Library" brand is the universal way home: from any TV drill-down
+// (or a filtered grid) it returns to the current tab's browse grid. A JS
+// reset rather than a link to / — a reload would just restore the
+// remembered drill-down again.
+function goHome() {
+  selectTab(activeTab);
+  window.scrollTo(0, 0);
+}
+const brandEl = document.querySelector('.brand');
+brandEl.addEventListener('click', goHome);
+brandEl.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goHome(); }
 });
 
 function renderWho(role, name) {

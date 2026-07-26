@@ -64,7 +64,8 @@ header {
   background: var(--accent);
   border-color: transparent;
 }
-.brand { display: flex; align-items: center; gap: .75rem; line-height: 1; }
+.brand { display: flex; align-items: center; gap: .75rem; line-height: 1; cursor: pointer; }
+.brand:hover .mark { filter: brightness(1.2); }
 .brand .mark {
   width: 30px; height: 30px; flex: none;
   border-radius: 9px;

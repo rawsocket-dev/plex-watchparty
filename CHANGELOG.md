@@ -11,6 +11,9 @@ No version numbers — the app ships continuously as a container.
   open — coming back from an episode lands in that season's episode list,
   with the TV › show › season breadcrumbs as the way back to the browse
   grid. A show that has since left the library falls back to the TV grid.
+- Changed: The way back out of a show is now obvious: the root breadcrumb
+  reads **‹ All Shows** instead of a bare "TV", and clicking the **Library**
+  brand in the header always returns to the current section's browse grid.
 - Changed: The Movies/TV toggle now sits directly under the **Library**
   heading at any window width; on very wide screens it used to drift
   toward the middle of the page.
