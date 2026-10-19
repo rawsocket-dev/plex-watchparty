@@ -329,7 +329,7 @@
   // Subtle role detection so the copy reads right depending on whether the
   // visitor can do anything about the empty screen. Keys off the ACTIVE
   // host (who can actually pick), not mere host-eligibility.
-  let lastActiveHostName;
+  let lastActiveHostId;
   function applyHostRole(d) {
     document.body.classList.toggle('host', !!(d && d.isActiveHost));
   }
@@ -417,9 +417,10 @@
     if (!s) return;
     // Track active-host changes (election / hand-off) so the host copy +
     // resume controls follow without a reload.
-    const hostName = s.activeHostName || '';
-    if (hostName !== lastActiveHostName) {
-      lastActiveHostName = hostName;
+    // Keyed on the opaque activeHostId: two people can share a name.
+    const hostId = s.activeHostId || '';
+    if (hostId !== lastActiveHostId) {
+      lastActiveHostId = hostId;
       fetch('/api/whoami', { cache: 'no-store' }).then(r => r.ok ? r.json() : null).then(applyHostRole).catch(() => {});
     }
     if (s.resume) {

@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -58,6 +60,11 @@ type State struct {
 	// ActiveHostName is the display name of the single user currently
 	// elected to drive playback. Empty string means no one is driving.
 	ActiveHostName string `json:"activeHostName,omitempty"`
+	// ActiveHostID changes exactly when the active host (the person, not
+	// the name) does. Clients key their whoami refresh on it: two people
+	// can share a display name. Opaque — derived from the email with a
+	// per-process salt, so it reveals nothing and identifies no one.
+	ActiveHostID string `json:"activeHostId,omitempty"`
 	// Resume is the persisted "last known" playback state, surfaced
 	// only when there is NO active session (RatingKey == ""). The
 	// waiting room and library render it as a "Resume where you left
@@ -220,12 +227,13 @@ type AdminViewer struct {
 }
 
 type Hub struct {
-	plex    *Plex
-	session *PlexSession
-	cache   *SegmentCache
-	recent  *RecentMovies
-	store   *StateStore
-	audit   *AuditLog
+	hostIDSalt string // per-process salt for State.ActiveHostID
+	plex       *Plex
+	session    *PlexSession
+	cache      *SegmentCache
+	recent     *RecentMovies
+	store      *StateStore
+	audit      *AuditLog
 
 	// notify posts playback events to a Discord webhook. Nil = feature
 	// off. A leaf dependency: Enqueue is non-blocking and never calls back
@@ -340,6 +348,7 @@ func NewHub(plex *Plex, session *PlexSession, cache *SegmentCache, recent *Recen
 		clients:       make(map[*clientEntry]struct{}),
 		broadcastWake: make(chan struct{}, 1),
 		done:          make(chan struct{}),
+		hostIDSalt:    randomHex(16),
 	}
 	if hostStore != nil {
 		// Restore the active host from the prior process. They reclaim it
@@ -677,6 +686,16 @@ func (h *Hub) activeHostNameLocked() string {
 		}
 	}
 	return "" // no named connection for the active host — don't leak an email
+}
+
+// activeHostIDLocked is State.ActiveHostID: a salted hash of the active
+// host's email, "" when no one is driving. Must be called with h.mu held.
+func (h *Hub) activeHostIDLocked() string {
+	if h.activeHost == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(h.hostIDSalt + "\x00" + h.activeHost))
+	return hex.EncodeToString(sum[:8])
 }
 
 // viewerList returns the current connected-viewer roster sorted host-
@@ -1061,6 +1080,7 @@ func (h *Hub) Snapshot() State {
 	s := h.snapshot()
 	s.Viewers = h.viewerList()
 	s.ActiveHostName = h.activeHostNameLocked()
+	s.ActiveHostID = h.activeHostIDLocked()
 	if s.RatingKey == "" && h.lastKnown != nil {
 		s.Resume = h.lastKnown
 	}
@@ -1102,6 +1122,7 @@ func (h *Hub) broadcast() {
 	}
 	s.Viewers = h.viewerList()
 	s.ActiveHostName = h.activeHostNameLocked()
+	s.ActiveHostID = h.activeHostIDLocked()
 	// Persist the active host across restarts, but only when it actually
 	// changes (election / hand-off / admin), off the room lock.
 	if h.hostStore != nil && h.activeHost != h.lastSavedHost {
@@ -1181,6 +1202,7 @@ func (h *Hub) HandleEvents(w http.ResponseWriter, r *http.Request, isHost bool, 
 	// broadcastLoop tick. Stamp the current roster onto the init.
 	init.Viewers = h.viewerList()
 	init.ActiveHostName = h.activeHostNameLocked()
+	init.ActiveHostID = h.activeHostIDLocked()
 	initBytes, _ := json.Marshal(init)
 	h.mu.Unlock()
 	if hostAudit != "" {

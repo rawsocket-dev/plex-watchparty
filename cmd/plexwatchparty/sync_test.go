@@ -1005,3 +1005,34 @@ func TestHandleEventsHelloCarriesServerClock(t *testing.T) {
 		t.Errorf("hello serverNowMs = %d (delta %dms), want the server's current clock", hello.ServerNowMs, d)
 	}
 }
+
+// Two people can share a display name. Clients notice a hand-off by
+// watching State for a change of active host; keyed on the name alone, a
+// hand-off between namesakes went unnoticed — the new host got no
+// controls and the old one kept dead ones. activeHostId changes with the
+// person, and doesn't expose their email.
+func TestActiveHostIDDistinguishesNamesakes(t *testing.T) {
+	f := newHubTestFixture(t)
+	twin := f.addConn("twin@x.com", true)
+	f.hub.mu.Lock()
+	twin.name = "Tester" // same display name as the fixture's active host
+	f.hub.mu.Unlock()
+
+	before := f.hub.Snapshot()
+	if err := f.hub.Handoff(testHostEmail, twin.id); err != nil {
+		t.Fatalf("Handoff: %v", err)
+	}
+	after := f.hub.Snapshot()
+	if before.ActiveHostName != after.ActiveHostName {
+		t.Fatalf("names %q → %q differ; this test needs namesakes", before.ActiveHostName, after.ActiveHostName)
+	}
+	if before.ActiveHostID == "" || before.ActiveHostID == after.ActiveHostID {
+		t.Errorf("activeHostId %q → %q; want a non-empty id that changes with the person", before.ActiveHostID, after.ActiveHostID)
+	}
+	if strings.Contains(after.ActiveHostID, "twin") || strings.Contains(after.ActiveHostID, "@") {
+		t.Errorf("activeHostId %q exposes the email", after.ActiveHostID)
+	}
+	if again := f.hub.Snapshot(); again.ActiveHostID != after.ActiveHostID {
+		t.Errorf("activeHostId not stable for an unchanged host: %q → %q", after.ActiveHostID, again.ActiveHostID)
+	}
+}

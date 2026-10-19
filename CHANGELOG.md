@@ -4,6 +4,18 @@ Notable, user-facing changes to plex-watchparty. Newest first.
 No version numbers — the app ships continuously as a container.
 
 ## 2026-10-19
+- Fixed: The player stayed blank on iPhones (and other browsers without
+  the standard `MediaSource` API): a capability probe crashed before
+  playback could attach. It now falls back to `ManagedMediaSource` or
+  native HLS.
+- Fixed: Viewers waiting in the library are pulled into the player when
+  the host starts something, as the lobby card promises. (Previously only
+  the waiting room did this.) Someone who opens the library while a title
+  is already playing stays there to browse.
+- Fixed: Passing the remote between two people with the same display name
+  went unnoticed by their browsers: the new host got no controls and the
+  old one kept controls that no longer worked. Pages now track the host by
+  an opaque id instead of the name.
 - Fixed: When Plex couldn't serve a segment, the cache fallback could
   substitute a neighbouring segment that only touched the requested
   moment, which made playback jump. A substitute must now cover the

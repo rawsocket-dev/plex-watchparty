@@ -70,7 +70,8 @@ function bucketFor(title) {
 // escapeHTML provided by /static/common.js
 
 let isHost = false;       // true only when THIS user is the active host (can pick)
-let lastActiveHostName;   // tracks election / hand-off changes seen over the SSE
+let lastActiveHostId;     // tracks election / hand-off changes seen over the SSE
+let lastRatingKey;        // room's title on the previous SSE tick (undefined before the first)
 
 // --- Resume-after-restart banner --------------------------------------------
 // Asks the server "is there a persisted resume hint?" — populated after a
@@ -712,7 +713,7 @@ async function loadWhoami() {
 }
 
 searchEl.addEventListener('input', applyFilter);
-loadWhoami();
+const whoamiReady = loadWhoami();
 load();
 
 // Live "who's here" chip. Opens the same SSE stream the player uses
@@ -742,9 +743,20 @@ openLiveEvents((s) => {
   if (s.viewers) renderHere(s.viewers);
   // Re-fetch whoami (cache-bypassing) whenever the active host changes, so
   // the picker / guest card track election + hand-off without a reload.
-  const name = s.activeHostName || '';
-  if (name !== lastActiveHostName) {
-    lastActiveHostName = name;
+  // Keyed on the opaque activeHostId: two people can share a name.
+  const id = s.activeHostId || '';
+  if (id !== lastActiveHostId) {
+    lastActiveHostId = id;
     fetch('/api/whoami', { cache: 'no-store' }).then(r => r.ok ? r.json() : null).then(applyWhoami).catch(() => {});
+  }
+  // The guest card promises viewers they'll be pulled into the player when
+  // it starts. Do that on the nothing-playing → title transition only, so
+  // someone browsing here mid-movie isn't yanked out, and never for the
+  // active host, who navigates on their own after picking.
+  const rk = s.ratingKey || '';
+  const started = lastRatingKey === '' && rk !== '';
+  lastRatingKey = rk;
+  if (started) {
+    whoamiReady.then(() => { if (!isHost) location.href = '/watch'; });
   }
 });

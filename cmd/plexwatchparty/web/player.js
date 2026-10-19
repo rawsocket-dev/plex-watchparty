@@ -17,7 +17,7 @@ const wrapEl  = document.getElementById('wrap');
 // Viewers can't drive playback; their interactions silently no-op and
 // their buttons are hidden via the .viewer body class.
 let isHost = false;            // "is the ACTIVE host" — drives control visibility
-let lastActiveHostName;        // undefined initially
+let lastActiveHostId;          // undefined initially
 let myName = '';               // our display name (from whoami) — for the "(you)" label
 function applyWhoami(d) {
   if (!d) return;
@@ -62,11 +62,12 @@ document.addEventListener('click', (e) => {
   closeRoom();
 });
 // Re-fetch whoami (cache-bypassing) whenever the active host changes, so
-// control visibility tracks election / hand-off without a reload.
+// control visibility tracks election / hand-off without a reload. Keyed on
+// the opaque activeHostId, not the name: two people can share a name.
 function refreshHostUI(state) {
-  const name = state.activeHostName || '';
-  if (name !== lastActiveHostName) {
-    lastActiveHostName = name;
+  const id = state.activeHostId || '';
+  if (id !== lastActiveHostId) {
+    lastActiveHostId = id;
     fetch('/api/whoami', { cache: 'no-store' }).then(r => r.ok ? r.json() : null).then(applyWhoami).catch(() => {});
   }
 }
@@ -529,8 +530,12 @@ function attach() {
 
   // Quick capability probe — surface HEVC support up front so a Linux/Firefox
   // user sees a useful message instead of an empty player.
-  const hevcMaybe = MediaSource.isTypeSupported
-    && MediaSource.isTypeSupported('video/mp4; codecs="hvc1.2.4.L150.B0"');
+  // iPhone Safari has no MediaSource global (only ManagedMediaSource, on
+  // iOS 17.1+, which hls.js also uses), so a bare reference would throw
+  // here and leave the player blank.
+  const MS = window.ManagedMediaSource || window.MediaSource;
+  const hevcMaybe = !!(MS && MS.isTypeSupported
+    && MS.isTypeSupported('video/mp4; codecs="hvc1.2.4.L150.B0"'));
   console.log('player: native HLS =', v.canPlayType('application/vnd.apple.mpegurl'),
               ' MSE HEVC =', hevcMaybe);
 
