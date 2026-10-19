@@ -4,6 +4,12 @@ Notable, user-facing changes to plex-watchparty. Newest first.
 No version numbers — the app ships continuously as a container.
 
 ## 2026-10-19
+- Fixed: When Plex was unreachable (connection refused, DNS failure,
+  timeout), the error text sent to viewers' players and written to the logs
+  and admin audit trail included the Plex token. Plex request URLs are now
+  redacted before any error leaves the Plex client. If your server ran an
+  earlier build, rotate the Plex token and clear old `plex unreachable`
+  entries from `audit.jsonl`.
 - Fixed: Resuming a title, or a seek that restarts Plex, filed every segment
   of the new session in the disk cache under the wrong movie time (twice the
   start position), so later viewers of that stretch could be served the wrong

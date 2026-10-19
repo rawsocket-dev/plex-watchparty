@@ -106,9 +106,17 @@ func NewPlex(baseURL, token, cacheFile string, audit *AuditLog) *Plex {
 // the transport level (DNS, connection refused, timeout, TLS handshake,
 // etc.), trips the health-recovery loop. Status-code failures don't
 // count — those are application errors, not connectivity errors.
+//
+// Transport errors are *url.Error values whose text is the full request
+// URL, X-Plex-Token included; Do redacts it before the error reaches any
+// log line, audit event, or HTTP response.
 func (p *Plex) Do(req *http.Request) (*http.Response, error) {
 	resp, err := p.http.Do(req)
 	if err != nil {
+		var ue *url.Error
+		if errors.As(err, &ue) {
+			ue.URL = redactedURL(ue.URL)
+		}
 		p.MarkUnhealthy(err)
 	}
 	return resp, err
