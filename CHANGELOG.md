@@ -4,6 +4,17 @@ Notable, user-facing changes to plex-watchparty. Newest first.
 No version numbers — the app ships continuously as a container.
 
 ## 2026-10-19
+- Fixed: If Plex refused to start a new session (start over, a seek far
+  ahead, or an automatic or admin restart), the old one was already
+  stopped, but the room kept showing the title. Everyone was stuck on a dead
+  player, and the admin panel's restart and send-to-lobby both refused to
+  act. The room now returns to the lobby with the title offered under
+  "Resume where you left off".
+- Fixed: A seek could be undone moments later. A segment request still in
+  flight from before the seek failed once Plex dropped the old session, and
+  the server "recovered" it by restarting Plex at the old position.
+- Fixed: Switching titles while a viewer's playlist refresh was still
+  waiting on Plex could mislabel that playlist with the new session.
 - Fixed: Each request for an unknown poster key on the public
   `/poster/` route left an entry in server memory for the life of the
   process, so anyone could grow the server's memory without signing in.

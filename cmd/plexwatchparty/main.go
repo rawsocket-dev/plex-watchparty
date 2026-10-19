@@ -108,6 +108,11 @@ func fetchOrRecoverSegment(
 			return data, nil
 		} else {
 			plexErr = err
+			// The fetch can fail BECAUSE its session was replaced while
+			// it was in flight (Plex drops a stopped transcode's
+			// segments). Re-check, so that failure isn't "recovered"
+			// by restarting Plex at this stale time.
+			stale = ctx.SessionID != plexSession.SessionID()
 		}
 	}
 	// Overlap-cache fallback: Plex sometimes 404s a segment it already
@@ -132,7 +137,7 @@ func fetchOrRecoverSegment(
 	// Server-side recovery: we control the stream, Plex 404'd a
 	// segment we need, restart the transcode at this segment's
 	// time and serve a substitute from the new session.
-	if data, rerr := hub.RecoverSegmentForRange(ctx.StartMs, ctx.EndMs); rerr == nil {
+	if data, rerr := hub.RecoverSegmentForRange(ctx.SessionID, ctx.StartMs, ctx.EndMs); rerr == nil {
 		if tsHasNoMedia(data) {
 			log.Printf("recover: substitute for [%d,%d]ms is a media-less placeholder; serving uncached", ctx.StartMs, ctx.EndMs)
 		} else if _, perr := segCache.Put(key, bytes.NewReader(data)); perr != nil {
@@ -242,18 +247,19 @@ func segHandler(codec *segCodec, segCache *SegmentCache, plexSession *PlexSessio
 // Plex playlist and rewrite its segment URIs into /hls/seg/<blob>.ts.
 func playlistHandler(codec *segCodec, plexSession *PlexSession, bw *bwTracker) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		ratingKey := plexSession.RatingKey()
-		if ratingKey == "" {
+		if plexSession.RatingKey() == "" {
 			http.Error(w, "no active stream", http.StatusServiceUnavailable)
 			return
 		}
-		raw, baseURL, err := plexSession.FetchPlaylist()
+		// Stamp and track the playlist with the session it was fetched
+		// for: the room can move to another session while Plex answers.
+		pl, err := plexSession.FetchPlaylist()
 		if err != nil {
 			log.Printf("playlist: fetch failed: %v", err)
 			http.Error(w, "playlist fetch: "+err.Error(), http.StatusBadGateway)
 			return
 		}
-		rewritten, segs, err := rewritePlaylist(codec, raw, baseURL, ratingKey, plexSession.SessionID())
+		rewritten, segs, err := rewritePlaylist(codec, pl.Body, pl.BaseURL, pl.RatingKey, pl.SessionID)
 		if err != nil {
 			log.Printf("playlist: parse failed: %v", err)
 			http.Error(w, "playlist parse: "+err.Error(), http.StatusBadGateway)
@@ -261,7 +267,7 @@ func playlistHandler(codec *segCodec, plexSession *PlexSession, bw *bwTracker) h
 		}
 		// Update edge tracker so seek-forward-past-edge detection is accurate.
 		if len(segs) > 0 {
-			plexSession.UpdateEdge(segs[len(segs)-1].EndMs)
+			plexSession.UpdateEdge(pl.SessionID, segs[len(segs)-1].EndMs)
 		}
 		w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
 		w.Header().Set("Cache-Control", "no-cache")

@@ -115,12 +115,12 @@ func TestPlexSessionEdgeMsTracks(t *testing.T) {
 	if got := ps.EdgeSec(); got != 30.0 {
 		t.Errorf("EdgeSec after start = %v, want 30.0", got)
 	}
-	ps.UpdateEdge(95000) // playlist now shows segments out to 95s
+	ps.UpdateEdge(ps.SessionID(), 95000) // playlist now shows segments out to 95s
 	if got := ps.EdgeSec(); got != 95.0 {
 		t.Errorf("EdgeSec after update = %v, want 95.0", got)
 	}
 	// Edge never moves backward.
-	ps.UpdateEdge(50000)
+	ps.UpdateEdge(ps.SessionID(), 50000)
 	if got := ps.EdgeSec(); got != 95.0 {
 		t.Errorf("EdgeSec after backward update = %v, want 95.0 (no regression)", got)
 	}
@@ -135,10 +135,11 @@ func TestPlexSessionFetchPlaylist(t *testing.T) {
 
 	ps := NewPlexSession(NewPlex(srv.URL, "tok", "", nil), 12000)
 	_ = ps.Start("rk1", 0)
-	data, baseURL, err := ps.FetchPlaylist()
+	pl, err := ps.FetchPlaylist()
 	if err != nil {
 		t.Fatalf("FetchPlaylist: %v", err)
 	}
+	data, baseURL := pl.Body, pl.BaseURL
 	if string(data) != body {
 		t.Errorf("FetchPlaylist body = %q, want %q", string(data), body)
 	}
@@ -162,10 +163,11 @@ func TestPlexSessionFetchPlaylistFollowsMaster(t *testing.T) {
 
 	ps := NewPlexSession(NewPlex(srv.URL, "tok", "", nil), 12000)
 	_ = ps.Start("rk1", 0)
-	data, baseURL, err := ps.FetchPlaylist()
+	pl, err := ps.FetchPlaylist()
 	if err != nil {
 		t.Fatalf("FetchPlaylist: %v", err)
 	}
+	data, baseURL := pl.Body, pl.BaseURL
 	if string(data) != variantBody {
 		t.Errorf("FetchPlaylist body = %q, want %q", string(data), variantBody)
 	}

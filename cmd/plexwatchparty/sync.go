@@ -1000,6 +1000,7 @@ func (h *Hub) RestartAtCurrentPosition(reason RestartReason) error {
 	h.mu.Unlock()
 	log.Printf("restart: %v — restarting Plex at %.2fs", reason, cur.PositionSec)
 	if err := h.session.RestartFor(reason, cur.PositionSec); err != nil {
+		h.abandonDeadSession(err)
 		return fmt.Errorf("plex Restart: %w", err)
 	}
 	h.mu.Lock()
@@ -1027,9 +1028,10 @@ func (h *Hub) RestartAtCurrentPosition(reason RestartReason) error {
 // fresh playlist for SUBSEQUENT segments. The bytes returned here
 // satisfy the in-flight segment request without the client ever
 // seeing the failure.
-func (h *Hub) RecoverSegmentForRange(startMs, endMs int64) ([]byte, error) {
-	data, err := h.session.RecoverSegmentBytes(startMs, endMs)
+func (h *Hub) RecoverSegmentForRange(sessionID string, startMs, endMs int64) ([]byte, error) {
+	data, err := h.session.RecoverSegmentBytes(sessionID, startMs, endMs)
 	if err != nil {
+		h.abandonDeadSession(err) // no-op unless the restart left Plex without a session
 		return nil, err
 	}
 	h.mu.Lock()
@@ -1092,23 +1094,7 @@ func (h *Hub) broadcast() {
 		// Refresh the in-memory hint AND persist. snapshot() already
 		// extrapolated PositionSec, so a crash here loses at most
 		// the last broadcast tick (~3 s) of advance.
-		hint := ResumeHint{
-			RatingKey:     s.RatingKey,
-			Title:         s.Title,
-			Year:          s.Year,
-			MediaType:     s.MediaType,
-			SeriesTitle:   s.SeriesTitle,
-			SeasonNumber:  s.SeasonNumber,
-			EpisodeNumber: s.EpisodeNumber,
-			ArtworkKey:    s.ArtworkKey,
-			NextEpisode:   s.NextEpisode,
-			PositionSec:   s.PositionSec,
-			DurationSec:   s.DurationSec,
-		}
-		h.lastKnown = &hint
-		if h.store != nil {
-			h.store.SaveAsync(hint)
-		}
+		h.rememberResumeLocked(s)
 	} else if h.lastKnown != nil {
 		// No active session — surface the resume hint so waiting
 		// room / library can offer "Resume where you left off?"
@@ -1572,6 +1558,7 @@ func (h *Hub) HandleControl(w http.ResponseWriter, r *http.Request) {
 		if err := h.session.Start(req.RatingKey, offsetSec); err != nil {
 			log.Printf("control: plex Start failed ip=%s ratingKey=%s err=%v",
 				clientIP(r), req.RatingKey, err)
+			h.abandonDeadSession(err)
 			http.Error(w, "plex start: "+err.Error(), http.StatusBadGateway)
 			return
 		}
@@ -1761,6 +1748,7 @@ func (h *Hub) HandleControl(w http.ResponseWriter, r *http.Request) {
 			h.session.SuppressAutoRestart()
 			if err := h.session.RestartFor(RestartBySeek, target); err != nil {
 				log.Printf("seek: plex Restart failed: %v", err)
+				h.abandonDeadSession(err)
 				h.mu.Lock()
 				http.Error(w, "plex restart: "+err.Error(), http.StatusBadGateway)
 				return
@@ -2019,4 +2007,54 @@ func (h *Hub) KickClient(id string) bool {
 	}
 	h.mu.Unlock()
 	return n > 0
+}
+
+// rememberResumeLocked records s (a playing-room snapshot) as the
+// "Resume where you left off?" hint, in memory and on disk. h.mu held.
+func (h *Hub) rememberResumeLocked(s State) {
+	hint := ResumeHint{
+		RatingKey:     s.RatingKey,
+		Title:         s.Title,
+		Year:          s.Year,
+		MediaType:     s.MediaType,
+		SeriesTitle:   s.SeriesTitle,
+		SeasonNumber:  s.SeasonNumber,
+		EpisodeNumber: s.EpisodeNumber,
+		ArtworkKey:    s.ArtworkKey,
+		NextEpisode:   s.NextEpisode,
+		PositionSec:   s.PositionSec,
+		DurationSec:   s.DurationSec,
+	}
+	h.lastKnown = &hint
+	if h.store != nil {
+		h.store.SaveAsync(hint)
+	}
+}
+
+// abandonDeadSession returns the room to the lobby after a replacement
+// Start/Restart failed. Plex's old transcode is stopped before the new
+// one is requested, so a failure leaves the room advertising a title with
+// no session behind it: players stall on 503s, and the admin restart /
+// send-to-lobby refuse because Plex has no session. The title stays on
+// offer as the resume hint so the host can pick it back up. A no-op if
+// the room is already empty or another load has since started a session.
+func (h *Hub) abandonDeadSession(cause error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.state.RatingKey == "" || h.session.RatingKey() != "" {
+		return
+	}
+	cur := h.snapshot()
+	h.rememberResumeLocked(cur)
+	h.audit.Record(AuditEvent{Type: "plex", Email: "system",
+		Detail: fmt.Sprintf("Plex refused a new session for %q; room returned to the lobby: %v", stateMediaLabel(cur), cause)})
+	h.notify.Enqueue(notifyEvent{
+		Kind: notifyStop, Title: cur.Title, Year: cur.Year,
+		RatingKey: cur.RatingKey, Actor: "Plex error",
+		PositionSec: cur.PositionSec,
+		MediaType:   cur.MediaType, SeriesTitle: cur.SeriesTitle,
+		SeasonNumber: cur.SeasonNumber, EpisodeNumber: cur.EpisodeNumber,
+	})
+	h.state = State{UpdatedAtMs: nowMs()}
+	h.broadcast()
 }

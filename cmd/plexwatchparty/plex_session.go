@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -392,6 +393,11 @@ func (ps *PlexSession) RestartFor(reason RestartReason, offsetSec float64) error
 	if err := ps.Restart(offsetSec); err != nil {
 		return err
 	}
+	ps.countRestart(reason)
+	return nil
+}
+
+func (ps *PlexSession) countRestart(reason RestartReason) {
 	switch reason {
 	case RestartBySeek:
 		ps.restartsBySeek.Add(1)
@@ -402,14 +408,24 @@ func (ps *PlexSession) RestartFor(reason RestartReason, offsetSec float64) error
 	case RestartByAdmin:
 		ps.restartsByAdmin.Add(1)
 	}
-	return nil
 }
+
+// errSessionSuperseded refuses a restart on behalf of a session that is
+// no longer the running one (the host seeked or switched titles since).
+var errSessionSuperseded = errors.New("plex session superseded")
 
 // Restart stops the current Plex session and starts a new one at the
 // given offset. Used when the host seeks forward into untranscoded
 // territory. The HTTP /stop call happens with ps.mu released so
 // concurrent readers (segment proxy, scrub bar) aren't stalled.
 func (ps *PlexSession) Restart(offsetSec float64) error {
+	return ps.restartSession("", offsetSec)
+}
+
+// restartSession is Restart, refused with errSessionSuperseded when
+// expectSession is set and is no longer the running session. The check
+// runs under startMu, so no Start/Restart can land between it and /stop.
+func (ps *PlexSession) restartSession(expectSession string, offsetSec float64) error {
 	ps.startMu.Lock()
 	defer ps.startMu.Unlock()
 	ps.mu.Lock()
@@ -417,6 +433,10 @@ func (ps *PlexSession) Restart(offsetSec float64) error {
 	if ratingKey == "" {
 		ps.mu.Unlock()
 		return fmt.Errorf("Restart with no active session")
+	}
+	if expectSession != "" && ps.sessionID != expectSession {
+		ps.mu.Unlock()
+		return errSessionSuperseded
 	}
 	stopURL := ps.stopLocked()
 	ps.mu.Unlock()
@@ -438,12 +458,13 @@ func (ps *PlexSession) EdgeSec() float64 {
 	return float64(ps.edgeMs) / 1000.0
 }
 
-// UpdateEdge records a new edge time observed from a playlist parse.
-// Never regresses — edges only grow within a session.
-func (ps *PlexSession) UpdateEdge(edgeMs int64) {
+// UpdateEdge records a new edge time observed from a playlist of
+// sessionID. Never regresses — edges only grow within a session — and a
+// playlist that outlived its session is ignored.
+func (ps *PlexSession) UpdateEdge(sessionID string, edgeMs int64) {
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
-	if edgeMs > ps.edgeMs {
+	if sessionID == ps.sessionID && edgeMs > ps.edgeMs {
 		ps.edgeMs = edgeMs
 	}
 }
@@ -587,36 +608,46 @@ func (ps *PlexSession) ClearAutoRestart() {
 	ps.lastAutoRestartAt = time.Now()
 }
 
+// fetchedPlaylist is a media playlist plus the session it belongs to,
+// captured under one ps.mu hold together with the URL. A poll can
+// outlive its session (the host seeks or switches titles while Plex is
+// answering), so callers stamp and track the playlist with these fields,
+// never with whatever session is current when the body arrives.
+type fetchedPlaylist struct {
+	Body      []byte
+	BaseURL   string // URL Body was fetched from; resolves relative segment URIs
+	SessionID string
+	RatingKey string
+}
+
 // FetchPlaylist GETs the current session's playlist from Plex. If Plex
 // returns a master playlist (the usual case for protocol=hls — single
 // variant wrapped in a master), follow the variant URI transparently
-// and return the media playlist body instead. The returned baseURL is
-// the URL the returned body was fetched from — used to resolve any
-// relative segment URIs in the body.
-func (ps *PlexSession) FetchPlaylist() (body []byte, baseURL string, err error) {
+// and return the media playlist body instead.
+func (ps *PlexSession) FetchPlaylist() (fetchedPlaylist, error) {
 	ps.mu.Lock()
-	plUrl := ps.playlistURL
+	pl := fetchedPlaylist{BaseURL: ps.playlistURL, SessionID: ps.sessionID, RatingKey: ps.ratingKey}
 	ps.mu.Unlock()
-	if plUrl == "" {
-		return nil, "", fmt.Errorf("no active Plex session")
+	if pl.BaseURL == "" {
+		return fetchedPlaylist{}, fmt.Errorf("no active Plex session")
 	}
-	body, err = ps.fetchPlaylistBody(plUrl)
+	body, err := ps.fetchPlaylistBody(pl.BaseURL)
 	if err != nil {
-		return nil, "", err
+		return fetchedPlaylist{}, err
 	}
-	baseURL = plUrl
 	if !bytes.Contains(body, []byte("#EXT-X-STREAM-INF")) {
-		return body, baseURL, nil
+		pl.Body = body
+		return pl, nil
 	}
-	variantURL, err := resolveFirstVariantURL(body, plUrl)
+	variantURL, err := resolveFirstVariantURL(body, pl.BaseURL)
 	if err != nil {
-		return nil, "", fmt.Errorf("resolve variant playlist: %w", err)
+		return fetchedPlaylist{}, fmt.Errorf("resolve variant playlist: %w", err)
 	}
-	body, err = ps.fetchPlaylistBody(variantURL)
-	if err != nil {
-		return nil, "", err
+	if pl.Body, err = ps.fetchPlaylistBody(variantURL); err != nil {
+		return fetchedPlaylist{}, err
 	}
-	return body, variantURL, nil
+	pl.BaseURL = variantURL
+	return pl, nil
 }
 
 func (ps *PlexSession) fetchPlaylistBody(u string) ([]byte, error) {
@@ -701,7 +732,7 @@ func (ps *PlexSession) FetchSegment(segURL string) (io.ReadCloser, error) {
 }
 
 // RecoverSegmentBytes is the "Plex 404'd a segment we need" rescue
-// path. The current session was unable to serve [startMs, endMs];
+// path. Session sessionID was unable to serve [startMs, endMs];
 // instead of forwarding the failure to hls.js (which would stall
 // playback on a single bad fragment) we control the stream — restart
 // Plex at this segment's start time, fetch the new session's
@@ -719,7 +750,11 @@ func (ps *PlexSession) FetchSegment(segURL string) (io.ReadCloser, error) {
 // A goroutine that arrives after someone else already restarted
 // (sessionToken advanced) skips the Restart and fetches from the
 // freshly-running session directly.
-func (ps *PlexSession) RecoverSegmentBytes(startMs, endMs int64) ([]byte, error) {
+//
+// The restart is refused (errSessionSuperseded) when sessionID is no
+// longer running: a request still in flight from before a seek or a
+// title change must not tear down the session that replaced it.
+func (ps *PlexSession) RecoverSegmentBytes(sessionID string, startMs, endMs int64) ([]byte, error) {
 	tokenBefore := ps.SessionToken()
 
 	ps.recoverMu.Lock()
@@ -732,19 +767,20 @@ func (ps *PlexSession) RecoverSegmentBytes(startMs, endMs int64) ([]byte, error)
 		// Mark the auto-restart cooldown so the per-failure counter
 		// doesn't fire a redundant restart on top of this one.
 		ps.SuppressAutoRestart()
-		if err := ps.RestartFor(RestartByRecover, offsetSec); err != nil {
+		if err := ps.restartSession(sessionID, offsetSec); err != nil {
 			return nil, fmt.Errorf("recover restart: %w", err)
 		}
+		ps.countRestart(RestartByRecover)
 	} else {
 		log.Printf("recover: another goroutine restarted while we waited (token %d→%d); reusing",
 			tokenBefore, ps.SessionToken())
 	}
 
-	body, baseURL, err := ps.FetchPlaylist()
+	pl, err := ps.FetchPlaylist()
 	if err != nil {
 		return nil, fmt.Errorf("recover playlist: %w", err)
 	}
-	segs, err := parsePlaylistSegments(body, baseURL)
+	segs, err := parsePlaylistSegments(pl.Body, pl.BaseURL)
 	if err != nil {
 		return nil, fmt.Errorf("recover parse playlist: %w", err)
 	}
