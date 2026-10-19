@@ -3,6 +3,16 @@
 Notable, user-facing changes to plex-watchparty. Newest first.
 No version numbers — the app ships continuously as a container.
 
+## 2026-10-19
+- Fixed: Resuming a title, or a seek that restarts Plex, filed every segment
+  of the new session in the disk cache under the wrong movie time (twice the
+  start position), so later viewers of that stretch could be served the wrong
+  part of the film. Plex's playlist is already on the absolute movie
+  timeline; segments are now cached at the time they actually hold. Plex's
+  empty placeholder for not-yet-transcoded seconds is no longer cached as
+  media. Caches written by earlier builds may hold such entries — clearing a
+  title's cache from the admin panel removes them.
+
 ## 2026-07-26
 - Fixed: Switching the library from TV back to Movies froze the page for
   about a second and replayed the fade-in dimmed while the browser rebuilt

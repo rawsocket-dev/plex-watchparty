@@ -99,7 +99,10 @@ func fetchOrRecoverSegment(
 				log.Printf("seg: read from plex aborted: %v", rerr)
 				return nil, fmt.Errorf("plex read: %w", rerr)
 			}
-			if _, perr := segCache.Put(key, bytes.NewReader(data)); perr != nil {
+			if tsHasNoMedia(data) {
+				log.Printf("seg: plex returned a media-less placeholder for [%d,%d]ms (outside the transcode window); serving uncached",
+					ctx.StartMs, ctx.EndMs)
+			} else if _, perr := segCache.Put(key, bytes.NewReader(data)); perr != nil {
 				log.Printf("seg: cache write failed: %v (segment still served)", perr)
 			}
 			return data, nil
@@ -130,7 +133,9 @@ func fetchOrRecoverSegment(
 	// segment we need, restart the transcode at this segment's
 	// time and serve a substitute from the new session.
 	if data, rerr := hub.RecoverSegmentForRange(ctx.StartMs, ctx.EndMs); rerr == nil {
-		if _, perr := segCache.Put(key, bytes.NewReader(data)); perr != nil {
+		if tsHasNoMedia(data) {
+			log.Printf("recover: substitute for [%d,%d]ms is a media-less placeholder; serving uncached", ctx.StartMs, ctx.EndMs)
+		} else if _, perr := segCache.Put(key, bytes.NewReader(data)); perr != nil {
 			log.Printf("recover: cache write failed: %v (segment still served)", perr)
 		}
 		return data, nil
@@ -230,6 +235,39 @@ func segHandler(codec *segCodec, segCache *SegmentCache, plexSession *PlexSessio
 		plexSession.RecordSegmentSuccess()
 		serveHeaders()
 		_, _ = cw.Write(v.([]byte))
+	}
+}
+
+// playlistHandler serves /hls/index.m3u8: fetch the current session's
+// Plex playlist and rewrite its segment URIs into /hls/seg/<blob>.ts.
+func playlistHandler(codec *segCodec, plexSession *PlexSession, bw *bwTracker) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ratingKey := plexSession.RatingKey()
+		if ratingKey == "" {
+			http.Error(w, "no active stream", http.StatusServiceUnavailable)
+			return
+		}
+		raw, baseURL, err := plexSession.FetchPlaylist()
+		if err != nil {
+			log.Printf("playlist: fetch failed: %v", err)
+			http.Error(w, "playlist fetch: "+err.Error(), http.StatusBadGateway)
+			return
+		}
+		rewritten, segs, err := rewritePlaylist(codec, raw, baseURL, ratingKey, plexSession.SessionID())
+		if err != nil {
+			log.Printf("playlist: parse failed: %v", err)
+			http.Error(w, "playlist parse: "+err.Error(), http.StatusBadGateway)
+			return
+		}
+		// Update edge tracker so seek-forward-past-edge detection is accurate.
+		if len(segs) > 0 {
+			plexSession.UpdateEdge(segs[len(segs)-1].EndMs)
+		}
+		w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
+		w.Header().Set("Cache-Control", "no-cache")
+		cw := &countingResponseWriter{ResponseWriter: w}
+		cw.Write(rewritten)
+		bw.record(clientIP(r), cw.n)
 	}
 }
 
@@ -624,34 +662,7 @@ func main() {
 	// point through us, return to client. Plex's segment URLs are kept
 	// internal (never exposed to viewers); they pass through our proxy
 	// where we can cache and re-serve.
-	protected.HandleFunc("/hls/index.m3u8", func(w http.ResponseWriter, r *http.Request) {
-		ratingKey := plexSession.RatingKey()
-		if ratingKey == "" {
-			http.Error(w, "no active stream", http.StatusServiceUnavailable)
-			return
-		}
-		raw, baseURL, err := plexSession.FetchPlaylist()
-		if err != nil {
-			log.Printf("playlist: fetch failed: %v", err)
-			http.Error(w, "playlist fetch: "+err.Error(), http.StatusBadGateway)
-			return
-		}
-		rewritten, segs, err := rewritePlaylist(codec, raw, baseURL, plexSession.OffsetMs(), ratingKey, plexSession.SessionID())
-		if err != nil {
-			log.Printf("playlist: parse failed: %v", err)
-			http.Error(w, "playlist parse: "+err.Error(), http.StatusBadGateway)
-			return
-		}
-		// Update edge tracker so seek-forward-past-edge detection is accurate.
-		if len(segs) > 0 {
-			plexSession.UpdateEdge(segs[len(segs)-1].EndMs)
-		}
-		w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
-		w.Header().Set("Cache-Control", "no-cache")
-		cw := &countingResponseWriter{ResponseWriter: w}
-		cw.Write(rewritten)
-		bw.record(clientIP(r), cw.n)
-	})
+	protected.HandleFunc("/hls/index.m3u8", playlistHandler(codec, plexSession, bw))
 
 	// /hls/seg/<encoded>.ts — decode the segment context, serve from
 	// cache if present, otherwise proxy from Plex while tee-writing to

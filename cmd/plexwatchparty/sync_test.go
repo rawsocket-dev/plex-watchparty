@@ -33,7 +33,7 @@ type hubTestFixture struct {
 
 func newHubTestFixture(t *testing.T) *hubTestFixture {
 	t.Helper()
-	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return newHubTestFixtureWith(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.URL.Path == "/video/:/transcode/universal/decision":
 			w.Header().Set("Content-Type", "application/json")
@@ -61,6 +61,13 @@ func newHubTestFixture(t *testing.T) *hubTestFixture {
 			http.NotFound(w, r)
 		}
 	}))
+}
+
+// newHubTestFixtureWith builds the hub fixture against a caller-supplied
+// mock Plex handler.
+func newHubTestFixtureWith(t *testing.T, plexMock http.Handler) *hubTestFixture {
+	t.Helper()
+	mock := httptest.NewServer(plexMock)
 	t.Cleanup(mock.Close)
 	dir := t.TempDir()
 	audit := NewAuditLog(filepath.Join(dir, "audit.jsonl"), auditCap)

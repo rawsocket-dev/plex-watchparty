@@ -63,7 +63,11 @@ type segTestFixture struct {
 
 func newSegTestFixture(t *testing.T) *segTestFixture {
 	t.Helper()
-	f := newHubTestFixture(t)
+	return segFixtureFor(t, newHubTestFixture(t))
+}
+
+func segFixtureFor(t *testing.T, f *hubTestFixture) *segTestFixture {
+	t.Helper()
 	codec, err := newSegCodec("tok")
 	if err != nil {
 		t.Fatalf("newSegCodec: %v", err)

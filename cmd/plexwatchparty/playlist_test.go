@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/base64"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -30,7 +31,7 @@ func testSegCodec(t *testing.T) *segCodec {
 }
 
 func TestRewritePlaylistComputesTimeRanges(t *testing.T) {
-	_, segs, err := rewritePlaylist(testSegCodec(t), []byte(samplePlexPlaylist), "https://plex.example/", 0, "rk1", "sess-test")
+	_, segs, err := rewritePlaylist(testSegCodec(t), []byte(samplePlexPlaylist), "https://plex.example/", "rk1", "sess-test")
 	if err != nil {
 		t.Fatalf("rewritePlaylist: %v", err)
 	}
@@ -46,19 +47,49 @@ func TestRewritePlaylistComputesTimeRanges(t *testing.T) {
 	}
 }
 
-func TestRewritePlaylistRespectsSessionOffset(t *testing.T) {
-	_, segs, err := rewritePlaylist(testSegCodec(t), []byte(samplePlexPlaylist), "https://plex.example/", 600000, "rk1", "sess-test")
+// Plex's playlist for a transcode started at offset=X lists the whole
+// title from 00000.ts and marks X only with EXT-X-START (captured from PMS
+// 1.43.5). Its cumulative time is already movie time, so the segment
+// after the 2670th second must be stamped 2670 s — not 2670 s + offset.
+func TestRewritePlaylistTimesAreAbsoluteForOffsetStart(t *testing.T) {
+	var b strings.Builder
+	b.WriteString("#EXTM3U\n#EXT-X-TARGETDURATION:1\n#EXT-X-START:TIME-OFFSET=2670.000000\n#EXT-X-ALLOW-CACHE:NO\n#EXT-X-MEDIA-SEQUENCE:0\n")
+	for i := 0; i < 5696; i++ {
+		fmt.Fprintf(&b, "#EXTINF:1, nodesc\n%05d.ts\n", i)
+	}
+	b.WriteString("#EXT-X-ENDLIST\n")
+	_, segs, err := rewritePlaylist(testSegCodec(t), []byte(b.String()), "https://plex.example/session/s/base/index.m3u8", "rk1", "sess-test")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if segs[0].StartMs != 600000 || segs[0].EndMs != 610400 {
-		t.Errorf("with offset=600s, first segment = (%d, %d), want (600000, 610400)",
-			segs[0].StartMs, segs[0].EndMs)
+	if got := segs[2670]; got.StartMs != 2670000 || got.EndMs != 2671000 || !strings.HasSuffix(got.OrigURL, "/02670.ts") {
+		t.Errorf("segs[2670] = %+v, want 02670.ts at [2670000,2671000]", got)
+	}
+	if last := segs[len(segs)-1]; last.EndMs != 5696000 {
+		t.Errorf("last segment ends at %d, want the title's end 5696000", last.EndMs)
+	}
+}
+
+func TestTSHasNoMedia(t *testing.T) {
+	cases := []struct {
+		name string
+		data []byte
+		want bool
+	}{
+		{"plex placeholder (PAT only)", tsPlaceholder(), true},
+		{"PAT + video PES", tsMediaSegment(7), false},
+		{"not TS at all", []byte("SEGDATA"), false},
+		{"empty", nil, false},
+	}
+	for _, c := range cases {
+		if got := tsHasNoMedia(c.data); got != c.want {
+			t.Errorf("%s: tsHasNoMedia = %v, want %v", c.name, got, c.want)
+		}
 	}
 }
 
 func TestRewritePlaylistRewritesURLs(t *testing.T) {
-	out, _, err := rewritePlaylist(testSegCodec(t), []byte(samplePlexPlaylist), "https://plex.example/", 0, "rk1", "sess-test")
+	out, _, err := rewritePlaylist(testSegCodec(t), []byte(samplePlexPlaylist), "https://plex.example/", "rk1", "sess-test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,7 +131,7 @@ func TestRewritePlaylistHidesPlexToken(t *testing.T) {
 	codec := testSegCodec(t)
 	const token = "SECRETPLEXTOKEN123"
 	pl := "#EXTM3U\n#EXTINF:4.0,\nhttps://plex.example/seg-0.ts?X-Plex-Token=" + token + "\n"
-	out, _, err := rewritePlaylist(codec, []byte(pl), "https://plex.example/", 0, "rk1", "sess-test")
+	out, _, err := rewritePlaylist(codec, []byte(pl), "https://plex.example/", "rk1", "sess-test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -173,7 +204,7 @@ func TestSegCodecRejectsForeignKey(t *testing.T) {
 // offset seek cost ~3 Plex restarts).
 func TestRewritePlaylistStampsSessionID(t *testing.T) {
 	codec := testSegCodec(t)
-	body, segs, err := rewritePlaylist(codec, []byte(samplePlexPlaylist), "https://plex.example/", 0, "rk1", "watchparty-abc123")
+	body, segs, err := rewritePlaylist(codec, []byte(samplePlexPlaylist), "https://plex.example/", "rk1", "watchparty-abc123")
 	if err != nil {
 		t.Fatalf("rewritePlaylist: %v", err)
 	}

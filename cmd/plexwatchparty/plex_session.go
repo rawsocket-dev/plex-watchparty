@@ -243,7 +243,10 @@ func (ps *PlexSession) start(ratingKey string, offsetSec float64) error {
 		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 			resp.Body.Close()
 			ps.ratingKey = ratingKey
-			ps.offsetMs = int64(offsetSec * 1000)
+			// Plex is sent whole seconds (transcodeParams); record the
+			// offset it was actually given, not the Hub's fractional
+			// position, so the session window matches Plex's.
+			ps.offsetMs = int64(offsetSec) * 1000
 			ps.edgeMs = ps.offsetMs
 			ps.playlistURL = playlistURL
 			ps.sessionID = sessionID
@@ -741,10 +744,7 @@ func (ps *PlexSession) RecoverSegmentBytes(startMs, endMs int64) ([]byte, error)
 	if err != nil {
 		return nil, fmt.Errorf("recover playlist: %w", err)
 	}
-	ps.mu.Lock()
-	sessionOffsetMs := ps.offsetMs
-	ps.mu.Unlock()
-	segs, err := parsePlaylistSegments(body, baseURL, sessionOffsetMs)
+	segs, err := parsePlaylistSegments(body, baseURL)
 	if err != nil {
 		return nil, fmt.Errorf("recover parse playlist: %w", err)
 	}

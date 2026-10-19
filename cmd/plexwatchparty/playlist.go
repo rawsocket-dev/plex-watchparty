@@ -111,12 +111,16 @@ type playlistSeg struct {
 // rewritePlaylist parses an HLS media playlist and replaces segment
 // URIs with our /hls/seg/<blob>.ts form. baseURL is the URL the playlist
 // was fetched from — segment URIs are resolved against it so
-// segCtx.PlexURL is always absolute. sessionOffsetMs is the absolute
-// movie time at which Plex's session started, so the returned StartMs
-// values are absolute movie times suitable for cache indexing.
-// sessionID stamps each context with the minting session (see segCtx).
-func rewritePlaylist(codec *segCodec, data []byte, baseURL string, sessionOffsetMs int64, ratingKey, sessionID string) ([]byte, []playlistSeg, error) {
-	return walkPlaylist(data, baseURL, sessionOffsetMs, func(seg playlistSeg) string {
+// segCtx.PlexURL is always absolute. sessionID stamps each context with
+// the minting session (see segCtx).
+//
+// The returned StartMs/EndMs are absolute movie times because Plex's
+// playlist already is: a transcode started with offset=X still lists the
+// whole title from 00000.ts and marks X only with EXT-X-START, so the
+// cumulative EXTINF time IS the movie time. Adding the session offset on
+// top filed every segment of an offset session under the wrong time.
+func rewritePlaylist(codec *segCodec, data []byte, baseURL string, ratingKey, sessionID string) ([]byte, []playlistSeg, error) {
+	return walkPlaylist(data, baseURL, func(seg playlistSeg) string {
 		return "/hls/seg/" + codec.encode(segCtx{
 			PlexURL: seg.OrigURL, StartMs: seg.StartMs, EndMs: seg.EndMs, Rating: ratingKey,
 			SessionID: sessionID,
@@ -128,8 +132,8 @@ func rewritePlaylist(codec *segCodec, data []byte, baseURL string, sessionOffset
 // segments as absolute-time ranges WITHOUT rewriting — used by the
 // recovery path, which only needs segment metadata to pick a substitute
 // and so doesn't need (and shouldn't carry) the encryption codec.
-func parsePlaylistSegments(data []byte, baseURL string, sessionOffsetMs int64) ([]playlistSeg, error) {
-	_, segs, err := walkPlaylist(data, baseURL, sessionOffsetMs, nil)
+func parsePlaylistSegments(data []byte, baseURL string) ([]playlistSeg, error) {
+	_, segs, err := walkPlaylist(data, baseURL, nil)
 	return segs, err
 }
 
@@ -137,14 +141,14 @@ func parsePlaylistSegments(data []byte, baseURL string, sessionOffsetMs int64) (
 // absolute [StartMs, EndMs] window. When rewrite != nil, each segment
 // URI line is replaced with rewrite(seg) and the joined playlist is
 // returned; when nil, the returned bytes are nil (parse-only).
-func walkPlaylist(data []byte, baseURL string, sessionOffsetMs int64, rewrite func(playlistSeg) string) ([]byte, []playlistSeg, error) {
+func walkPlaylist(data []byte, baseURL string, rewrite func(playlistSeg) string) ([]byte, []playlistSeg, error) {
 	base, err := url.Parse(baseURL)
 	if err != nil {
 		return nil, nil, fmt.Errorf("parse base URL: %w", err)
 	}
 	lines := bytes.Split(data, []byte{'\n'})
 	var segs []playlistSeg
-	cumMs := sessionOffsetMs
+	var cumMs int64
 	var pendingDur float64
 	for i, raw := range lines {
 		line := strings.TrimRight(string(raw), "\r")
@@ -186,4 +190,38 @@ func walkPlaylist(data []byte, baseURL string, sessionOffsetMs int64, rewrite fu
 		return nil, segs, nil
 	}
 	return bytes.Join(lines, []byte{'\n'}), segs, nil
+}
+
+// tsHasNoMedia reports whether data is an MPEG-TS stream that carries no
+// PES packet at all — Plex's 188-byte answer for a segment outside the
+// running transcode's window (a lone PAT padded with 0xFF). Such a body
+// must never be cached: it would stand in for real media at that movie
+// time for every later session. Anything that isn't recognisably TS is
+// left alone.
+func tsHasNoMedia(data []byte) bool {
+	const pkt = 188
+	if len(data) == 0 || len(data)%pkt != 0 {
+		return false
+	}
+	for off := 0; off < len(data); off += pkt {
+		p := data[off : off+pkt]
+		if p[0] != 0x47 {
+			return false
+		}
+		pusi := p[1]&0x40 != 0
+		pid := uint16(p[1]&0x1F)<<8 | uint16(p[2])
+		if !pusi || pid == 0 || pid == 0x1FFF {
+			continue
+		}
+		payload := 4
+		if afc := p[3] >> 4 & 0x3; afc == 2 || afc == 0 {
+			continue
+		} else if afc == 3 {
+			payload += 1 + int(p[4])
+		}
+		if payload+3 <= pkt && p[payload] == 0 && p[payload+1] == 0 && p[payload+2] == 1 {
+			return false
+		}
+	}
+	return true
 }
