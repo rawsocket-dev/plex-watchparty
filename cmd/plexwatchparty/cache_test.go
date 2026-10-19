@@ -369,3 +369,36 @@ func TestCacheStats(t *testing.T) {
 		t.Errorf("top movie = %s, want b (largest by bytes)", st.PerMovie[0].RatingKey)
 	}
 }
+
+// The overlap fallback stands one cached segment in for another. It must
+// cover (nearly) the requested time: a neighbour that merely touches the
+// window was served as if it were the requested second, and ties went to
+// Go's random map order. Small cross-session boundary drift still hits.
+func TestFindOverlappingRequiresRealCoverage(t *testing.T) {
+	c := NewSegmentCache(t.TempDir(), 1<<30)
+	put := func(start, end int64, body string) {
+		if _, err := c.Put(cacheKey{ratingKey: "rk1", startMs: start, endMs: end}, strings.NewReader(body)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	put(0, 1001, "touching")
+	put(1999, 3000, "touching-after")
+	if _, s, e, ok := c.FindOverlapping("rk1", 1000, 2000); ok {
+		t.Errorf("request [1000,2000] served by neighbour [%d,%d]", s, e)
+	}
+
+	put(5004, 6004, "drifted")
+	if _, s, e, ok := c.FindOverlapping("rk1", 5000, 6000); !ok || s != 5004 || e != 6004 {
+		t.Errorf("request [5000,6000] with a 4 ms drifted entry: got [%d,%d] ok=%v, want [5004,6004]", s, e, ok)
+	}
+
+	// Equal overlap on both sides of the request: the pick must be stable
+	// (earlier start), not whichever the map happens to yield first.
+	put(8100, 9100, "late")
+	put(7900, 8900, "early")
+	for i := 0; i < 50; i++ {
+		if _, s, _, ok := c.FindOverlapping("rk1", 8000, 9000); !ok || s != 7900 {
+			t.Fatalf("tie-break picked start %d ok=%v, want 7900", s, ok)
+		}
+	}
+}

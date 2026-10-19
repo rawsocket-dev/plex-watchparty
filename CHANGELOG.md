@@ -4,6 +4,10 @@ Notable, user-facing changes to plex-watchparty. Newest first.
 No version numbers — the app ships continuously as a container.
 
 ## 2026-10-19
+- Fixed: When Plex couldn't serve a segment, the cache fallback could
+  substitute a neighbouring segment that only touched the requested
+  moment, which made playback jump. A substitute must now cover the
+  requested time.
 - Fixed: If Plex refused to start a new session (start over, a seek far
   ahead, or an automatic or admin restart), the old one was already
   stopped, but the room kept showing the title. Everyone was stuck on a dead

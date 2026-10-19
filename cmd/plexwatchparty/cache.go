@@ -112,39 +112,33 @@ func (c *SegmentCache) Get(key cacheKey) (string, bool) {
 	return e.path, true
 }
 
-// FindOverlapping returns the path of a cached segment whose time
-// range overlaps the requested window for ratingKey, plus its
-// (startMs, endMs) so the caller can log what was served. Used as a
-// fallback when Plex 404s a segment that's been transcoded but
-// evicted from its in-session cache, or when Plex's segment
-// boundaries drift across sessions and an exact (startMs, endMs)
-// match fails. Linear scan — N is bounded by cache size.
+// FindOverlapping returns the path of a cached segment that stands in
+// for the requested window for ratingKey, plus its (startMs, endMs) so
+// the caller can log what was served. Used as a fallback when Plex 404s
+// a segment that's been transcoded but evicted from its in-session
+// cache, or when Plex's segment boundaries drift across sessions and an
+// exact (startMs, endMs) match fails. Linear scan — N is bounded by
+// cache size.
+//
+// A candidate must cover all of the window but maxOverlapShortfallMs
+// (half of it for windows under a second): a neighbour that merely
+// touches the window holds different media. Among candidates the largest
+// overlap wins, then the earliest start, so the pick never depends on
+// map order.
 func (c *SegmentCache) FindOverlapping(ratingKey string, startMs, endMs int64) (path string, foundStart, foundEnd int64, ok bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	// Pick the entry with the largest overlap with [startMs, endMs].
-	// In practice the cache holds at most one segment per movie second
-	// so the "best" overlap is usually unambiguous, but we tie-break
-	// on overlap size in case sessions produced subtly different
-	// boundaries that bracket the requested window.
+	need := endMs - startMs - min(maxOverlapShortfallMs, (endMs-startMs)/2)
 	var bestOverlap int64
 	for k, e := range c.entries {
 		if k.ratingKey != ratingKey {
 			continue
 		}
-		if k.endMs < startMs || k.startMs > endMs {
+		ov := min(endMs, k.endMs) - max(startMs, k.startMs)
+		if ov <= 0 || ov < need {
 			continue
 		}
-		lo := startMs
-		if k.startMs > lo {
-			lo = k.startMs
-		}
-		hi := endMs
-		if k.endMs < hi {
-			hi = k.endMs
-		}
-		ov := hi - lo
-		if ov > bestOverlap {
+		if !ok || ov > bestOverlap || ov == bestOverlap && k.startMs < foundStart {
 			bestOverlap = ov
 			path = e.path
 			foundStart = k.startMs
@@ -154,6 +148,11 @@ func (c *SegmentCache) FindOverlapping(ratingKey string, startMs, endMs int64) (
 	}
 	return
 }
+
+// maxOverlapShortfallMs is how much of a requested window an overlap
+// substitute may leave uncovered: cross-session boundary drift is a few
+// ms, so half a second is generous without admitting a neighbour.
+const maxOverlapShortfallMs = 500
 
 // Put streams src to a temp file, atomically renames to the cache path,
 // and adds the entry to the index. Partial writes that don't reach the
