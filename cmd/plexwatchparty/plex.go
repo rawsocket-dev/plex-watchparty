@@ -113,11 +113,7 @@ func NewPlex(baseURL, token, cacheFile string, audit *AuditLog) *Plex {
 func (p *Plex) Do(req *http.Request) (*http.Response, error) {
 	resp, err := p.http.Do(req)
 	if err != nil {
-		var ue *url.Error
-		if errors.As(err, &ue) {
-			ue.URL = redactedURL(ue.URL)
-		}
-		p.MarkUnhealthy(err)
+		p.MarkUnhealthy(redactURLError(err))
 	}
 	return resp, err
 }

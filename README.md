@@ -103,7 +103,10 @@ who fronts Plex with their own DNS name fails standard verification, so
 watchparty uses an HTTP client with `InsecureSkipVerify` enabled for
 **Plex calls only** (browser-facing TLS is unaffected). Traffic is
 LAN-side and the X-Plex-Token query param is the real authentication
-surface — the cert check would add no security in practice.
+surface. The trade-off: anything that can intercept or redirect traffic
+between watchparty and Plex (spoofed DNS, a hostile host on that network)
+can present any certificate and receive the token. Keep the path between
+watchparty and Plex on a network you trust.
 
 ## Run with Docker (recommended)
 
@@ -168,7 +171,7 @@ ALLOWED_EMAILS=you@example.com go run ./cmd/plexwatchparty
 | `LISTEN_ADDR`                     | no       | `:8080`                  | Listen address (e.g., `:8080` or `0.0.0.0:8080`) |
 | `WORK_DIR`                        | no       | `$TMPDIR/plexwatchparty` | Per-session work directory. The segment cache (`cache/`), poster art (`posters/`) and state files (`library-cache.json`, `recent.json`, `state.json`, `host.json`, `audit.jsonl`, `aliases.json`) live in its **parent** directory. The container entrypoint makes both owned by the app user (UID 10001), so a fresh or root-owned `./data` bind mount works. |
 | `TRUSTED_PROXY_CIDRS`             | no       | loopback + RFC1918 + ULA | Comma-separated CIDRs whose peers may set `X-Forwarded-For` / `X-Real-IP`. Headers from any other peer are ignored (so a directly-reachable client can't spoof its attribution). Widen this only if your reverse proxy sits on a public address. |
-| `DISCORD_WEBHOOK_URL`             | no       | —                        | Discord incoming-webhook URL. When set, the server posts a rich embed when a movie starts, stops, pauses, or resumes. Unset → feature off. |
+| `DISCORD_WEBHOOK_URL`             | no       | —                        | Discord incoming-webhook URL. When set, the server posts a rich embed when a movie or episode starts and when it ends (stopped, idle, or sent to the lobby). Pause/resume are not posted. Unset → feature off. |
 | `PUBLIC_BASE_URL`                 | no       | origin of `GOOGLE_REDIRECT_URL` | Public origin used to build poster-image links in Discord embeds, e.g. `https://watch.example.com`. The **unauthenticated, read-only** `/poster/<ratingKey>.jpg` route that serves this art is always mounted (the library grid loads its card art from it too); it only serves titles in the library cache and never exposes the Plex token. If no absolute origin can be resolved, embeds post without a poster. |
 
 **Roles:**

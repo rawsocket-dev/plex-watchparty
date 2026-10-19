@@ -42,3 +42,16 @@ func TestPlexTransportErrorsDoNotExposeToken(t *testing.T) {
 		t.Errorf("audit log carries the token: %s", b)
 	}
 }
+
+// url.Parse errors quote the whole input too; the playlist base URL is a
+// Plex URL carrying the token, and the parse error goes into the 502 body.
+func TestPlaylistParseErrorDoesNotExposeToken(t *testing.T) {
+	_, _, err := rewritePlaylist(testSegCodec(t), []byte("#EXTM3U\n#EXTINF:1,\na.ts\n"),
+		"http://plex\x7f.invalid/start.m3u8?X-Plex-Token=tok", "rk1", "s")
+	if err == nil {
+		t.Fatal("expected a base-URL parse error")
+	}
+	if strings.Contains(err.Error(), "X-Plex-Token=tok") {
+		t.Errorf("parse error carries the token: %v", err)
+	}
+}

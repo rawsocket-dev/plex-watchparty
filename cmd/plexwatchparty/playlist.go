@@ -144,7 +144,7 @@ func parsePlaylistSegments(data []byte, baseURL string) ([]playlistSeg, error) {
 func walkPlaylist(data []byte, baseURL string, rewrite func(playlistSeg) string) ([]byte, []playlistSeg, error) {
 	base, err := url.Parse(baseURL)
 	if err != nil {
-		return nil, nil, fmt.Errorf("parse base URL: %w", err)
+		return nil, nil, fmt.Errorf("parse base URL: %w", redactURLError(err))
 	}
 	lines := bytes.Split(data, []byte{'\n'})
 	var segs []playlistSeg

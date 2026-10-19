@@ -176,6 +176,17 @@ func redactedURL(u string) string {
 	return u[:idx] + "X-Plex-Token=<redacted>" + u[idx+end:]
 }
 
+// redactURLError redacts the token inside a *url.Error, whose text is the
+// full URL (transport failures, url.Parse). err is modified in place and
+// returned; other errors pass through.
+func redactURLError(err error) error {
+	var ue *url.Error
+	if errors.As(err, &ue) {
+		ue.URL = redactedURL(ue.URL)
+	}
+	return err
+}
+
 // SessionToken returns the current session token. Bumps on every Start/Restart.
 func (ps *PlexSession) SessionToken() int64 {
 	ps.mu.Lock()
@@ -669,7 +680,7 @@ func (ps *PlexSession) fetchPlaylistBody(u string) ([]byte, error) {
 func resolveFirstVariantURL(master []byte, masterURL string) (string, error) {
 	base, err := url.Parse(masterURL)
 	if err != nil {
-		return "", err
+		return "", redactURLError(err)
 	}
 	lines := bytes.Split(master, []byte{'\n'})
 	streamInf := false
