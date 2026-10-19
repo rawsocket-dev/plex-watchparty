@@ -4,6 +4,11 @@ Notable, user-facing changes to plex-watchparty. Newest first.
 No version numbers — the app ships continuously as a container.
 
 ## 2026-10-19
+- Fixed: A fresh Docker Compose install crash-looped with
+  `create cache dir: … permission denied`: the container only made the
+  sessions directory writable, while the cache, poster art and state files
+  live one level up in `./data`. The entrypoint now prepares the whole data
+  directory (including files restored as root) before dropping privileges.
 - Fixed: When Plex was unreachable (connection refused, DNS failure,
   timeout), the error text sent to viewers' players and written to the logs
   and admin audit trail included the Plex token. Plex request URLs are now

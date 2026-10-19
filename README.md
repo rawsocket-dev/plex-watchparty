@@ -126,6 +126,8 @@ docker compose up --build
 ```
 
 Then open `http://<your-host>:8080`, sign in with Google, and pick a movie or episode.
+State persists in `./data` (created on first start; the container fixes its
+ownership itself, so no `chown` is needed).
 
 All configuration lives in `.env` — the compose file consumes it via
 `env_file`, so adding or changing a setting is just a line in `.env` (no
@@ -164,7 +166,7 @@ ALLOWED_EMAILS=you@example.com go run ./cmd/plexwatchparty
 | `PLEX_TRANSCODE_BITRATE_KBPS`     | no       | `12000` (12 Mbps)        | Plex Universal Transcoder target bitrate in kbps. Every play goes through Plex's transcoder (1920×1080 H.264 + AAC) — there is no direct-stream mode. Plex handles codec / HDR conversion (HEVC→H.264, HDR→SDR). |
 | `CACHE_MAX_GB`                    | no       | `20`                     | Disk cap for HLS segment cache in GB. Cached segments survive restarts; LRU eviction kicks in when cap is hit. Estimate ~10 GB per typical 2hr movie at 12 Mbps. |
 | `LISTEN_ADDR`                     | no       | `:8080`                  | Listen address (e.g., `:8080` or `0.0.0.0:8080`) |
-| `WORK_DIR`                        | no       | `$TMPDIR/plexwatchparty` | Root data directory for cache and work files |
+| `WORK_DIR`                        | no       | `$TMPDIR/plexwatchparty` | Per-session work directory. The segment cache (`cache/`), poster art (`posters/`) and state files (`library-cache.json`, `recent.json`, `state.json`, `host.json`, `audit.jsonl`, `aliases.json`) live in its **parent** directory. The container entrypoint makes both owned by the app user (UID 10001), so a fresh or root-owned `./data` bind mount works. |
 | `TRUSTED_PROXY_CIDRS`             | no       | loopback + RFC1918 + ULA | Comma-separated CIDRs whose peers may set `X-Forwarded-For` / `X-Real-IP`. Headers from any other peer are ignored (so a directly-reachable client can't spoof its attribution). Widen this only if your reverse proxy sits on a public address. |
 | `DISCORD_WEBHOOK_URL`             | no       | —                        | Discord incoming-webhook URL. When set, the server posts a rich embed when a movie starts, stops, pauses, or resumes. Unset → feature off. |
 | `PUBLIC_BASE_URL`                 | no       | origin of `GOOGLE_REDIRECT_URL` | Public origin used to build poster-image links in Discord embeds, e.g. `https://watch.example.com`. Enabling the webhook serves an **unauthenticated, read-only** `/poster/<ratingKey>.jpg` route that streams Plex poster art (token never exposed) so Discord can render the thumbnail. If no absolute origin can be resolved, embeds post without a poster. |

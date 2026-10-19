@@ -20,7 +20,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -trimpath \
 # No ffmpeg here — playback goes through Plex's Universal Transcoder and we
 # just proxy + cache the HLS output.
 FROM alpine:3.20
-# su-exec lets the entry-point chown the WORK_DIR as root, then drop
+# su-exec lets the entry-point chown the data dirs as root, then drop
 # to the unprivileged `app` user before exec-ing the server.
 RUN apk add --no-cache ca-certificates su-exec \
  && adduser -D -u 10001 app
@@ -31,5 +31,5 @@ ENV LISTEN_ADDR=:8080 \
     WORK_DIR=/tmp/plexwatchparty
 EXPOSE 8080
 # NB: no USER directive — the entrypoint runs as root long enough to
-# chown WORK_DIR, then exec's the server as `app`.
+# chown the data dirs, then exec's the server as `app`.
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
