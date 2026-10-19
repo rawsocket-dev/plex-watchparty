@@ -360,8 +360,8 @@ func TestPosterStreamRefusesKeysOutsideLibrary(t *testing.T) {
 	p.moviesByKey = buildMoviesIndex([]Movie{{RatingKey: "55", Title: "Known"}})
 	p.moviesMu.Unlock()
 
-	if _, _, err := p.PosterStream("999"); err != errNoPoster {
-		t.Errorf("unknown key err = %v, want errNoPoster", err)
+	if _, _, err := p.PosterStream("999"); err != errPosterKeyUnknown {
+		t.Errorf("unknown key err = %v, want errPosterKeyUnknown", err)
 	}
 	if got := hits.Load(); got != 0 {
 		t.Errorf("unknown key reached Plex %d times, want 0", got)

@@ -52,8 +52,10 @@ func (c *PosterCache) path(ratingKey string) string {
 // a content type. It serves a fresh-enough file from disk when present;
 // otherwise it fetches from Plex, writes the bytes to disk (best-effort), and
 // returns them. Returns errNoPoster when the title has no art — remembered
-// in the negative cache for negTTL so a poster-less (or unknown) key can't
-// hammer Plex, then retried so art added later still shows up.
+// in the negative cache for negTTL so a poster-less title can't hammer
+// Plex, then retried so art added later still shows up. Keys the library
+// doesn't know return errPosterKeyUnknown, which costs no Plex call and is
+// deliberately not remembered (see PosterStream).
 func (c *PosterCache) Stream(ratingKey string) (io.ReadCloser, string, error) {
 	fpath := c.path(ratingKey)
 	if data, ct, ok := c.readDisk(fpath); ok {
@@ -72,7 +74,9 @@ func (c *PosterCache) Stream(ratingKey string) (io.ReadCloser, string, error) {
 	if err != nil {
 		if err == errNoPoster {
 			c.negMu.Lock()
-			c.neg[ratingKey] = time.Now()
+			// Clone: ratingKey is a substring of the request path, and
+			// keeping it would pin the whole request line in memory.
+			c.neg[strings.Clone(ratingKey)] = time.Now()
 			c.negMu.Unlock()
 		}
 		return nil, "", err
@@ -154,7 +158,7 @@ func posterHandler(c *PosterCache) http.HandlerFunc {
 		}
 		body, ct, err := c.Stream(key)
 		if err != nil {
-			if err != errNoPoster {
+			if err != errNoPoster && err != errPosterKeyUnknown {
 				log.Printf("poster: %s: %v", key, err)
 			}
 			http.NotFound(w, r)

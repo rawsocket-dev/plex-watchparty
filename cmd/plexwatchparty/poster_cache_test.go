@@ -1,11 +1,13 @@
 package main
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -197,5 +199,31 @@ func TestPosterCacheNegativeResultCached(t *testing.T) {
 	}
 	if got := atomic.LoadInt64(&hits); got != 2 {
 		t.Errorf("metadata fetches after negTTL = %d, want 2 (retried)", got)
+	}
+}
+
+// /poster/ is unauthenticated. Keys the library doesn't know are refused
+// without touching Plex, and that refusal must not leave state behind:
+// remembering each one let anyone grow server memory without bound by
+// requesting unique keys (each entry also pinned its whole request line).
+func TestPosterUnknownKeysLeaveNoState(t *testing.T) {
+	var hits int64
+	c := NewPosterCache(newCountingPosterPlex(t, &hits), t.TempDir(), time.Hour)
+	h := posterHandler(c)
+	for i := 0; i < 1000; i++ {
+		w := httptest.NewRecorder()
+		h(w, httptest.NewRequest("GET", fmt.Sprintf("/poster/unknown%d.jpg?pad=%s", i, strings.Repeat("x", 512)), nil))
+		if w.Code != http.StatusNotFound {
+			t.Fatalf("unknown key %d: code = %d, want 404", i, w.Code)
+		}
+	}
+	c.negMu.Lock()
+	n := len(c.neg)
+	c.negMu.Unlock()
+	if n != 0 {
+		t.Errorf("negative cache holds %d entries after 1000 unknown-key requests, want 0", n)
+	}
+	if got := atomic.LoadInt64(&hits); got != 0 {
+		t.Errorf("unknown keys reached Plex %d times, want 0", got)
 	}
 }

@@ -1381,6 +1381,11 @@ func (p *Plex) Resolve(ratingKey string) (*StreamInfo, *MovieMeta, error) {
 // errNoPoster signals the movie has no thumb art (handler maps it to 404).
 var errNoPoster = errors.New("no poster art for media")
 
+// errPosterKeyUnknown signals a key the library cache doesn't know. The
+// handler maps it to 404 too, but unlike errNoPoster it is never
+// remembered: the set of unknown keys is unbounded and attacker-chosen.
+var errPosterKeyUnknown = errors.New("ratingKey not in library")
+
 // posterTranscodeW/H are the box Plex scales the poster into. 400×600 (2:3)
 // covers the library grid's ~150–250px columns at 2x/retina, so the result
 // looks identical to the source on screen while transferring a fraction of
@@ -1416,7 +1421,7 @@ func (p *Plex) PosterStream(ratingKey string) (io.ReadCloser, string, error) {
 		thumb = episode.Thumb
 	} else {
 		p.moviesMu.Unlock()
-		return nil, "", errNoPoster
+		return nil, "", errPosterKeyUnknown
 	}
 	p.moviesMu.Unlock()
 	if thumb == "" {

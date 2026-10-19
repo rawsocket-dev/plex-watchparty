@@ -4,6 +4,10 @@ Notable, user-facing changes to plex-watchparty. Newest first.
 No version numbers — the app ships continuously as a container.
 
 ## 2026-10-19
+- Fixed: Each request for an unknown poster key on the public
+  `/poster/` route left an entry in server memory for the life of the
+  process, so anyone could grow the server's memory without signing in.
+  Unknown keys are now refused without remembering them.
 - Fixed: A fresh Docker Compose install crash-looped with
   `create cache dir: … permission denied`: the container only made the
   sessions directory writable, while the cache, poster art and state files
