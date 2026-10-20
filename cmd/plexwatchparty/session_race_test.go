@@ -4,6 +4,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -187,5 +188,103 @@ func TestFailedSessionReplacementReturnsRoomToLobby(t *testing.T) {
 				t.Errorf("resume hint = %+v, want rk1 so the host can pick it back up", s.Resume)
 			}
 		})
+	}
+}
+
+// A stop that lands while a load is still resolving its title must win.
+// The load used to carry on regardless — start a fresh Plex transcode and
+// broadcast the title again — so the host's "← library" or an admin's
+// "send to lobby" was undone by a click made before it.
+func TestStopCancelsPendingLoad(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		stop func(*testing.T, *hubTestFixture)
+	}{
+		{"host stop", func(t *testing.T, f *hubTestFixture) {
+			if w := f.post(t, `{"action":"stop"}`); w.Code != http.StatusNoContent {
+				t.Fatalf("stop: %d %s", w.Code, w.Body.String())
+			}
+		}},
+		{"admin lobby", func(t *testing.T, f *hubTestFixture) { f.hub.SendEveryoneToLobby() }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newHubTestFixture(t)
+			var armed atomic.Bool
+			entered, release := make(chan struct{}), make(chan struct{})
+			var once sync.Once
+			hookPlex(f, func(r *http.Request) (*http.Response, error) {
+				if armed.Load() && r.URL.Path == "/library/metadata/rk1" {
+					once.Do(func() { close(entered); <-release })
+				}
+				return nil, nil
+			})
+			if w := f.post(t, `{"action":"load","ratingKey":"rk1"}`); w.Code != http.StatusOK {
+				t.Fatalf("load: %d %s", w.Code, w.Body.String())
+			}
+			armed.Store(true)
+			done := make(chan *httptest.ResponseRecorder, 1)
+			go func() { done <- f.post(t, `{"action":"load","ratingKey":"rk1","restart":true}`) }()
+			<-entered
+			tc.stop(t, f)
+			close(release)
+			if w := <-done; w.Code != http.StatusConflict {
+				t.Errorf("pending load: %d %s, want 409", w.Code, w.Body.String())
+			}
+			if rk := f.hub.Snapshot().RatingKey; rk != "" {
+				t.Errorf("room advertises %q after the stop", rk)
+			}
+			if rk := f.hub.session.RatingKey(); rk != "" {
+				t.Errorf("Plex transcode for %q running after the stop", rk)
+			}
+
+			// The stop cancels only loads already in flight.
+			armed.Store(false)
+			if w := f.post(t, `{"action":"load","ratingKey":"rk1"}`); w.Code != http.StatusOK {
+				t.Fatalf("load after the stop: %d %s", w.Code, w.Body.String())
+			}
+		})
+	}
+}
+
+// The same race one step later: the stop arrives while Plex is already
+// starting the load. The stop tears the new transcode down once Start
+// returns, so the load must not report success or broadcast the title —
+// that would pull every library viewer into /watch only to bounce back.
+func TestStopDuringPlexStartCancelsLoad(t *testing.T) {
+	f := newHubTestFixture(t)
+	var armed atomic.Bool
+	entered, release := make(chan struct{}), make(chan struct{})
+	var once sync.Once
+	hookPlex(f, func(r *http.Request) (*http.Response, error) {
+		if armed.Load() && strings.HasSuffix(r.URL.Path, "/transcode/universal/decision") {
+			once.Do(func() { close(entered); <-release })
+		}
+		return nil, nil
+	})
+	if w := f.post(t, `{"action":"load","ratingKey":"rk1"}`); w.Code != http.StatusOK {
+		t.Fatalf("load: %d %s", w.Code, w.Body.String())
+	}
+	armed.Store(true)
+	loaded := make(chan *httptest.ResponseRecorder, 1)
+	go func() { loaded <- f.post(t, `{"action":"load","ratingKey":"rk1","restart":true}`) }()
+	<-entered
+	before := f.hub.stopGen.Load()
+	stopped := make(chan *httptest.ResponseRecorder, 1)
+	go func() { stopped <- f.post(t, `{"action":"stop"}`) }()
+	for f.hub.stopGen.Load() == before { // the stop has begun; its session.Stop() queues on startMu
+		runtime.Gosched()
+	}
+	close(release)
+	if w := <-loaded; w.Code != http.StatusConflict {
+		t.Errorf("pending load: %d %s, want 409", w.Code, w.Body.String())
+	}
+	if w := <-stopped; w.Code != http.StatusNoContent {
+		t.Fatalf("stop: %d %s", w.Code, w.Body.String())
+	}
+	if rk := f.hub.Snapshot().RatingKey; rk != "" {
+		t.Errorf("room advertises %q after the stop", rk)
+	}
+	if rk := f.hub.session.RatingKey(); rk != "" {
+		t.Errorf("Plex transcode for %q running after the stop", rk)
 	}
 }

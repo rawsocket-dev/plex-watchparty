@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"math"
@@ -13,6 +14,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -266,6 +268,12 @@ type Hub struct {
 	// concurrently.
 	nextMu       sync.Mutex
 	nextInFlight bool
+	// stopGen counts explicit room stops (host stop, admin lobby, idle).
+	// A load records it before its slow Plex lookups and gives up if a
+	// stop has bumped it since, so a stop always beats a load already in
+	// flight. Bumped under Hub.mu BEFORE the stop's session.Stop(); read
+	// lock-free, including under PlexSession.startMu (see StartIf).
+	stopGen atomic.Uint64
 	// lastKnown is the persisted resume hint. Populated from disk at
 	// startup; refreshed on every broadcast that has a live RatingKey
 	// (so it's always current). Surfaced as State.Resume whenever
@@ -879,6 +887,7 @@ func (h *Hub) idleShutdown(forRatingKey string) {
 	}
 	log.Printf("idle: stopping plex session %q after %s with no viewers",
 		h.state.Title, idleGrace)
+	h.stopGen.Add(1)
 	// Recording (a file write) under Hub.mu is normally avoided, but it's
 	// safe here: the len(h.clients) guard above means there are zero
 	// viewers, so there's no SSE writer to stall. Don't copy this pattern
@@ -1413,6 +1422,9 @@ func (h *Hub) HandleControl(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Taken before "next" reads the room, so a stop that lands anywhere
+	// during this load (including next's resolve) cancels it.
+	loadStopGen := h.stopGen.Load()
 	explicitNext := req.Action == "next"
 	if explicitNext {
 		h.nextMu.Lock()
@@ -1577,7 +1589,13 @@ func (h *Hub) HandleControl(w http.ResponseWriter, r *http.Request) {
 		// Start. Without this both could call /stop+/start in quick
 		// succession and Plex would see overlapping sessions.
 		h.session.SuppressAutoRestart()
-		if err := h.session.Start(req.RatingKey, offsetSec); err != nil {
+		notStopped := func() bool { return h.stopGen.Load() == loadStopGen }
+		if err := h.session.StartIf(req.RatingKey, offsetSec, notStopped); err != nil {
+			if errors.Is(err, errStartCancelled) {
+				log.Printf("control: load %s cancelled: the room was stopped while it resolved", req.RatingKey)
+				http.Error(w, "the room was stopped while this title was loading", http.StatusConflict)
+				return
+			}
 			log.Printf("control: plex Start failed ip=%s ratingKey=%s err=%v",
 				clientIP(r), req.RatingKey, err)
 			h.abandonDeadSession(err)
@@ -1596,6 +1614,15 @@ func (h *Hub) HandleControl(w http.ResponseWriter, r *http.Request) {
 		)
 
 		h.mu.Lock()
+		if !notStopped() {
+			// The stop began after StartIf's check; its session.Stop()
+			// waits on startMu, so it tears down the transcode we just
+			// started. Don't advertise the title over the empty room.
+			h.mu.Unlock()
+			log.Printf("control: load %s cancelled: the room was stopped while Plex started", req.RatingKey)
+			http.Error(w, "the room was stopped while this title was loading", http.StatusConflict)
+			return
+		}
 		h.state = State{
 			RatingKey:     req.RatingKey,
 			Title:         title,
@@ -1677,6 +1704,7 @@ func (h *Hub) HandleControl(w http.ResponseWriter, r *http.Request) {
 		// session — after session.Stop() the sessionID is cleared and
 		// ReportTimeline becomes a no-op.
 		h.mu.Lock()
+		h.stopGen.Add(1)
 		rk := h.state.RatingKey
 		stoppedTitle := h.state.Title
 		stoppedYear := h.state.Year
@@ -1798,6 +1826,7 @@ func (h *Hub) HandleControl(w http.ResponseWriter, r *http.Request) {
 // as a host clicking "← library", just admin-triggered.
 func (h *Hub) SendEveryoneToLobby() {
 	h.mu.Lock()
+	h.stopGen.Add(1)
 	rk := h.state.RatingKey
 	posSec := h.snapshot().PositionSec
 	posMs := int64(posSec * 1000)

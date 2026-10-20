@@ -209,6 +209,23 @@ func (ps *PlexSession) Start(ratingKey string, offsetSec float64) error {
 	return ps.start(ratingKey, offsetSec)
 }
 
+// errStartCancelled refuses a Start whose caller was invalidated (the room
+// was stopped) before it reached Plex.
+var errStartCancelled = errors.New("plex start cancelled")
+
+// StartIf is Start, refused with errStartCancelled when proceed reports
+// false. proceed runs under startMu, so a Stop that invalidated the caller
+// either lands before the check or queues behind this Start and tears its
+// session down. proceed must not take Hub.mu (Hub.mu → startMu).
+func (ps *PlexSession) StartIf(ratingKey string, offsetSec float64, proceed func() bool) error {
+	ps.startMu.Lock()
+	defer ps.startMu.Unlock()
+	if !proceed() {
+		return errStartCancelled
+	}
+	return ps.start(ratingKey, offsetSec)
+}
+
 // start is Start's body; the caller must hold ps.startMu.
 func (ps *PlexSession) start(ratingKey string, offsetSec float64) error {
 	ps.mu.Lock()

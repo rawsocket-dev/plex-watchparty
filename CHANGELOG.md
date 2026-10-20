@@ -4,6 +4,11 @@ Notable, user-facing changes to plex-watchparty. Newest first.
 No version numbers — the app ships continuously as a container.
 
 ## 2026-10-19
+- Fixed: Stopping the room now wins over a title that was still loading.
+  If the host clicked "← library" (or an admin sent everyone to the
+  lobby) while a title or the next episode was being cued, the load used
+  to finish anyway and start playback again. It is now cancelled, and the
+  host's button offers a retry.
 - Fixed: The library no longer stalls while IMDb scores are looked up
   for newly added titles. Plex can take about a second per title the
   first time it is asked, so a batch of new additions held the page (or
