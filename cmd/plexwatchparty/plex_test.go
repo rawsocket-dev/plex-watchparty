@@ -36,7 +36,7 @@ func TestPosterStream(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
-	p := NewPlex(srv.URL, "tok", filepath.Join(t.TempDir(), "lib.json"), nil)
+	p := newTestPlex(t, srv.URL, "tok", filepath.Join(t.TempDir(), "lib.json"), nil)
 	// Both keys are library titles (posters are only served for those);
 	// their empty Thumb forces the per-key metadata fallback.
 	p.moviesMu.Lock()
@@ -74,7 +74,7 @@ func TestPosterStreamThumbStatusError(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
-	p := NewPlex(srv.URL, "tok", filepath.Join(t.TempDir(), "lib.json"), nil)
+	p := newTestPlex(t, srv.URL, "tok", filepath.Join(t.TempDir(), "lib.json"), nil)
 	p.moviesMu.Lock()
 	p.moviesByKey = buildMoviesIndex([]Movie{{RatingKey: "99"}})
 	p.moviesMu.Unlock()
@@ -145,11 +145,15 @@ func TestListMoviesRatings(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
-	p := NewPlex(srv.URL, "tok", filepath.Join(t.TempDir(), "lib.json"), nil)
+	p := newTestPlex(t, srv.URL, "tok", filepath.Join(t.TempDir(), "lib.json"), nil)
 
 	movies, err := p.ListMovies()
 	if err != nil {
 		t.Fatalf("ListMovies: %v", err)
+	}
+	waitIMDbIdle(t, p)
+	if movies, err = p.ListMovies(); err != nil {
+		t.Fatalf("ListMovies after IMDb lookups: %v", err)
 	}
 	if len(movies) != 3 {
 		t.Fatalf("got %d movies, want 3 (show section must be skipped)", len(movies))
@@ -197,11 +201,12 @@ func TestListMoviesIMDbCarryForward(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
-	p := NewPlex(srv.URL, "tok", filepath.Join(t.TempDir(), "lib.json"), nil)
+	p := newTestPlex(t, srv.URL, "tok", filepath.Join(t.TempDir(), "lib.json"), nil)
 
 	if _, err := p.ListMovies(); err != nil {
 		t.Fatalf("first ListMovies: %v", err)
 	}
+	waitIMDbIdle(t, p)
 	mu.Lock()
 	requested = nil // reset; the first pass legitimately fetched both
 	mu.Unlock()
@@ -211,6 +216,7 @@ func TestListMoviesIMDbCarryForward(t *testing.T) {
 	if err != nil {
 		t.Fatalf("second ListMovies: %v", err)
 	}
+	waitIMDbIdle(t, p)
 	if movies[0].IMDbRating != 5.9 {
 		t.Errorf("carried-forward IMDb = %v, want 5.9", movies[0].IMDbRating)
 	}
@@ -244,7 +250,7 @@ func TestResolveMovieMeta(t *testing.T) {
 		}]}}`))
 	}))
 	defer srv.Close()
-	p := NewPlex(srv.URL, "tok", filepath.Join(t.TempDir(), "lib.json"), nil)
+	p := newTestPlex(t, srv.URL, "tok", filepath.Join(t.TempDir(), "lib.json"), nil)
 
 	_, meta, err := p.Resolve("123")
 	if err != nil {
@@ -300,7 +306,7 @@ func TestListMoviesServesStaleCacheWhenPlexDown(t *testing.T) {
 	var failing atomic.Bool
 	srv := httptest.NewServer(listingHandler(&failing, nil, 0))
 	defer srv.Close()
-	p := NewPlex(srv.URL, "tok", filepath.Join(t.TempDir(), "lib.json"), nil)
+	p := newTestPlex(t, srv.URL, "tok", filepath.Join(t.TempDir(), "lib.json"), nil)
 
 	first, err := p.ListMovies()
 	if err != nil || len(first) != 2 {
@@ -324,7 +330,7 @@ func TestListMoviesSingleflightCollapsesConcurrentRefreshes(t *testing.T) {
 	var sectionsCalls atomic.Int64
 	srv := httptest.NewServer(listingHandler(nil, &sectionsCalls, 50*time.Millisecond))
 	defer srv.Close()
-	p := NewPlex(srv.URL, "tok", filepath.Join(t.TempDir(), "lib.json"), nil)
+	p := newTestPlex(t, srv.URL, "tok", filepath.Join(t.TempDir(), "lib.json"), nil)
 
 	var wg sync.WaitGroup
 	for i := 0; i < 8; i++ {
@@ -354,7 +360,7 @@ func TestPosterStreamRefusesKeysOutsideLibrary(t *testing.T) {
 		w.Write([]byte(`{"MediaContainer":{"Metadata":[{"thumb":"/library/metadata/999/thumb/1"}]}}`))
 	}))
 	defer srv.Close()
-	p := NewPlex(srv.URL, "tok", filepath.Join(t.TempDir(), "lib.json"), nil)
+	p := newTestPlex(t, srv.URL, "tok", filepath.Join(t.TempDir(), "lib.json"), nil)
 	// Library cache knows only key 55.
 	p.moviesMu.Lock()
 	p.moviesByKey = buildMoviesIndex([]Movie{{RatingKey: "55", Title: "Known"}})
@@ -393,11 +399,12 @@ func TestListMoviesUnratedNotRefetchedOnTTLRefresh(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
-	p := NewPlex(srv.URL, "tok", filepath.Join(t.TempDir(), "lib.json"), nil)
+	p := newTestPlex(t, srv.URL, "tok", filepath.Join(t.TempDir(), "lib.json"), nil)
 
 	if _, err := p.ListMovies(); err != nil {
 		t.Fatalf("first ListMovies: %v", err)
 	}
+	waitIMDbIdle(t, p)
 	mu.Lock()
 	requested = nil
 	mu.Unlock()
@@ -410,6 +417,7 @@ func TestListMoviesUnratedNotRefetchedOnTTLRefresh(t *testing.T) {
 	if _, err := p.ListMovies(); err != nil {
 		t.Fatalf("TTL refresh: %v", err)
 	}
+	waitIMDbIdle(t, p)
 	mu.Lock()
 	if len(requested) != 0 {
 		t.Errorf("TTL refresh re-fetched %v, want none (unrated title should carry forward)", requested)
@@ -422,9 +430,32 @@ func TestListMoviesUnratedNotRefetchedOnTTLRefresh(t *testing.T) {
 	if _, err := p.ListMovies(); err != nil {
 		t.Fatalf("admin refresh: %v", err)
 	}
+	waitIMDbIdle(t, p)
 	mu.Lock()
 	defer mu.Unlock()
 	if len(requested) != 1 || requested[0] != "12" {
 		t.Errorf("admin refresh requested %v, want only [12]", requested)
+	}
+}
+
+// newTestPlex is NewPlex for tests: it waits out the background IMDb
+// lookups at cleanup, so none outlives the test's server or TempDir.
+func newTestPlex(t *testing.T, baseURL, token, cacheFile string, audit *AuditLog) *Plex {
+	t.Helper()
+	p := NewPlex(baseURL, token, cacheFile, audit)
+	t.Cleanup(func() { waitIMDbIdle(t, p) })
+	return p
+}
+
+// waitIMDbIdle blocks until the background IMDb lookups have drained.
+func waitIMDbIdle(t *testing.T, p *Plex) {
+	t.Helper()
+	idle := func() bool {
+		p.imdbMu.Lock()
+		defer p.imdbMu.Unlock()
+		return !p.imdbRunning
+	}
+	if !eventually(t, 5*time.Second, idle) {
+		t.Fatal("background IMDb lookups never finished")
 	}
 }

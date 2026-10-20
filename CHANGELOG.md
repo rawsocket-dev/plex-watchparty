@@ -4,6 +4,12 @@ Notable, user-facing changes to plex-watchparty. Newest first.
 No version numbers — the app ships continuously as a container.
 
 ## 2026-10-19
+- Fixed: The library no longer stalls while IMDb scores are looked up
+  for newly added titles. Plex can take about a second per title the
+  first time it is asked, so a batch of new additions held the page (or
+  timed out and left those titles unscored). The library now loads at
+  once and the scores fill in shortly afterwards. A slow lookup also no
+  longer records a false "Plex unreachable" in the audit log.
 - Fixed: The player stayed blank on iPhones (and other browsers without
   the standard `MediaSource` API): a capability probe crashed before
   playback could attach. It now falls back to `ManagedMediaSource` or

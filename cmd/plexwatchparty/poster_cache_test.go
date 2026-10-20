@@ -36,7 +36,7 @@ func newCountingPosterPlex(t *testing.T, hits *int64) *Plex {
 		}
 	}))
 	t.Cleanup(srv.Close)
-	p := NewPlex(srv.URL, "tok", filepath.Join(t.TempDir(), "lib.json"), nil)
+	p := newTestPlex(t, srv.URL, "tok", filepath.Join(t.TempDir(), "lib.json"), nil)
 	// Posters are only served for library titles; empty Thumb paths force
 	// the metadata fallback these tests count.
 	p.moviesMu.Lock()

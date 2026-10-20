@@ -60,7 +60,7 @@ func TestPlexTVCatalogHierarchyNextAndDiskFallback(t *testing.T) {
 		}
 	}))
 	cacheFile := filepath.Join(t.TempDir(), "library.json")
-	p := NewPlex(srv.URL, "tok", cacheFile, nil)
+	p := newTestPlex(t, srv.URL, "tok", cacheFile, nil)
 
 	library, err := p.ListLibrary()
 	if err != nil {
@@ -91,7 +91,7 @@ func TestPlexTVCatalogHierarchyNextAndDiskFallback(t *testing.T) {
 	}
 
 	srv.Close()
-	restored := NewPlex(srv.URL, "tok", cacheFile, nil)
+	restored := newTestPlex(t, srv.URL, "tok", cacheFile, nil)
 	if got, err := restored.ListEpisodes("s1"); err != nil || len(got) != 2 {
 		t.Fatalf("disk fallback episodes = %+v, err=%v", got, err)
 	}
@@ -164,7 +164,7 @@ func TestPlexTVHierarchyRefreshAndStaleFallback(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
-	p := NewPlex(srv.URL, "tok", filepath.Join(t.TempDir(), "library.json"), nil)
+	p := newTestPlex(t, srv.URL, "tok", filepath.Join(t.TempDir(), "library.json"), nil)
 
 	if seasons, err := p.ListSeasons("show"); err != nil || len(seasons) != 1 {
 		t.Fatalf("prime seasons = %+v, err=%v", seasons, err)
@@ -262,7 +262,7 @@ func TestPlexLoadsV1MovieCacheThenFetchesFullLibrary(t *testing.T) {
 	if err := os.WriteFile(cacheFile, data, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	p := NewPlex(srv.URL, "tok", cacheFile, nil)
+	p := newTestPlex(t, srv.URL, "tok", cacheFile, nil)
 	movies, err := p.ListMovies()
 	if err != nil || len(movies) != 1 || movies[0].RatingKey != "old" {
 		t.Fatalf("v1 cached movies = %+v, err=%v", movies, err)
@@ -302,7 +302,7 @@ func TestPlexLoadsLegacyTVCacheWithoutHierarchyTimestamps(t *testing.T) {
 	if err := os.WriteFile(cacheFile, data, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	p := NewPlex(srv.URL, "tok", cacheFile, nil)
+	p := newTestPlex(t, srv.URL, "tok", cacheFile, nil)
 	p.moviesMu.Lock()
 	seasonAt, episodeAt := p.seasonsAt["show"], p.episodesAt["s1"]
 	p.moviesMu.Unlock()
@@ -358,7 +358,7 @@ func TestPlexCatalogRefreshPrunesRemovedHierarchyAndTempFiles(t *testing.T) {
 	if err := os.WriteFile(operatorBackup, []byte("operator backup"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	p := NewPlex(srv.URL, "tok", cacheFile, nil)
+	p := newTestPlex(t, srv.URL, "tok", cacheFile, nil)
 	if _, err := os.Stat(debris); !os.IsNotExist(err) {
 		t.Fatalf("stale cache temp still exists: %v", err)
 	}
@@ -459,7 +459,7 @@ func newTVHubFixtureWithHandler(t *testing.T, handler http.Handler) *hubTestFixt
 	t.Cleanup(mock.Close)
 	dir := t.TempDir()
 	audit := NewAuditLog(filepath.Join(dir, "audit.jsonl"), auditCap)
-	plex := NewPlex(mock.URL, "tok", filepath.Join(dir, "library.json"), audit)
+	plex := newTestPlex(t, mock.URL, "tok", filepath.Join(dir, "library.json"), audit)
 	cache := NewSegmentCache(filepath.Join(dir, "cache"), 1<<30)
 	recent := NewRecentMovies(filepath.Join(dir, "recent.json"))
 	store := NewStateStore(filepath.Join(dir, "state.json"))

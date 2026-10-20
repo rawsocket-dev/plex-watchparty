@@ -54,6 +54,16 @@ type Plex struct {
 	// admin refresh re-checks everything. Guarded by moviesMu.
 	imdbNoRating map[string]bool
 
+	// IMDb lookups run in the background, one batch at a time, so a
+	// refresh never waits on them (see queueIMDb). imdbHTTP is their
+	// own longer-fused client. imdbMu guards the queue; it is never
+	// held together with moviesMu.
+	imdbHTTP    *http.Client
+	imdbMu      sync.Mutex
+	imdbPending []string        // keys waiting for a lookup, oldest first
+	imdbQueued  map[string]bool // pending or in flight; dedupes re-queues
+	imdbRunning bool
+
 	// Health state. healthy is the latest known reachability; if any
 	// call into Plex returns a transport error we flip it false and
 	// kick off a background recovery loop that pings with exponential
@@ -90,6 +100,8 @@ func NewPlex(baseURL, token, cacheFile string, audit *AuditLog) *Plex {
 		BaseURL:      strings.TrimRight(baseURL, "/"),
 		Token:        token,
 		http:         &http.Client{Timeout: 15 * time.Second, Transport: tr},
+		imdbHTTP:     &http.Client{Timeout: imdbLookupTimeout, Transport: tr},
+		imdbQueued:   make(map[string]bool),
 		cacheFile:    cacheFile,
 		healthy:      true, // optimistic; startup Ping in main flips this if Plex is down
 		audit:        audit,
@@ -297,6 +309,11 @@ func (p *Plex) Ping() (*ServerIdentity, error) {
 }
 
 func (p *Plex) get(path string, v any) error {
+	return p.getWith(p.Do, path, v)
+}
+
+// getWith is get over a caller-chosen send function.
+func (p *Plex) getWith(do func(*http.Request) (*http.Response, error), path string, v any) error {
 	u := p.BaseURL + path
 	if strings.Contains(path, "?") {
 		u += "&"
@@ -310,7 +327,7 @@ func (p *Plex) get(path string, v any) error {
 		return err
 	}
 	req.Header.Set("Accept", "application/json")
-	resp, err := p.Do(req)
+	resp, err := do(req)
 	if err != nil {
 		return err
 	}
@@ -665,9 +682,6 @@ func (p *Plex) cachedMovies() ([]Movie, bool) {
 // fetchMovies does the real library walk + IMDb enrichment and publishes
 // the result. Callers go through ListMovies' singleflight.
 func (p *Plex) fetchMovies() ([]Movie, error) {
-	p.moviesMu.Lock()
-	prev := p.moviesByKey
-	p.moviesMu.Unlock()
 	var sr sectionsResp
 	if err := p.get("/library/sections", &sr); err != nil {
 		return nil, err
@@ -693,21 +707,18 @@ func (p *Plex) fetchMovies() ([]Movie, error) {
 			})
 		}
 	}
-	p.enrichIMDb(out, prev)
 	p.moviesMu.Lock()
+	need := p.carryIMDbLocked(out)
 	p.moviesVal = out
 	p.moviesAt = time.Now()
 	p.moviesByKey = buildMoviesIndex(out)
 	p.moviesMu.Unlock()
 	p.saveCacheToDisk()
+	p.queueIMDb(need)
 	return out, nil
 }
 
 func (p *Plex) fetchLibrary() (MediaLibrary, error) {
-	p.moviesMu.Lock()
-	prev := p.moviesByKey // snapshot for IMDb carry-forward; read off-lock below
-	p.moviesMu.Unlock()
-
 	var sr sectionsResp
 	if err := p.get("/library/sections", &sr); err != nil {
 		return MediaLibrary{}, err
@@ -742,11 +753,10 @@ func (p *Plex) fetchLibrary() (MediaLibrary, error) {
 		}
 	}
 
-	// Fill in IMDb scores (the listing endpoint omits them). Best-effort and
-	// done with no lock held — it makes its own Plex round-trips.
-	p.enrichIMDb(out, prev)
-
+	// The listing omits IMDb scores: carry known ones forward now, look the
+	// rest up in the background once the catalog is published.
 	p.moviesMu.Lock()
+	need := p.carryIMDbLocked(out)
 	p.moviesVal = out
 	p.showsVal = shows
 	p.showsLoaded = true
@@ -756,6 +766,7 @@ func (p *Plex) fetchLibrary() (MediaLibrary, error) {
 	p.pruneHierarchyLocked(p.showsByKey)
 	p.moviesMu.Unlock()
 	p.saveCacheToDisk()
+	p.queueIMDb(need)
 	return MediaLibrary{Movies: out, Shows: shows}, nil
 }
 
@@ -836,66 +847,137 @@ func imdbFromRatings(rs []plexRating) float64 {
 // imdbBatchSize caps how many ratingKeys ride on one /library/metadata call.
 // 200 keeps the URL well under any sane limit while collapsing a 5k-title
 // library into ~26 requests on a cold cache.
-const imdbBatchSize = 200
+// Plex answers a title's first metadata request in a while slowly — about a
+// second per title, measured — so lookups go in small batches with a long
+// fuse, off the request path.
+const (
+	imdbBatchSize     = 25
+	imdbLookupTimeout = 2 * time.Minute
+)
 
-// enrichIMDb fills movies[i].IMDbRating. Scores already known from the prior
-// cache (prev) are carried forward untouched; only titles still at 0 are
-// fetched, in comma-batched /library/metadata calls. Best-effort: a failed
-// batch is logged and skipped, leaving those titles at 0 (the listing — RT
-// audience and all — still loads). prev may be nil on a cold start.
-func (p *Plex) enrichIMDb(movies []Movie, prev map[string]Movie) {
+// carryIMDbLocked fills movies[i].IMDbRating from the published index and
+// returns the keys that still need a lookup (known-unrated titles excluded;
+// those are re-checked only via RefreshLibrary). Carrying forward at publish
+// time, under moviesMu, keeps a score a background batch landed mid-refresh.
+func (p *Plex) carryIMDbLocked(movies []Movie) []string {
 	var need []string
-	p.moviesMu.Lock()
 	for i := range movies {
-		if pm, ok := prev[movies[i].RatingKey]; ok && pm.IMDbRating > 0 {
+		if pm, ok := p.moviesByKey[movies[i].RatingKey]; ok && pm.IMDbRating > 0 {
 			movies[i].IMDbRating = pm.IMDbRating
 			continue
 		}
 		if p.imdbNoRating[movies[i].RatingKey] {
-			continue // known unrated; re-checked only via RefreshLibrary
+			continue
 		}
 		need = append(need, movies[i].RatingKey)
 	}
-	p.moviesMu.Unlock()
-	if len(need) == 0 {
-		return
-	}
-	got := make(map[string]float64, len(need))
-	// Keys whose batch failed outright are NOT "known unrated" — the
-	// fetch never answered; leave them eligible for the next refresh.
-	failed := make(map[string]bool)
-	for start := 0; start < len(need); start += imdbBatchSize {
-		end := start + imdbBatchSize
-		if end > len(need) {
-			end = len(need)
+	return need
+}
+
+// queueIMDb schedules IMDb lookups for keys and starts the single lookup
+// goroutine if it isn't running. Keys already pending or in flight are
+// skipped, so overlapping refreshes never fetch a title twice.
+func (p *Plex) queueIMDb(keys []string) {
+	p.imdbMu.Lock()
+	defer p.imdbMu.Unlock()
+	for _, k := range keys {
+		if !p.imdbQueued[k] {
+			p.imdbQueued[k] = true
+			p.imdbPending = append(p.imdbPending, k)
 		}
-		keys := need[start:end]
+	}
+	if len(p.imdbPending) > 0 && !p.imdbRunning {
+		p.imdbRunning = true
+		go p.runIMDbLookups()
+	}
+}
+
+// runIMDbLookups drains the queue one comma-batched /library/metadata call
+// at a time. Best-effort: when a batch fails, the rest of the queue is
+// dropped and those titles stay at 0 — still eligible, so the next refresh
+// queues them again.
+func (p *Plex) runIMDbLookups() {
+	var scored, unrated int
+	for {
+		p.imdbMu.Lock()
+		n := min(imdbBatchSize, len(p.imdbPending))
+		if n == 0 {
+			p.imdbRunning = false
+			p.imdbMu.Unlock()
+			log.Printf("library: IMDb lookups done: %d scored, %d unrated", scored, unrated)
+			return
+		}
+		keys := p.imdbPending[:n:n]
+		p.imdbPending = p.imdbPending[n:]
+		p.imdbMu.Unlock()
+
 		var br ratingBatchResp
-		if err := p.get("/library/metadata/"+strings.Join(keys, ","), &br); err != nil {
-			log.Printf("library: IMDb enrich batch of %d failed: %v", len(keys), err)
-			for _, k := range keys {
-				failed[k] = true
-			}
-			continue
+		err := p.getWith(p.lookupDo, "/library/metadata/"+strings.Join(keys, ","), &br)
+		if err == nil {
+			s := p.applyIMDb(keys, br)
+			scored += s
+			unrated += len(keys) - s
 		}
-		for _, m := range br.MediaContainer.Metadata {
-			if v := imdbFromRatings(m.Ratings); v > 0 {
-				got[m.RatingKey] = v
+
+		p.imdbMu.Lock()
+		for _, k := range keys {
+			delete(p.imdbQueued, k)
+		}
+		if err != nil {
+			log.Printf("library: IMDb lookup of %d titles failed, %d more left for the next refresh: %v",
+				len(keys), len(p.imdbPending), err)
+			for _, k := range p.imdbPending {
+				delete(p.imdbQueued, k)
 			}
+			p.imdbPending = nil
+		}
+		p.imdbMu.Unlock()
+	}
+}
+
+// lookupDo sends an IMDb lookup on its long-fused client. A lookup that
+// fails is not a connectivity signal — Plex is often just slow — so unlike
+// Do it never trips the health machine.
+func (p *Plex) lookupDo(req *http.Request) (*http.Response, error) {
+	resp, err := p.imdbHTTP.Do(req)
+	if err != nil {
+		return nil, redactURLError(err)
+	}
+	return resp, nil
+}
+
+// applyIMDb folds one batch's answer into the published catalog and
+// returns how many keys got a score. Keys the answer has no imdb:// rating
+// for are remembered as unrated. The catalog slice is copied, not edited in
+// place: callers may still be reading the previously published one.
+func (p *Plex) applyIMDb(keys []string, br ratingBatchResp) int {
+	got := make(map[string]float64, len(keys))
+	for _, m := range br.MediaContainer.Metadata {
+		if v := imdbFromRatings(m.Ratings); v > 0 {
+			got[m.RatingKey] = v
 		}
 	}
+	p.moviesMu.Lock()
+	for _, k := range keys {
+		if _, ok := got[k]; !ok {
+			p.imdbNoRating[k] = true
+		}
+	}
+	if len(got) == 0 {
+		p.moviesMu.Unlock()
+		return 0
+	}
+	movies := append([]Movie(nil), p.moviesVal...)
 	for i := range movies {
 		if v, ok := got[movies[i].RatingKey]; ok {
 			movies[i].IMDbRating = v
 		}
 	}
-	p.moviesMu.Lock()
-	for _, k := range need {
-		if _, ok := got[k]; !ok && !failed[k] {
-			p.imdbNoRating[k] = true
-		}
-	}
+	p.moviesVal = movies
+	p.moviesByKey = buildMoviesIndex(movies)
 	p.moviesMu.Unlock()
+	p.saveCacheToDisk()
+	return len(got)
 }
 
 // MovieByKey returns the movie metadata for ratingKey from the in-memory

@@ -27,7 +27,7 @@ func newPosterPlex(t *testing.T) *Plex {
 		}
 	}))
 	t.Cleanup(srv.Close)
-	p := NewPlex(srv.URL, "tok", filepath.Join(t.TempDir(), "lib.json"), nil)
+	p := newTestPlex(t, srv.URL, "tok", filepath.Join(t.TempDir(), "lib.json"), nil)
 	// 55 and 77 are library titles (empty Thumb → metadata fallback);
 	// 99 deliberately is NOT, exercising the unknown-key refusal.
 	p.moviesMu.Lock()

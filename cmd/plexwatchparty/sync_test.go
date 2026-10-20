@@ -71,7 +71,7 @@ func newHubTestFixtureWith(t *testing.T, plexMock http.Handler) *hubTestFixture 
 	t.Cleanup(mock.Close)
 	dir := t.TempDir()
 	audit := NewAuditLog(filepath.Join(dir, "audit.jsonl"), auditCap)
-	plex := NewPlex(mock.URL, "tok", filepath.Join(dir, "lib.json"), audit)
+	plex := newTestPlex(t, mock.URL, "tok", filepath.Join(dir, "lib.json"), audit)
 	cache := NewSegmentCache(filepath.Join(dir, "cache"), 1<<30)
 	recent := NewRecentMovies(filepath.Join(dir, "recent.json"))
 	store := NewStateStore(filepath.Join(dir, "state.json"))
